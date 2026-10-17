@@ -1,0 +1,11 @@
+.nsh/
+out/
+tools/.stage/
+node_modules/
+.DS_Store
+
+# runtime state — history lives in app.db; JSON files are legacy/derived
+generated/app.db
+generated/app.db-*
+generated/threads.json
+generated/turns.json
