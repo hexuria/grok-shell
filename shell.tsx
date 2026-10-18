@@ -17,6 +17,27 @@ const post = (path: string, body: object) =>
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null);
 
+// Deletes a conversation turn (and the prompt that made it) — the module
+// file and any published mini-app are NOT touched; those live or die in the
+// Mini Apps tab.
+export function DelBtn({ k }: { k: string }) {
+  return (
+    <View
+      onPress={() => post("/turn/delete", { key: k })}
+      activeOpacity={0.7}
+      accessibilityLabel="delete this exchange"
+      style={{
+        alignSelf: "flex-start",
+        borderRadius: 6,
+        paddingHorizontal: 5,
+        paddingVertical: 1,
+      }}
+    >
+      <Text style={{ color: "#52525b", fontSize: 11 }}>✕</Text>
+    </View>
+  );
+}
+
 type Props = {
   name: string;
   label: string;
@@ -31,8 +52,16 @@ export function CardShell(props: Props) {
   const source = signal("");
   const copied = signal(false);
   const published = signal(false);
+  const pinned = signal(false);
   const work = signal("");
   const extra = signal("");
+
+  fetch(`${GEN}/pins`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (d?.pins?.includes(props.name)) pinned.set(true);
+    })
+    .catch(() => {});
 
   const react = (r: string) => {
     const next = reaction() === r ? "" : r;
@@ -63,12 +92,31 @@ export function CardShell(props: Props) {
     setTimeout(() => extra.set(""), 1500);
   });
 
+  const popout = () => {
+    post("/popout", { name: props.name }).then((d) => {
+      extra.set(
+        d?.ok ? (d.already ? "window already open" : "↗ window opened") : "popout failed",
+      );
+      setTimeout(() => extra.set(""), 2000);
+    });
+  };
+
+  const pin = () => {
+    const next = !pinned();
+    pinned.set(next);
+    post("/pin", { name: props.name, pinned: next }).then((d) => {
+      if (!d?.ok) pinned.set(!next);
+      extra.set(next ? "★ nominated — leads the desktop widget" : "unpinned");
+      setTimeout(() => extra.set(""), 2000);
+    });
+  };
+
   const publish = () => {
     if (published()) return;
     post("/publish", { name: props.name }).then((d) => {
       if (d?.ok) {
         published.set(true);
-        extra.set(`published — see Work tab`);
+        extra.set(`saved — see the Mini Apps tab`);
         setTimeout(() => extra.set(""), 2500);
       } else {
         extra.set(d?.error || "publish failed");
@@ -135,7 +183,10 @@ export function CardShell(props: Props) {
         >
           {props.label}
         </Text>
-        {btn("⤴", share, false, "reveal in Finder")}
+        <View class="flex-row items-center gap-1">
+          {btn("⤴", share, false, "reveal in Finder")}
+          <DelBtn k={"name:" + props.name} />
+        </View>
       </View>
 
       <If when={!!props.caption}>
@@ -198,7 +249,9 @@ export function CardShell(props: Props) {
         {btn("↻", retry, !!work(), "try again")}
         {btn("</>", () => toggleCode(), codeOpen(), "view source")}
         {btn("⧉", copySource, copied(), "copy source")}
-        {btn(published() ? "✓" : "⬆", publish, published(), "publish to Work tab")}
+        {btn(published() ? "✓ saved" : "save", publish, published(), "publish to Mini Apps")}
+        {btn("★", pin, pinned(), "nominate for the desktop widget")}
+        {btn("↗", popout, false, "open in its own window")}
         <If when={!!work()}>
           <Text style={{ color: "#8e8e93", fontSize: 11 }}>
             {work()}

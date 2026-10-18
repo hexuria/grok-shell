@@ -285,7 +285,7 @@ function App() {
                     fontWeight: "600",
                   }}
                 >
-                  Work
+                  Mini Apps
                 </Text>
               </View>
             </View>

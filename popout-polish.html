@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini-app windows — before → after (v3)</title>
+<style>
+  :root{
+    --bg:#0d0d0f; --panel:#17171a; --line:#26262b; --txt:#e8e8ea; --dim:#8e8e93;
+    --acc:#4c8dff; --good:#30d158; --bad:#ff453a;
+    --win:#1f1f23; --bar:#2a2a2e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font:14px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;padding:34px 20px 80px}
+  h1{font-size:22px;font-weight:700;letter-spacing:-.02em}
+  .sub{color:var(--dim);margin-top:4px;font-size:13px}
+  .principle{max-width:1120px;margin:0 auto 22px;background:linear-gradient(90deg,rgba(76,141,255,.12),rgba(48,209,88,.08));border:1px solid rgba(76,141,255,.35);border-radius:12px;padding:12px 16px;font-size:13px;line-height:1.65}
+  .principle b{color:#9cc0ff}
+  header{max-width:1120px;margin:0 auto 20px;display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap}
+  .master{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+  .master b{font-size:13px}
+  .grid{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1fr;gap:22px}
+  .case{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 18px 20px}
+  .case .head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+  .case h2{font-size:15px;font-weight:650}
+  .case h2 .n{color:var(--acc);font-variant-numeric:tabular-nums;margin-right:8px}
+  .case h2 .done{font:700 9px -apple-system;letter-spacing:.1em;color:#9ff5b4;background:#10301a;border:1px solid #1d4d28;border-radius:5px;padding:2px 7px;vertical-align:2px;margin-left:8px}
+  .case .why{color:var(--dim);font-size:12.5px;margin-top:3px;max-width:640px}
+  .case .why b{color:var(--txt);font-weight:600}
+  .pill{display:inline-flex;background:#101013;border:1px solid var(--line);border-radius:999px;padding:3px;flex:0 0 auto}
+  .pill button{border:0;background:transparent;color:var(--dim);font:600 12px -apple-system;padding:5px 13px;border-radius:999px;cursor:pointer}
+  .pill button.on-before{background:#3a1d1c;color:#ffb3ad}
+  .pill button.on-after{background:#10301a;color:#9ff5b4}
+  .stage{position:relative;height:290px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:
+    radial-gradient(1200px 500px at 70% -10%, #1b1d27 0%, #131318 55%, #0f0f13 100%)}
+  .variant{position:absolute;inset:0;opacity:0;transition:opacity .45s ease;pointer-events:none}
+  .variant.show{opacity:1;pointer-events:auto}
+  .variant .tag{position:absolute;top:10px;left:12px;font:700 10px -apple-system;letter-spacing:.14em;text-transform:uppercase;padding:3px 8px;border-radius:6px;z-index:20}
+  .v-before .tag{background:#3a1d1c;color:#ffb3ad}
+  .v-after .tag{background:#10301a;color:#9ff5b4}
+  .note{position:absolute;font:11px -apple-system;color:#ececec;background:rgba(12,12,16,.92);border:1px solid var(--line);padding:5px 9px;border-radius:8px;max-width:240px;z-index:20}
+  .note.bad{border-color:#5c2a28}.note.good{border-color:#1d4d28}
+  .dimline{position:absolute;border:1px dashed rgba(255,214,10,.75);z-index:19;pointer-events:none}
+  .dimtxt{position:absolute;font:600 10px -apple-system;color:#ffd60a;background:rgba(20,18,6,.9);padding:2px 7px;border-radius:5px;border:1px dashed rgba(255,214,10,.6);z-index:20}
+  /* --- window mock --- */
+  .win{position:absolute;background:var(--win);border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.55),0 0 0 .5px rgba(255,255,255,.07);overflow:hidden}
+  .win .body{position:absolute;inset:0}
+  .win.behind{filter:brightness(.72) saturate(.85);z-index:1}
+  .win.front{z-index:5}
+  .win.focused{box-shadow:0 24px 70px rgba(76,141,255,.28),0 0 0 1.5px rgba(76,141,255,.75),0 18px 50px rgba(0,0,0,.55)}
+  .dots{position:absolute;top:7px;left:9px;display:flex;gap:7px;z-index:6}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .dot.dim{background:#5a5a5f}
+  .wintitle{position:absolute;top:6px;left:0;right:0;text-align:center;font:600 10px -apple-system;color:rgba(255,255,255,.55);z-index:5;pointer-events:none}
+  /* host chrome strip — the 28pt title bar the wrapper draws */
+  .strip{position:absolute;top:0;left:0;right:0;height:28px;background:#232428;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:center;z-index:8}
+  .strip .ttl{flex:1;text-align:center;font:600 11px -apple-system;color:#b9b9be}
+  .strip .act{font:600 11px -apple-system;color:#8e8e93;padding:0 8px}
+  .strip.holdout{background:rgba(76,141,255,.14);border-bottom:1px dashed rgba(76,141,255,.5)}
+  /* app surfaces */
+  .app{position:absolute;inset:0;display:flex;flex-direction:column}
+  .clockapp{background:#123324;color:#eafaf0;padding:6px 16px 0}
+  .clockapp .big{font:700 30px -apple-system;letter-spacing:-.02em}
+  .clockapp .btn{margin-top:auto;background:#2fae4f;color:#fff;font:600 12px -apple-system;text-align:center;padding:9px;border-radius:8px;margin-bottom:14px}
+  .clockapp.light{background:#f2f2f4;color:#1c1c1e}
+  .clockapp.light .btn{background:#1a9c42}
+  .listapp{background:#1a1a1e;color:#e8e8ea;padding:6px 12px 0;font-size:11px}
+  .listapp .row{display:flex;justify-content:space-between;padding:7px 9px;background:#232327;border-radius:6px;margin-bottom:6px}
+  .listapp .row i{color:#8e8e93;font-style:normal}
+  .todoapp{background:#1a1a1e;padding:6px 12px 0;color:#e8e8ea;font-size:11px}
+  .todoapp .t{display:flex;gap:7px;align-items:center;padding:6px 8px;background:#232327;border-radius:6px;margin-bottom:5px}
+  .todoapp .t span{flex:1}
+  .todoapp .t.done{color:#6e6e73;text-decoration:line-through}
+  .gameapp{position:absolute;inset:0;background:repeating-linear-gradient(45deg,#1c2b1c 0 12px,#17231a 12px 24px)}
+  .gameapp .sky{position:absolute;inset:0 0 55% 0;background:linear-gradient(#16324a,#1d3a52)}
+  .pip{position:absolute;width:14px;background:#2fae4f;border-radius:3px 3px 0 0}
+  .bird{position:absolute;width:12px;height:12px;border-radius:50%;background:#ffd60a}
+  .weatherapp{background:linear-gradient(#16324a,#1d3a52);color:#eaf4ff;padding:6px 14px 0}
+  .weatherapp .big{font:700 26px -apple-system}
+  .hours{display:flex;gap:6px;margin-top:auto;margin-bottom:12px}
+  .hours i{flex:1;height:34px;background:rgba(255,255,255,.09);border-radius:6px;font:600 9px -apple-system;color:#9cc0ff;display:flex;align-items:center;justify-content:center;font-style:normal}
+  .cursor{position:absolute;width:22px;height:22px;z-index:10;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+  .kbd{font:600 10px -apple-system;color:#cfcfd4;background:#333338;border:1px solid #45454a;border-bottom-width:2px;border-radius:5px;padding:2px 6px}
+  .err{position:absolute;inset:14px;background:rgba(24,24,28,.97);border:1px solid #5c2a28;border-radius:10px;padding:14px;font:11px/1.55 "SF Mono",Menlo,monospace;color:#ffb3ad;overflow:hidden;z-index:8}
+  .err .code{color:#e8e8ea}.err .mark{color:#ff453a}
+  .mini{position:absolute;background:#232327;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:11px;color:#cfcfd4}
+  .chip{display:inline-block;background:#2c2c31;border-radius:999px;padding:1px 7px;font-size:10px;margin-right:4px}
+  .resize{position:absolute;right:3px;bottom:3px;width:14px;height:14px;border-right:2px solid #66666c;border-bottom:2px solid #66666c;border-radius:1px;z-index:9}
+  .lockpill{position:absolute;right:8px;bottom:8px;font:600 10px -apple-system;color:#9ff5b4;background:#10301a;border:1px solid #1d4d28;border-radius:999px;padding:3px 9px;z-index:9}
+  .space{position:absolute;bottom:10px;right:12px;font:600 10px -apple-system;color:#9cc0ff;background:rgba(76,141,255,.12);border:1px solid rgba(76,141,255,.4);border-radius:999px;padding:3px 10px;z-index:20}
+  .legend{max-width:1120px;margin:26px auto 0;color:var(--dim);font-size:12px;display:flex;gap:18px;flex-wrap:wrap}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .swatch{width:10px;height:10px;border-radius:3px;display:inline-block}
+  footer{max-width:1120px;margin:34px auto 0;color:#5f5f66;font-size:11.5px;line-height:1.7}
+  code{font:11.5px "SF Mono",Menlo,monospace;background:#232327;border-radius:5px;padding:1px 6px;color:#cfcfd4}
+  .procl{position:absolute;background:#232327;border:1px solid var(--line);border-radius:8px;padding:7px 11px;font:10.5px "SF Mono",Menlo,monospace;color:#cfcfd4}
+  /* --- interactive decision demos --- */
+  .pill button.on-pick{background:#1b2b4d;color:#9cc0ff}
+  .win .grip{position:absolute;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;z-index:9;touch-action:none}
+  .win .grip i{position:absolute;right:4px;bottom:4px;width:11px;height:11px;border-right:2px solid #77777c;border-bottom:2px solid #77777c;border-radius:1px;pointer-events:none}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+  .win.shake{animation:shake .22s ease 2}
+  .strip[data-drag]{cursor:grab;user-select:none}
+  .overlay-drag{position:absolute;top:0;left:0;right:0;height:26px;z-index:7;cursor:grab}
+  .overlay-drag:hover,.overlay-drag.hinting{background:rgba(76,141,255,.10);box-shadow:inset 0 -1px 0 rgba(76,141,255,.45)}
+  .hint{position:absolute;right:8px;bottom:22px;font:600 10px -apple-system;color:#ffd60a;background:rgba(20,18,6,.92);border:1px dashed rgba(255,214,10,.6);border-radius:6px;padding:3px 8px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:12}
+  .hint.on{opacity:1}
+  .bird{transition:transform .16s ease}
+  .flap-tag{position:absolute;left:50%;top:38%;transform:translateX(-50%);font:700 12px -apple-system;color:#ffd60a;text-shadow:0 1px 3px #000;opacity:0;transition:opacity .3s;pointer-events:none;z-index:8}
+  .flap-tag.on{opacity:1}
+  @media (max-width:760px){.stage{height:340px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Mini-app pop-out windows — before → after</h1>
+    <div class="sub">v3 — rebuilt from live captures + expert review. Flip each case to compare.</div>
+  </div>
+  <div class="master">
+    <b>Show all</b>
+    <div class="pill" id="master">
+      <button class="on-before" onclick="all('before')">before</button>
+      <button class="on-after" onclick="all('after')">after</button>
+    </div>
+  </div>
+</header>
+
+<div class="principle">
+  <b>The size model (corrected):</b> there is no "natural" width to measure — a column-stretch app fills whatever it's given. So:
+  <b>width is declared</b> (<code>popoutWidth</code>, default 360, clamp 280–720), <b>height is measured with manners</b>
+  (~150ms stability before applying — a "Loading…" dip never collapses the window), floor 120pt, cap ≈ ¾ screen, top edge anchored.
+  Games/canvases that need exact size export <code>popoutSize = {w,h}</code>. Resize: off — a widget isn't a document.
+</div>
+
+<div class="grid">
+
+<!-- 0 · launch: space, activation, identity -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">0</span>Launch: opens 1200×800 on the wrong space, never key — and every clone is named "Gen UI Chat"</h2>
+      <div class="why">The window is born at a default 1200×800 then re-anchors bottom-left; <code>activateIgnoringOtherApps</code> is deprecated (grayed lights — the window is never key); and <code>nsh run</code> inherits the app's name → <b>N identical "Gen UI Chat" entries in Cmd-Tab &amp; Mission Control — that's why MC can't bring yours forward.</b> <b>Fix:</b> spawn at final size (<code>--size</code>), named <code>mini app · X</code>, orderFront+activate once; re-↗ raises the live window instead of re-freezing it (which today remounts and <b>loses its state</b>).</div>
+    </div>
+    <div class="pill"><button onclick="flip('c0',this)">before</button><button class="on-after" onclick="flip('c0',this)">after</button></div>
+  </div>
+  <div class="stage" id="c0">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div class="win front" style="left:16%;top:9%;width:58%;height:72%;background:#141416">
+        <div class="body"><div class="strip" style="background:#2a2a2e"><div class="ttl" style="color:#b9b9be">Gen UI Chat</div></div>
+          <div class="mini" style="left:14px;top:44px;width:200px">💬 you: clock in/out</div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="win behind" style="left:56%;top:26%;width:212px;height:150px">
+        <div class="body"><div class="clockapp app"><div class="big" style="font-size:24px;padding-top:26px">9:41</div><div class="btn">clock out</div></div></div>
+        <div class="dots"><i class="dot dim"></i><i class="dot dim"></i><i class="dot dim"></i></div>
+      </div>
+      <div class="procl" style="right:12px;top:12px">⌘⇥ · Gen UI Chat ×4<br>MC: four identical thumbs</div>
+      <div class="note bad" style="left:57%;bottom:8px">grayed lights — spawned behind, never key</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div class="win behind" style="left:12%;top:12%;width:56%;height:68%;background:#141416">
+        <div class="body"><div class="strip" style="background:#2a2a2e"><div class="ttl" style="color:#b9b9be">Gen UI Chat</div></div></div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="win front focused" style="left:50%;top:22%;width:212px;height:178px">
+        <div class="body">
+          <div class="strip"><div class="ttl">Time clock</div><div class="act">↻ ⋯</div></div>
+          <div class="clockapp app" style="top:28px"><div class="big" style="font-size:24px">9:41</div><div class="btn">clock out</div></div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="procl" style="right:12px;top:12px">⌘⇥ · mini app · Time clock<br>↗ again → raises, keeps state</div>
+      <div class="space">final size · focused · this space</div>
+    </div>
+  </div>
+</section>
+
+<!-- 1 · size model -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">1</span>The size model — declared width + measured height, games get <code>popoutSize</code></h2>
+      <div class="why">Today: default 400pt width, hug-height every layout tick. <b>Fix:</b> width stays a declared contract (module knows best); height hugs only after ~150ms of stability; <code>export const popoutSize = {w:320,h:560}</code> for apps that must be exact.</div>
+    </div>
+    <div class="pill"><button onclick="flip('c1',this)">before</button><button class="on-after" onclick="flip('c1',this)">after</button></div>
+  </div>
+  <div class="stage" id="c1">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div class="win front" style="left:8%;top:6%;width:340px;height:88%">
+        <div class="body"><div class="weatherapp app"><div class="big" style="padding-top:26px">☀️ 72°F</div><div class="hours"><i>1</i><i>2</i><i>3</i><i>4</i><i>5</i><i>6</i><i>7</i></div><div class="hours"><i>8</i><i>9</i><i>10</i><i>11</i><i>12</i></div><div class="hours"><i>…</i><i>…</i><i>…</i><i>…</i><i>…</i></div></div></div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="win front" style="right:20%;top:34%;width:280px;height:60px">
+        <div class="body"><div class="listapp app" style="color:#6e6e73;padding-top:22px">refreshing…</div></div>
+      </div>
+      <div class="note bad" style="right:14px;bottom:8px">unbounded list → half screen · refresh → collapse to 60px</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div class="win front" style="left:8%;top:14%;width:320px;height:220px">
+        <div class="body"><div class="weatherapp app"><div class="big" style="padding-top:26px">☀️ 72°F</div><div class="hours"><i>Mon</i><i>Tue</i><i>Wed</i><i>Thu</i><i>Fri</i></div></div></div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="win front" style="right:14%;top:14%;width:320px;height:220px">
+        <div class="body"><div class="gameapp"><div class="sky"></div>
+          <div class="pip" style="left:60px;bottom:0;height:60px"></div>
+          <div class="pip" style="left:160px;bottom:0;height:90px"></div>
+          <div class="bird" style="left:100px;top:100px"></div>
+        </div></div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="dimtxt" style="right:14%;top:calc(14% + 226px)">popoutSize 320×220 — exact, no measuring</div>
+      <div class="note good" style="left:36%;bottom:8px">fluid: measured w/ debounce · exact: declared</div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 · thrash -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">2</span>Refresh thrash — a transient empty render collapses the window</h2>
+      <div class="why">Every <code>onLayout</code> → <code>setFrame</code>; Linear's "loading" state empties the list for a beat → window shrinks then springs. <b>Fix:</b> apply a hug only after the measured height is stable ~150ms, 12pt hysteresis, 120pt floor, grow-and-shrink once settled, top edge anchored.</div>
+    </div>
+    <div class="pill"><button onclick="flip('c2',this)">before</button><button class="on-after" onclick="flip('c2',this)">after</button></div>
+  </div>
+  <div class="stage" id="c2">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div class="win front" style="left:12%;top:14%;width:280px;height:190px">
+        <div class="body"><div class="listapp app"><div class="row"><span>LIN-231</span><i>todo</i></div><div class="row"><span>LIN-228</span><i>doing</i></div><div class="row"><span>LIN-212</span><i>done</i></div></div></div>
+      </div>
+      <div class="win front" style="right:18%;top:36%;width:280px;height:56px">
+        <div class="body"><div class="listapp app" style="color:#6e6e73;padding-top:20px">refreshing…</div></div>
+      </div>
+      <div class="note bad" style="right:14px;bottom:8px">empty frame → window collapses, then grows back</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div class="win front" style="left:12%;top:14%;width:280px;height:190px">
+        <div class="body"><div class="listapp app"><div class="row"><span>LIN-231</span><i>todo</i></div><div class="row"><span>LIN-228</span><i>doing</i></div><div class="row"><span>LIN-212</span><i>done</i></div></div></div>
+      </div>
+      <div class="win front" style="right:18%;top:14%;width:280px;height:190px">
+        <div class="body"><div class="listapp app" style="color:#6e6e73;align-items:center;justify-content:center;display:flex">refreshing…</div></div>
+      </div>
+      <div class="note good" style="right:14px;bottom:8px">size holds through transient renders</div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · chrome -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">3</span>No drag surface — the canvas eats every pixel, lights sit on content</h2>
+      <div class="why">Root <code>windowDrag</code> loses to any pressable child — Flappy wraps the whole canvas in <code>onPress</code>. <b>Fix:</b> a <b>28pt host strip</b> (lights spacer, title, ↻/⋯) — always draggable, always looks like a window, always has recovery UI. Full-bleed apps opt out via <code>popoutChrome="none"</code> → an invisible top overlay drags instead.</div>
+    </div>
+    <div class="pill"><button onclick="flip('c3',this)">before</button><button class="on-after" onclick="flip('c3',this)">after</button></div>
+  </div>
+  <div class="stage" id="c3">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div class="win front" style="left:26%;top:10%;width:320px;height:230px">
+        <div class="body"><div class="gameapp"><div class="sky"></div>
+          <div class="pip" style="left:60px;bottom:0;height:70px"></div>
+          <div class="pip" style="left:170px;bottom:0;height:100px"></div>
+          <div class="bird" style="left:110px;top:90px"></div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div></div>
+      </div>
+      <div class="cursor" style="left:38%;top:14%"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 2l16 9-7 1 4 8-3 1-4-8-6 5z" fill="#fff" stroke="#000" stroke-width="1"/></svg></div>
+      <div class="note bad" style="right:10px;top:14%">drag here → the bird flaps; window stays</div>
+      <div class="note bad" style="left:8px;bottom:8px">lights float over content · no drag surface</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div class="win front" style="left:7%;top:12%;width:300px;height:220px">
+        <div class="body">
+          <div class="strip"><div class="ttl">Flappy</div><div class="act">↻ ⋯</div></div>
+          <div class="gameapp" style="top:28px"><div class="sky"></div>
+            <div class="pip" style="left:60px;bottom:0;height:60px"></div>
+            <div class="pip" style="left:160px;bottom:0;height:90px"></div>
+            <div class="bird" style="left:100px;top:90px"></div>
+          </div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="win front" style="right:7%;top:12%;width:300px;height:220px">
+        <div class="body"><div class="weatherapp app"><div class="big" style="padding-top:34px">☀️ 72°F</div><div class="hours"><i>Mon</i><i>Tue</i><i>Wed</i><i>Thu</i><i>Fri</i></div></div>
+          <div class="strip holdout" style="background:rgba(76,141,255,.10)"></div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="note good" style="left:36%;bottom:8px">default: real strip · <code>chrome:"none"</code>: invisible overlay drags</div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · resize + theme -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">4</span>Resizable void + hardcoded colors — widgets don't follow light/dark</h2>
+      <div class="why">Resize grows the window under a hardcoded <code>#181818</code> root → black void. The runtime already has <code>colorScheme()</code> + <code>dark:</code> classes — the contract just never says to use them. <b>Fix:</b> resize off; root bg follows <code>colorScheme()</code>; the prompt contract requires <code>dark:</code> variants on every surface color.</div>
+    </div>
+    <div class="pill"><button onclick="flip('c4',this)">before</button><button class="on-after" onclick="flip('c4',this)">after</button></div>
+  </div>
+  <div class="stage" id="c4">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div class="win front" style="left:22%;top:14%;width:340px;height:200px">
+        <div class="body" style="background:#000">
+          <div style="position:absolute;inset:0 120px 60px 0;background:#f4f4f6;border-radius:0 0 10px 0"></div>
+          <div class="todoapp app" style="width:220px;background:#f4f4f6;color:#1c1c1e"><div class="t" style="background:#fff;border:1px solid #ddd"><span>hardcoded bg-white</span></div></div>
+          <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+        </div>
+        <div class="resize"></div>
+      </div>
+      <div class="note bad" style="right:10px;top:14%">dragged → raw black void behind a white card</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div class="win front" style="left:8%;top:18%;width:230px;height:170px">
+        <div class="body">
+          <div class="strip" style="background:#e9e9ec;border-bottom-color:rgba(0,0,0,.08)"><div class="ttl" style="color:#55555a">Tasks</div><div class="act" style="color:#77777c">↻ ⋯</div></div>
+          <div class="app" style="background:#f2f2f4;color:#1c1c1e;padding:32px 12px 0;font-size:11px;top:28px">
+            <div class="t" style="background:#fff;border:1px solid #ddd"><span>dark:bg-zinc-900</span></div>
+          </div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+        <div class="lockpill">fixed · light</div>
+      </div>
+      <div class="win front" style="right:8%;top:18%;width:230px;height:170px">
+        <div class="body">
+          <div class="strip"><div class="ttl">Tasks</div><div class="act">↻ ⋯</div></div>
+          <div class="todoapp app" style="top:28px"><div class="t"><span>dark:bg-zinc-900</span></div></div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+        <div class="lockpill">fixed · dark</div>
+      </div>
+      <div class="note good" style="left:50%;transform:translateX(-50%);bottom:8px">no resize · host + module follow the system appearance</div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · duplicate mount + unpublish -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">5</span>Dead imports kill the feed — dup mounts, unpublish without rewrite<span class="done">partially shipped</span></h2>
+      <div class="why"><b>Done:</b> <code>writeIndex</code> dedupes imports. <b>Still open:</b> <code>/unpublish</code> deletes <code>widgets/R*.tsx</code> without rewriting the index → next hot-reload hits <code>UNRESOLVED_IMPORT</code>; and <code>/retry</code> can write the generated copy while the published one stays broken.</div>
+    </div>
+    <div class="pill"><button onclick="flip('c5',this)">before</button><button class="on-after" onclick="flip('c5',this)">after</button></div>
+  </div>
+  <div class="stage" id="c5">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div class="win front" style="left:14%;top:8%;width:72%;height:80%;background:#141416">
+        <div class="body">
+          <div class="err">
+            <b>Build failed</b><br>
+            <span class="mark">[PARSE_ERROR]</span> Identifier <span class="code">`R29w`</span> has already been declared<br>
+            <span class="mark">[UNRESOLVED_IMPORT]</span> <span class="code">"../widgets/R41"</span> after unpublish<br><br>
+            <span style="color:#8e8e93">Click to dismiss · Cmd+R to reload</span>
+          </div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="note bad" style="right:12px;bottom:10px">one stale import → whole feed dead</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div class="win front" style="left:14%;top:8%;width:72%;height:80%;background:#141416">
+        <div class="body">
+          <div class="mini" style="left:10%;top:10%;width:280px">🕐 Clock — in since 9:41<br><span class="chip">clock out</span></div>
+          <div class="mini" style="left:10%;top:44%;width:280px">🕐 Clock — in since 9:41<br><span class="chip">clock out</span><span style="color:#6e6e73;font-size:10px"> · reused ×2, one import</span></div>
+          <div class="mini" style="left:10%;top:74%;width:280px;color:#8e8e73;font-size:10.5px">unpublished cards → "removed" tombstone, never a parse error</div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="note good" style="right:12px;bottom:10px">index always rewrites before files move</div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · fix path -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">6</span>No repair path — delete &amp; re-prompt is the only move</h2>
+      <div class="why"><code>↻</code> exists on chat cards but the shelf has none, and <code>/retry</code> can write the wrong copy. <b>Fix:</b> <b>Regenerate</b> in the card's ⋯ menu + the chrome strip's ↻ — re-prompts the model with the current source + the window rules; targets the <i>published</i> file; retries until it compiles.</div>
+    </div>
+    <div class="pill"><button onclick="flip('c6',this)">before</button><button class="on-after" onclick="flip('c6',this)">after</button></div>
+  </div>
+  <div class="stage" id="c6">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div class="mini" style="left:10%;top:14%;width:260px;padding:12px">
+        <b>R52 · Weather</b><br>
+        <span class="chip">api</span><span class="chip">#weather</span><br><br>
+        ★ &nbsp; ↗ &nbsp; ▣ &nbsp; ⋯ &nbsp; ✕<br>
+        <span style="color:#ff453a;font-size:10px">broken layout → your only option is ✕</span>
+      </div>
+      <div class="note bad" style="right:14%;top:20%">no repair path — rebuild from scratch</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div class="win front" style="left:8%;top:12%;width:280px;height:180px">
+        <div class="body">
+          <div class="strip"><div class="ttl">Weather</div><div class="act" style="color:#9cc0ff">↻</div><div class="act">⋯</div></div>
+          <div class="weatherapp app" style="top:28px"><div class="big" style="padding-top:8px">☀️ 72°F</div><div class="hours"><i>Mon</i><i>Tue</i><i>Wed</i></div></div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="mini" style="right:8%;top:16%;width:300px;font-size:10px;line-height:1.7">
+        <span class="kbd">↻ Regenerate</span> — on the strip &amp; the card menu:<br>
+        "fix this module for a floating window: declared width,<br>
+        mind the 28pt strip, theme-aware bg" → compile → republish<br>
+        <span style="color:#6e6e73">(hits the published file, retries on errors)</span>
+      </div>
+      <div class="note good" style="right:10px;bottom:8px">broken → fixed in one click</div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · shelf -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">7</span>The shelf ignores the window — a fixed 2-col strip in a 1800px void</h2>
+      <div class="why"><code>maxWidth: 760</code> + cards at <code>width:"48%"</code> → two narrow columns regardless of space; micro-type at 9–10.5px is under the legibility floor; five always-visible glyph buttons is noise. <b>Fix:</b> measured container → <code>columns = clamp(2, floor(w/300), 5)</code>, cards ≥280pt, micro-type ≥11px, collapse ★/▣/✕ into ⋯ (keep ↗ + ⋯ at rest).</div>
+    </div>
+    <div class="pill"><button onclick="flip('c7',this)">before</button><button class="on-after" onclick="flip('c7',this)">after</button></div>
+  </div>
+  <div class="stage" id="c7">
+    <div class="variant v-before">
+      <div class="tag">before</div>
+      <div style="position:absolute;left:16%;top:10%;width:34%;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="mini" style="position:relative;height:64px;font-size:9px">R105<br><span style="color:#6e6e73">Flappy Bird</span><br>★ ↗ ▣ ⋯ ✕</div>
+        <div class="mini" style="position:relative;height:64px;font-size:9px">R103<br><span style="color:#6e6e73">Weather</span><br>★ ↗ ▣ ⋯ ✕</div>
+        <div class="mini" style="position:relative;height:64px;font-size:9px">R41<br><span style="color:#6e6e73">Clock</span><br>★ ↗ ▣ ⋯ ✕</div>
+        <div class="mini" style="position:relative;height:64px;font-size:9px">R42<br><span style="color:#6e6e73">Linear</span><br>★ ↗ ▣ ⋯ ✕</div>
+      </div>
+      <div class="note bad" style="right:10%;top:20%">760pt strip, ~1360pt available — dead space on both sides</div>
+    </div>
+    <div class="variant v-after show">
+      <div class="tag">after</div>
+      <div style="position:absolute;left:6%;top:10%;width:88%;display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        <div class="mini" style="position:relative;height:78px;font-size:11px">R105<br><span style="color:#a3a3a8">Flappy Bird</span><br><span style="color:#8e8e93;font-size:10px">↗ ⋯</span></div>
+        <div class="mini" style="position:relative;height:78px;font-size:11px">R103<br><span style="color:#a3a3a8">Weather</span><br><span style="color:#8e8e93;font-size:10px">↗ ⋯</span></div>
+        <div class="mini" style="position:relative;height:78px;font-size:11px">R41<br><span style="color:#a3a3a8">Clock</span><br><span style="color:#8e8e93;font-size:10px">↗ ⋯</span></div>
+        <div class="mini" style="position:relative;height:78px;font-size:11px">R42<br><span style="color:#a3a3a8">Linear</span><br><span style="color:#8e8e93;font-size:10px">↗ ⋯</span></div>
+      </div>
+      <div class="note good" style="right:8px;bottom:8px">columns follow the window — type ≥11px, quiet actions</div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<h2 style="max-width:1120px;margin:34px auto 14px;font-size:17px;font-weight:700">Two calls — try them, then pick</h2>
+
+<div class="grid">
+
+<!-- DECISION A · fixed vs resizable -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">A</span>Window size — locked to content, or resizable?</h2>
+      <div class="why"><b>Grab the corner grip.</b> <b>A · locked:</b> the window can't grow — a widget isn't a document, and a locked frame can never show a void. <b>B · resizable:</b> it grows, the background keeps matching (no black), but the extra space is dead — the app has nothing to fill it with.</div>
+    </div>
+    <div class="pill"><button class="on-pick" onclick="pick('dA',this,'v-locked')">A · fixed size</button><button onclick="pick('dA',this,'v-resize')">B · resizable</button></div>
+  </div>
+  <div class="stage" id="dA">
+    <div class="variant v-locked show">
+      <div class="win front" id="winA1" style="left:32%;top:20%;width:320px;height:190px">
+        <div class="body">
+          <div class="strip" data-drag><div class="ttl">Time clock</div><div class="act">↻ ⋯</div></div>
+          <div class="clockapp app" style="top:28px"><div class="big">9:41</div><div class="btn">clock out</div></div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+        <div class="grip" data-locked="winA1"><i></i></div>
+        <div class="hint" id="hintA">fixed size — the content owns the frame</div>
+      </div>
+      <div class="note" style="left:8px;top:10px">↖ drag the strip to move · try the corner grip ↘</div>
+      <div class="note good" style="right:8px;bottom:8px">impossible to create a void · needs <code>resizable:false</code> upstream</div>
+    </div>
+    <div class="variant v-resize">
+      <div class="win front" id="winA2" style="left:32%;top:20%;width:320px;height:190px">
+        <div class="body">
+          <div class="strip" data-drag><div class="ttl">Time clock</div><div class="act">↻ ⋯</div></div>
+          <div class="clockapp app" style="top:28px"><div class="big">9:41</div><div class="btn">clock out</div></div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+        <div class="grip" data-resize="winA2"><i></i></div>
+      </div>
+      <div class="note" style="left:8px;top:10px">↖ drag the strip · resize with the corner grip ↘</div>
+      <div class="note" style="right:8px;bottom:8px">bg keeps matching (no black) — but grown space is dead: content can't reflow into it</div>
+    </div>
+  </div>
+</section>
+
+<!-- DECISION B · strip vs overlay chrome -->
+<section class="case">
+  <div class="head">
+    <div>
+      <h2><span class="n">B</span>Drag affordance — a real 28pt strip, or an invisible overlay on full-bleed?</h2>
+      <div class="why"><b>Try to drag the window, then click the canvas.</b> <b>A · strip:</b> always draggable, looks like a window, carries ↻/⋯ — costs the top 28pt. <b>B · overlay:</b> full-bleed canvas; an invisible top strip drags (hover shows it) — but apps must keep that strip free of controls, and there is no visible affordance.</div>
+    </div>
+    <div class="pill"><button class="on-pick" onclick="pick('dB',this,'v-strip')">A · 28pt strip</button><button onclick="pick('dB',this,'v-overlay')">B · overlay on full-bleed</button></div>
+  </div>
+  <div class="stage" id="dB">
+    <div class="variant v-strip show">
+      <div class="win front" id="winB1" style="left:12%;top:12%;width:300px;height:220px">
+        <div class="body">
+          <div class="strip" data-drag><div class="ttl">Flappy</div><div class="act">↻ ⋯</div></div>
+          <div class="gameapp" style="top:28px" onclick="flap(this)"><div class="sky"></div>
+            <div class="pip" style="left:60px;bottom:0;height:60px"></div>
+            <div class="pip" style="left:170px;bottom:0;height:95px"></div>
+            <div class="bird" style="left:110px;top:80px"></div>
+            <div class="flap-tag">flap!</div>
+          </div>
+        </div>
+        <div class="dots"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="note" style="right:10px;top:12px">drag the strip → moves · click the canvas → flaps<br>28pt of guaranteed chrome, always</div>
+      <div class="note good" style="right:10px;bottom:8px">reliable drag + a home for ↻ Regenerate and ⋯</div>
+    </div>
+    <div class="variant v-overlay">
+      <div class="win front" id="winB2" style="left:12%;top:12%;width:300px;height:220px">
+        <div class="body">
+          <div class="gameapp" onclick="flap(this)"><div class="sky"></div>
+            <div class="pip" style="left:60px;bottom:0;height:60px"></div>
+            <div class="pip" style="left:170px;bottom:0;height:95px"></div>
+            <div class="bird" style="left:110px;top:80px"></div>
+            <div class="flap-tag">flap!</div>
+          </div>
+          <div class="overlay-drag" data-drag></div>
+        </div>
+        <div class="dots" style="z-index:8"><i class="dot r"></i><i class="dot y"></i><i class="dot g"></i></div>
+      </div>
+      <div class="note" style="right:10px;top:12px">hover the top edge → the drag zone shows itself<br>below it, every pixel is the app's</div>
+      <div class="note bad" style="right:10px;bottom:8px">contract: "top ~28pt stays clear of controls" — easy for apps to break</div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<div class="legend">
+  <span><i class="swatch" style="background:#ff453a"></i> current behavior</span>
+  <span><i class="swatch" style="background:#30d158"></i> proposed fix</span>
+  <span><i class="swatch" style="background:#4c8dff"></i> new surface/behavior</span>
+  <span><i class="swatch" style="background:#ffd60a"></i> measured size</span>
+</div>
+
+<footer>
+  v3, corrected by the live review: width is <b>declared</b> not measured; chrome is a real 28pt strip, not an overlay;
+  every pop-out must be a <b>named, normal-level</b> window that raises instead of re-freezing. Implementation layers —
+  <b>server</b> (spawn order, unpublish→writeIndex, retry→published file, popout already→raise),
+  <b>wrapper</b> (strip, debounced hug, theme root, chrome opt-out),
+  <b>contract</b> (popoutSize, dark:, bounded Scroll),
+  <b>runtime/upstream</b> (<code>--size</code>/<code>--name</code>, <code>orderFront</code>, <code>setStyle({resizable})</code>, <code>windowFrame</code>/<code>screenSize</code>, one host:N windows).
+  Mockups only — nothing here is implemented yet except the import dedupe and normal-level floats.
+</footer>
+
+<script>
+  function flip(id, btn){
+    const stage = document.getElementById(id);
+    const after = btn.textContent === 'after';
+    stage.querySelectorAll('.variant').forEach(v=>v.classList.remove('show'));
+    stage.querySelector(after ? '.v-after' : '.v-before').classList.add('show');
+    btn.parentElement.querySelectorAll('button').forEach(b=>b.className='');
+    btn.className = after ? 'on-after' : 'on-before';
+  }
+  function all(mode){
+    document.querySelectorAll('.stage').forEach(st=>{
+      if(st.id==='dA'||st.id==='dB') return;
+      st.querySelectorAll('.variant').forEach(v=>v.classList.remove('show'));
+      st.querySelector(mode==='after' ? '.v-after' : '.v-before').classList.add('show');
+    });
+    document.querySelectorAll('.case .pill button').forEach(b=>{
+      if(b.textContent!=='before'&&b.textContent!=='after') return;
+      b.className='';
+      if(b.textContent===mode) b.className = mode==='after' ? 'on-after' : 'on-before';
+    });
+  }
+  /* --- decision demos --- */
+  function pick(id, btn, variant){
+    const st = document.getElementById(id);
+    st.querySelectorAll('.variant').forEach(v=>v.classList.remove('show'));
+    st.querySelector('.'+variant).classList.add('show');
+    btn.parentElement.querySelectorAll('button').forEach(b=>b.className='');
+    btn.className='on-pick';
+  }
+  function flap(zone){
+    const w = zone.closest('.win');
+    const b = w.querySelector('.bird'), t = w.querySelector('.flap-tag');
+    b.style.transform='translateY(-16px)';
+    setTimeout(()=>b.style.transform='',170);
+    t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),450);
+  }
+  document.querySelectorAll('[data-drag]').forEach(z=>{
+    z.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      const w = z.closest('.win'), st = w.parentElement;
+      const wr = w.getBoundingClientRect(), sr = st.getBoundingClientRect();
+      const ox = e.clientX - wr.left, oy = e.clientY - wr.top;
+      z.setPointerCapture(e.pointerId);
+      const mv = ev=>{
+        let x = ev.clientX - sr.left - ox, y = ev.clientY - sr.top - oy;
+        x = Math.max(-wr.width*0.5, Math.min(x, sr.width - wr.width*0.4));
+        y = Math.max(0, Math.min(y, sr.height - 40));
+        w.style.left = x+'px'; w.style.top = y+'px';
+        w.style.right = 'auto'; w.style.bottom = 'auto';
+      };
+      const up = ()=>{ z.removeEventListener('pointermove', mv); };
+      z.addEventListener('pointermove', mv);
+      z.addEventListener('pointerup', up, {once:true});
+      z.addEventListener('pointercancel', up, {once:true});
+    });
+  });
+  document.querySelectorAll('[data-resize]').forEach(g=>{
+    g.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      const w = document.getElementById(g.dataset.resize), st = w.parentElement;
+      const sr = st.getBoundingClientRect();
+      g.setPointerCapture(e.pointerId);
+      let lx=e.clientX, ly=e.clientY;
+      const mv2 = ev=>{
+        const nw = Math.max(240, w.offsetWidth + (ev.clientX-lx));
+        const nh = Math.max(150, w.offsetHeight + (ev.clientY-ly));
+        lx = ev.clientX; ly = ev.clientY;
+        w.style.width = Math.min(nw, sr.width - w.offsetLeft)+'px';
+        w.style.height = Math.min(nh, sr.height - w.offsetTop)+'px';
+      };
+      const up = ()=>{ g.removeEventListener('pointermove', mv2); };
+      g.addEventListener('pointermove', mv2);
+      g.addEventListener('pointerup', up, {once:true});
+      g.addEventListener('pointercancel', up, {once:true});
+    });
+  });
+  document.querySelectorAll('[data-locked]').forEach(g=>{
+    g.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      const w = document.getElementById(g.dataset.locked);
+      const hint = w.querySelector('.hint');
+      w.classList.remove('shake'); void w.offsetWidth;
+      w.classList.add('shake');
+      hint.classList.add('on'); setTimeout(()=>hint.classList.remove('on'), 1400);
+    });
+  });
+</script>
+</body>
+</html>

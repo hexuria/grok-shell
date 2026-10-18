@@ -9,3 +9,12 @@ generated/app.db
 generated/app.db-*
 generated/threads.json
 generated/turns.json
+generated/assets/
+generated/shots/
+
+# regenerated per pop-out / snapshot — runtime artifacts
+windows/
+
+# compiled artifacts
+native-widget/build/
+tools/*.dylib
