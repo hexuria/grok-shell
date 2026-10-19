@@ -134,6 +134,7 @@ const POP_W = process.env.POP_W || "360";
 const POP_H = process.env.POP_H || "480";
 // Pop-out windows get a tiny frozen mount wrapper each (windows/pop-<n>.tsx).
 const WINDOWS_DIR = join(APP_ROOT, "windows");
+mkdirSync(WINDOWS_DIR, { recursive: true }); // runtime dir — absent on a fresh clone
 
 const openWindows = new Map(); // "mode:name" → child process
 const deskSlots = new Map(); // name → desktop column slot index

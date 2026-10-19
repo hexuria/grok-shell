@@ -231,7 +231,7 @@ const MAX_TEXT = 400_000;
 // Kinds with a BetterOffice engine view: the app opens /office/… in a WebView
 // and keeps the classic render as the fallback when the engines are absent
 // (pptx has no other renderer — without it the card shows "unavailable").
-const OFFICE_VIEW = { pptx: "pptx", xlsx: "xlsx", xlsm: "xlsx" };
+const OFFICE_VIEW = { pptx: "pptx", xlsx: "xlsx", xlsm: "xlsx", docx: "docx" };
 const officeUrl = async (path, rel, ext) => {
   const kind = OFFICE_VIEW[ext];
   if (!kind || !rel) return undefined;
@@ -296,7 +296,7 @@ export async function renderFile(path, rel) {
   }
   if (kind === "docx") {
     const { value } = await mammoth.convertToHtml({ path });
-    return { ...meta, text: htmlToMd(value) };
+    return { ...meta, text: htmlToMd(value), ...(office ? { office } : {}) };
   }
   return meta; // image · video · audio · pdf · html · unknown: served as-is
 }

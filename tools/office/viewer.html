@@ -112,6 +112,67 @@ async function showPptx() {
   h.dispose?.();
 }
 
+// DOCX — the engine's own renderer: yrs session (embedded wasm) → resident
+// layout → display list → drawDisplayPage on Canvas2D. Same pipeline the MCP
+// server's office_render uses, run in the page (browser Path2D + createImageBitmap).
+async function showDocx() {
+  const [Y, E, L, R] = await Promise.all([
+    import(vendor("docx/dist/yrs/index.mjs")),
+    import(vendor("docx/dist/editor/index.mjs")),
+    import(vendor("docx/dist/layout/index.mjs")),
+    import(vendor("docx/dist/layout/render/index.mjs")),
+  ]);
+  const session = await Y.createYrsSession();
+  const bytes = new Uint8Array(await (await fetch(raw)).arrayBuffer());
+  session.seedFromDocx(bytes);
+  const doc = session.materializeDocx(); // the docx Document — shadows DOM `document` if misnamed
+  if (!doc) throw new Error("not a readable docx");
+  const source = L.createRustMeasureSource({ engine: session, bundled: FONTS ? FONTS.createFontProvider(FONT_OPTS) : undefined });
+  const request = E.buildResidentRegionLayoutRequest(doc, 0, {});
+  const reqs = JSON.parse(session.layoutFontRequirementsJson(JSON.stringify(request)));
+  await source.prepareFontRequirements(reqs);
+  const measurement = source.measurementConfigForRequirements(reqs);
+  if (!measurement) throw new Error("required fonts could not be loaded");
+  const { layout } = E.computeLayout({ document: doc, pageGap: 16, session, renderEnv: {}, measurement });
+  const kernel = E.getLayoutKernelInputs(layout);
+  if (!kernel) throw new Error("layout produced no pages");
+  const display = await R.buildRustDisplayList({ ...kernel, layout, fontChains: measurement.fontChains }, session);
+  // Images live in the package media store; image primitives name them by id
+  // or by relationship target — same resolution order as office_render.
+  const media = doc.package?.media;
+  const bySource = new Map([...(media?.values() ?? [])].map((f) => [f.dataUrl, f]));
+  const images = new Map();
+  const resolveImage = async (id) => {
+    if (images.has(id)) return images.get(id);
+    const rel = doc.package?.relationships?.get(id);
+    const target = rel?.target?.replace(/^\//, "").replace(/^\.\//, "");
+    const file = bySource.get(id) ?? media?.get(id) ?? (target ? media?.get(target) ?? media?.get(`word/${target}`) : undefined);
+    let img = null;
+    if (file) try { img = await createImageBitmap(new Blob([file.data])); } catch {}
+    images.set(id, img);
+    return img;
+  };
+  const glyphCache = new R.GlyphCache({ provider: (f, g) => session.outlineGlyphJson(f, g) });
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  display.pages.forEach((page, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "slide"; // same card look as slides
+    const canvas = document.createElement("canvas");
+    const zoom = Math.min(1, (innerWidth - 40) / Math.max(1, page.width));
+    R.sizeCanvasForPage(canvas, canvas.getContext("2d"), page, dpr, zoom);
+    wrap.append(canvas);
+    const tag = document.createElement("span");
+    tag.className = "n";
+    tag.textContent = `${i + 1}/${display.pages.length}`;
+    wrap.append(tag);
+    $("deck").append(wrap);
+    const primitives = [...page.primitives, ...(page.header?.primitives ?? []), ...(page.footer?.primitives ?? []),
+      ...(page.noteAreas ?? []).flatMap((a) => [...(a.separatorPrimitives ?? []), ...(a.primitives ?? [])])];
+    R.drawDisplayPage(canvas.getContext("2d"), { ...page, primitives, background: page.background ?? "#ffffff" }, { glyphCache, resolveImage });
+  });
+  session.destroy?.();
+}
+
 async function showXlsx() {
   const X = await import(vendor("xlsx/dist/index.js"));
   await X.initWasm(vendor("xlsx/dist/generated/xlsx_wasm_bg.wasm"));
@@ -156,6 +217,7 @@ async function showXlsx() {
 try {
   if (kind === "pptx") await showPptx();
   else if (kind === "xlsx") await showXlsx();
+  else if (kind === "docx") await showDocx();
   else fail("No BetterOffice renderer for this file.");
 } catch (e) {
   console.error(e);
