@@ -17,7 +17,7 @@ import { Image } from "nsh/image";
 import { PanResponder } from "nsh/gesture";
 import { KeyboardAvoidingView, SafeAreaView } from "nsh/ui/mobile";
 import { Animated, createNativeValue, Easing } from "nsh/animated";
-import { BotAvatar, BotBlob, BOT_COLORS, BOT_SHAPES, blobEdit, blobGaze, CroppedImage, inkOf, normColor, SleepingBlob, type AvatarCrop } from "./blob";
+import { BotAvatar, BotBlob, BOT_COLORS, BOT_SHAPES, blobEdit, blobGaze, CroppedImage, inkOf, normColor, SleepingBlob, type AvatarCrop, type BlobGaze } from "./blob";
 import { Conversation } from "./shell";
 import { loadModels, ModelPill, ModelPopover, type Choice } from "./modelpicker";
 import { Palette, paletteOpen, type PaletteItem } from "./palette";
@@ -99,10 +99,17 @@ function App() {
   const botName = signal("");
   const botShape = signal("blob");
   const botColor = signal("#1084FE");
-  // Grok `isFollowingPointer`: shared gaze trackers driven by onMouseMove
+  // Grok `isFollowingPointer`: gaze trackers driven by onMouseMove. One per
+  // bot — a shared tracker made every avatar using it follow the same
+  // pointer (hovering one bot moved all bots' eyes).
   const previewGaze = blobGaze(); // modal's big preview
   const cellGaze = blobGaze(); // shape-picker mini blobs
-  const railGaze = blobGaze(); // sidebar/rail bot avatars
+  const railGazes = new Map<string, BlobGaze>();
+  const railGaze = (id: string) => {
+    let g = railGazes.get(id);
+    if (!g) railGazes.set(id, (g = blobGaze()));
+    return g;
+  };
   const panelGaze = blobGaze(); // right-panel editor blob
   const panelEditK = createNativeValue(0); // avatar hover → image avatars darken
   const panelEdit = blobEdit();            // avatar hover → blob straightens + darkens
@@ -768,14 +775,14 @@ function App() {
     <View
       onPress={() => selectThread(b().threadId)}
       onContextMenu={() => botMenu(b())}
-      onMouseMove={(e) => railGaze.follow(e, 26, 27, 60)}
-      onHoverOut={() => railGaze.rest()}
+      onMouseMove={(e) => railGaze(b().id).follow(e, 26, 27, 60)}
+      onHoverOut={() => railGaze(b().id).rest()}
       activeOpacity={0.7}
       accessibilityLabel={b().name}
       style={rowBase(b().threadId === activeId())}
     >
       <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze} />
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id)} />
       </View>
       {rowText(b().name, b().preview || "No messages yet")}
     </View>
@@ -808,8 +815,8 @@ function App() {
     <View
       onPress={() => selectThread(b().threadId)}
       onContextMenu={() => botMenu(b())}
-      onMouseMove={(e) => railGaze.follow(e, 47, 36, 70)}
-      onHoverOut={() => railGaze.rest()}
+      onMouseMove={(e) => railGaze(b().id).follow(e, 47, 36, 70)}
+      onHoverOut={() => railGaze(b().id).rest()}
       activeOpacity={0.7}
       accessibilityLabel={b().name}
       style={{
@@ -826,7 +833,7 @@ function App() {
       }}
     >
       <View style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze} />
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id)} />
       </View>
       <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 16, maxWidth: 79 }}>
         {b().name}
@@ -872,12 +879,12 @@ function App() {
           railPop.set(null);
           if (railHover() === "bot:" + b().id) railHover.set("");
         }}
-        onMouseMove={(e) => railGaze.follow(e, 27, 27, 60)}
+        onMouseMove={(e) => railGaze(b().id).follow(e, 27, 27, 60)}
         activeOpacity={0.7}
         accessibilityLabel={b().name}
         style={railPlate("bot:" + b().id, 54, b().threadId === activeId())}
       >
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze} />
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id)} />
       </View>
     );
   };
