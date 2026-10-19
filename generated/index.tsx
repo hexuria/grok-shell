@@ -13,6 +13,7 @@ import R119 from "./R119";
 import R12 from "./R12";
 import R121 from "./R121";
 import R123 from "./R123";
+import R124 from "./R124";
 import R15 from "./R15";
 import R17 from "./R17";
 import R18 from "./R18";
@@ -69,6 +70,7 @@ export const MODULES: Record<string, any> = {
   "R12": R12,
   "R121": R121,
   "R123": R123,
+  "R124": R124,
   "R15": R15,
   "R17": R17,
   "R18": R18,
