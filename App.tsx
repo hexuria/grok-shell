@@ -25,7 +25,7 @@ import { FileTile, type Attachment } from "./filetile";
 import { FileViewer, viewing } from "./fileviewer";
 import { Lightbox } from "./lightbox";
 import { WidgetShelf } from "./widgets/index";
-import { AGENT_STATUS, ShimmerText, StatusAvatar } from "./statusfx";
+import { AGENT_STATUS, FxOverlay, ShimmerText, StatusAvatar } from "./statusfx";
 
 const GEN = "http://127.0.0.1:8787";
 
@@ -193,6 +193,12 @@ function App() {
     return tb ? (bots().find((b) => b.id === tb.id) ?? ({ ...tb, threadId: activeId() } as BotMeta)) : null;
   };
   effect(() => bubbleColor.set(activeBot() ? normColor(activeBot()!.color) : ""));
+  // the live agent state plays on the working bot's avatar wherever it shows
+  // (rail, rows, pinned tiles — Grok animates the mark while it works)
+  const botSt = (id: string) => {
+    const s = activeBot()?.id === id ? agent()?.state : null;
+    return s ? AGENT_STATUS[s] : undefined;
+  };
   // send: the bot's color; the white/black ink bot sends with the text color
   const neutralSend = () => !bubbleColor() || ["#FFFFFF", "#777777"].includes(bubbleColor().toUpperCase());
   const sendFill = () => (neutralSend() ? tc("#f5f5f5") : bubbleFill());
@@ -841,7 +847,10 @@ function App() {
       style={rowBase(b().threadId === activeId())}
     >
       <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} breathe={false} />
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} />
+        <If when={botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
+          <FxOverlay fx={botSt(b().id)!.fx} size={36} />
+        </If>
       </View>
       {rowText(b().name, b().preview || "No messages yet")}
     </View>
@@ -904,7 +913,10 @@ function App() {
       }}
     >
       <View style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} breathe={false} />
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} />
+        <If when={botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
+          <FxOverlay fx={botSt(b().id)!.fx} size={60} />
+        </If>
       </View>
       <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 16, maxWidth: 79 }}>
         {b().name}
@@ -958,7 +970,10 @@ function App() {
         style={railPlate("bot:" + b().id, 54, b().threadId === activeId())}
       >
         <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-          <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} breathe={false} />
+          <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} />
+          <If when={botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
+            <FxOverlay fx={botSt(b().id)!.fx} size={36} />
+          </If>
         </View>
       </View>
     );
@@ -1708,7 +1723,10 @@ function App() {
                 }}
               >
                 <If when={!!activeBot()}>
-                  <BotAvatar shape={activeBot()!.shape} color={activeBot()!.color} image={activeBot()!.image} crop={activeBot()!.crop} size={24} box={22} breathe={false} />
+                  <BotAvatar shape={activeBot()!.shape} color={activeBot()!.color} image={activeBot()!.image} crop={activeBot()!.crop} size={24} box={22} breathe={botSt(activeBot()!.id)?.breathe ?? false} lid={botSt(activeBot()!.id)?.lid} />
+                  <If when={botSt(activeBot()!.id)?.fx && botSt(activeBot()!.id)!.fx !== "none"}>
+                    <FxOverlay fx={botSt(activeBot()!.id)!.fx} size={22} />
+                  </If>
                 </If>
                 <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>
                   {activeBot()?.name ?? "Gen UI Chat"}
