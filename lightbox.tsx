@@ -55,6 +55,10 @@ export function SvgView(props: { uri: string; fit: "cover" | "contain"; style: a
 const save = (path?: string) =>
   path && fetch(`${GEN}/file/save`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) }).catch(() => null);
 
+// the media surface itself is rounded (Grok's centered card): a wrapper clips
+// the image / video / web view, so the corners hold at every zoom step
+const mediaCard = { borderRadius: 12, overflow: "hidden", borderWidth: 0.5, borderColor: "#ffffff1a" } as const;
+
 const roundBtn = (glyph: string, label: string, onPress: () => void) => (
   <View
     onPress={onPress}
@@ -101,16 +105,20 @@ export function Lightbox() {
           style={{ position: "absolute", left: 60, right: 60, top: 64, bottom: items().length > 1 ? 120 : 76, alignItems: "center", justifyContent: "center" }}
         >
           {cur()?.kind === "image" && isSvg((cur() as any).uri) ? (
-            <SvgView uri={(cur() as any).uri} fit="contain" style={{ ...fit(), transform: [{ scale: zoom() }] }} />
+            <SvgView uri={(cur() as any).uri} fit="contain" style={{ ...fit(), transform: [{ scale: zoom() }], ...mediaCard }} />
           ) : cur()?.kind === "image" ? (
-            <Image
-              src={{ uri: (cur() as any).uri }}
-              resizeMode="contain"
-              fadeDuration={0}
-              style={{ ...fit(), transform: [{ scale: zoom() }] }}
-            />
+            <View style={{ ...fit(), transform: [{ scale: zoom() }], ...mediaCard }}>
+              <Image
+                src={{ uri: (cur() as any).uri }}
+                resizeMode="contain"
+                fadeDuration={0}
+                style={{ width: "100%", height: "100%" }}
+              />
+            </View>
           ) : cur()?.kind === "video" ? (
-            <Video source={{ uri: (cur() as any).uri }} controls paused={false} resizeMode="contain" style={{ ...fit(), backgroundColor: "transparent" }} />
+            <View style={{ ...fit(), ...mediaCard }}>
+              <Video source={{ uri: (cur() as any).uri }} controls paused={false} resizeMode="contain" style={{ width: "100%", height: "100%", backgroundColor: "transparent" }} />
+            </View>
           ) : cur()?.kind === "diagram" ? (
             <WebView
               ref={web}
