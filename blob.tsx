@@ -179,11 +179,12 @@ export function BotBlob(props: BotBlobProps) {
     const ease = (rate: number) => 1 - Math.exp(-dt * rate);
     ek += ((props.edit?.s.target ?? 0) - ek) * (dt ? ease(14) : 1);
     const gz = props.gaze?.g ?? { x: 0, y: -0.35 };
-    // Grok's bx: ~14% closer per frame ≈ rate 9; hold ramps the same way
-    gx += (gz.x - gx) * (dt ? ease(9) : 1);
-    gy += (gz.y - gy) * (dt ? ease(9) : 1);
+    // Grok's bx is ~14%/frame ≈ rate 9; the hold ramp runs slower (5 ≈
+    // 0.6s in) so the turn reads as a smooth pivot, not a snap.
+    gx += (gz.x - gx) * (dt ? ease(7) : 1);
+    gy += (gz.y - gy) * (dt ? ease(7) : 1);
     const held = props.gaze?.held === true;
-    hk += ((held ? 1 : 0) - hk) * (dt ? ease(9) : 1);
+    hk += ((held ? 1 : 0) - hk) * (dt ? ease(5) : 1);
     const { bytes, eyes } = markOf(props.shape);
     const P = MARK_POINTS, F = MARK_FRAMES, front = F;
     const stillFrame = props.pose === "rest" ? 0 : front;
