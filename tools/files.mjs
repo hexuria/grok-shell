@@ -38,6 +38,7 @@ export function viewerKind(name) {
   if (t === "md" || t === "markdown" || t === "mdx") return "markdown";
   if (t === "html" || t === "htm") return "html";
   if (t === "docx") return "docx";
+  if (t === "pptx" || t === "ppt" || t === "odp" || t === "key") return "pptx";
   return TEXTUAL.has(t) ? "text" : "unknown";
 }
 
@@ -227,12 +228,30 @@ function htmlToMd(html) {
 }
 
 const MAX_TEXT = 400_000;
-/** What the app needs to draw a file in Grok's viewer for its kind. */
-export async function renderFile(path) {
+// Kinds with a BetterOffice engine view: the app opens /office/… in a WebView
+// and keeps the classic render as the fallback when the engines are absent
+// (pptx has no other renderer — without it the card shows "unavailable").
+const OFFICE_VIEW = { pptx: "pptx", xlsx: "xlsx", xlsm: "xlsx" };
+const officeUrl = async (path, rel, ext) => {
+  const kind = OFFICE_VIEW[ext];
+  if (!kind || !rel) return undefined;
+  try {
+    const { officeCaps } = await import("./office.mjs");
+    if (!officeCaps()[kind]) return undefined;
+    return `/office/?path=${rel.split("/").map(encodeURIComponent).join("/")}&kind=${kind}`;
+  } catch {
+    return undefined;
+  }
+};
+/** What the app needs to draw a file in Grok's viewer for its kind. `rel` is
+ *  the file's path under generated/files — the key /file/raw serves it by. */
+export async function renderFile(path, rel) {
   const name = basename(path);
   const meta = fileMeta(path, name.replace(/^[a-z0-9]+-[a-z0-9]{4}-/, ""));
   const { kind, ext } = meta;
+  const office = await officeUrl(path, rel, ext);
   if (!existsSync(path)) return { ...meta, error: "missing" };
+  if (kind === "pptx") return { ...meta, ...(office ? { office } : {}) };
   if (kind === "markdown") return { ...meta, text: readFileSync(path, "utf8").slice(0, MAX_TEXT) };
   if (kind === "text") {
     const text = readFileSync(path, "utf8").slice(0, MAX_TEXT);
@@ -273,7 +292,7 @@ export async function renderFile(path) {
       const widths = Array.from({ length: ws.columnCount }, (_, c) => ws.getColumn(c + 1).width || 0);
       return { name: ws.name, rows: rows.slice(0, 2000), bold: bold.slice(0, 2000), widths };
     });
-    return { ...meta, sheets };
+    return { ...meta, sheets, ...(office ? { office } : {}) };
   }
   if (kind === "docx") {
     const { value } = await mammoth.convertToHtml({ path });
@@ -335,7 +354,6 @@ export function mockFiles(dir) {
   put("budget.csv", "Category,Q1,Q2,Q3,Q4\nRent,3000,3000,3100,3100\nSoftware,420,460,510,505\nTravel,1200,300,900,1500\nMeals,260,310,280,330\n");
   put("notes.txt", "Meeting notes — Oct 19\n\n1. Ship file viewers\n2. Verify parity with Grok Bot\n3. Mock responses so tests cost nothing\n");
   put("page.html", "<!doctype html><html><body style=\"font-family:-apple-system;padding:24px\"><h1>Hello from HTML</h1><p>Rendered in a web view, as Grok's HTML preview.</p></body></html>");
-  put("deck.pptx", "PK\u0003\u0004 not a real deck — previews aren't available for this type\n");
   // docx and pdf via macOS tools; xlsx via exceljs (async, best effort)
   try {
     const html = put(".memo-src.html", "<h1>Quarterly memo</h1><p>Revenue grew <b>18%</b> quarter over quarter.</p><ul><li>Launch the viewer</li><li>Hire two engineers</li></ul><table border=1><tr><th>Region</th><th>Sales</th></tr><tr><td>APAC</td><td>1.2M</td></tr><tr><td>EMEA</td><td>0.9M</td></tr></table>");
@@ -352,6 +370,23 @@ export function mockFiles(dir) {
     out.push(join(dir, "tone.wav"));
   } catch {}
   return out;
+}
+// a real .pptx via the BetterOffice engine — the deck that used to be a fake
+// "previews aren't available" placeholder, now exercising the office viewer
+export async function mockPptx(dir) {
+  const { officeCreateBytes } = await import("./office.mjs");
+  const bytes = await officeCreateBytes("pptx", {
+    pptx: {
+      slides: [
+        { title: "File viewers", bullets: ["One card per reply file", "Tap to open the viewer"], notes: "Kickoff slide." },
+        { title: "What's new", bullets: ["Real decks render as slides", "Spreadsheets keep their formulas", "Fallbacks stay for other types"] },
+        { title: "Next", bullets: ["Speaker notes land in the file", "Export keeps every part intact"] },
+      ],
+    },
+  });
+  const p = join(dir, "deck.pptx");
+  writeFileSync(p, bytes);
+  return p;
 }
 export async function mockXlsx(dir) {
   const wb = new ExcelJS.Workbook();

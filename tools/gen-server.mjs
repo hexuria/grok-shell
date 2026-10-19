@@ -14,7 +14,8 @@
 
 import { createServer } from "node:http";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { fileMeta, highlight, mockDocx, mockFiles, mockXlsx, renderFile } from "./files.mjs";
+import { fileMeta, highlight, mockDocx, mockFiles, mockPptx, mockXlsx, renderFile } from "./files.mjs";
+import { callOfficeTool, ensureOfficeMcp, officeCaps, officeCreateBytes, officeMarkdown, officeMcpTools, officePkgRoot } from "./office.mjs";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import {
   copyFileSync,
@@ -1556,6 +1557,44 @@ const TOOLS = [
       required: ["source"],
     },
   },
+  {
+    name: "office_create",
+    description:
+      "Create a real Office file — .docx, .xlsx, or .pptx — and mount it as a file card. Use it whenever the user asks for a document, spreadsheet, or slide deck (report, budget, memo, pitch). Payload by extension: docx.paragraphs [{text, style: title|heading1|heading2|normal, bold, italic}]; xlsx.rows string[][] of raw inputs (\"42\" is a number, \"=SUM(A1:A3)\" a formula, anything else text); pptx.slides [{title, bullets: string[], notes}]. To revise the file later use the office_* tools (office_files → office_open → office_grep/office_cells → office_propose/office_propose_cells → office_export).",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "file name ending .docx, .xlsx, or .pptx" },
+        docx: {
+          type: "object",
+          properties: {
+            paragraphs: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { text: { type: "string" }, style: { type: "string", enum: ["title", "heading1", "heading2", "normal"] }, bold: { type: "boolean" }, italic: { type: "boolean" } },
+                required: ["text"],
+              },
+            },
+          },
+        },
+        xlsx: { type: "object", properties: { rows: { type: "array", items: { type: "array", items: { type: "string" } } } } },
+        pptx: {
+          type: "object",
+          properties: {
+            slides: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { title: { type: "string" }, bullets: { type: "array", items: { type: "string" } }, notes: { type: "string" } },
+              },
+            },
+          },
+        },
+      },
+      required: ["path"],
+    },
+  },
 ];
 
 const agentSystem = () => `You are the assistant inside a generative-UI chat app: a chat where you answer in text OR native UI, whichever fits the request.
@@ -1565,6 +1604,8 @@ Reply style: GitHub-flavored markdown, concise. Conversation, questions, and exp
 When a real interface is what they want — apps, games, trackers, dashboards, forms, anything interactive or persistent — call generate_app once with the complete module. The server typechecks it; if it returns a compiler error, fix the code and call again (a few tries is normal). You may build more than one card in a turn when the request implies it.
 
 Compose tools: search the web or query a source first, then build the widget around real results — that composition is the point of this app.
+
+Office files: when the user wants a document, spreadsheet, or deck, call office_create with the right payload — never paste file-like text into the reply. The office_* tools revise existing files: office_files lists what's under the workspace (including files from earlier replies), office_open starts a session, grep/cells find exact spans, propose/propose_cells stage changes, office_export writes a new file (it lands as a card). Accept edits only when the user wants the same file updated in place.
 
 When you DO write a widget module, this contract applies:
 ${contractFor("__NAME__")}`;
@@ -1725,6 +1766,48 @@ async function toolWebSearch(input) {
   return { content: results.join("\n\n") || "(no results)" };
 }
 
+// A file an office tool produced becomes a card on its own turn — like a
+// widget card, it lands the moment it exists instead of waiting for the reply.
+function cardOfficeFile(thread, rel) {
+  const p = outFile(rel);
+  if (!p || !existsSync(p)) return;
+  const m = fileMeta(p);
+  thread.turns.push({ role: "ai", label: "office", files: [{ path: rel, ...m }] });
+}
+
+async function toolOffice(job, thread, block) {
+  const input = block.input || {};
+  if (block.name === "office_create") {
+    const name = String(input.path || "").split("/").pop() || "";
+    const format = /\.xlsx$/i.test(name) ? "xlsx" : /\.pptx$/i.test(name) ? "pptx" : /\.docx$/i.test(name) ? "docx" : null;
+    if (!format) return { content: "path must end in .docx, .xlsx, or .pptx", is_error: true };
+    const payload = input[format];
+    if (!payload) return { content: `a .${format} path requires a ${format} payload`, is_error: true };
+    const rel = `o${Date.now().toString(36)}`;
+    mkdirSync(join(OUT_DIR, rel), { recursive: true });
+    try {
+      writeFileSync(join(OUT_DIR, rel, name), await officeCreateBytes(format, { [format]: payload }));
+    } catch (e) {
+      return { content: `office_create failed: ${String(e?.message || e).slice(0, 400)}`, is_error: true };
+    }
+    const key = `${rel}/${name}`;
+    cardOfficeFile(thread, key);
+    console.log(`✓ office ${format} → ${key}`);
+    return { content: `created ${key} — the file card is in the reply. To revise it, open this path with office_open and export the result.` };
+  }
+  const r = await callOfficeTool(OUT_DIR, block.name, input);
+  if (r.is_error) return r;
+  // office_export's JSON result carries the workspace-relative path of the
+  // file it wrote — card it so the new file shows up in the reply.
+  if (block.name === "office_export" || block.name === "office_create") {
+    try {
+      const rel = JSON.parse(r.content).path;
+      if (typeof rel === "string" && rel) cardOfficeFile(thread, rel);
+    } catch {}
+  }
+  return r;
+}
+
 async function execTool(job, thread, block) {
   try {
     if (block.name === "generate_app")
@@ -1736,6 +1819,8 @@ async function execTool(job, thread, block) {
       return await toolQuerySource(block.input || {});
     if (block.name === "web_search")
       return await toolWebSearch(block.input || {});
+    if (block.name.startsWith("office_"))
+      return await toolOffice(job, thread, block);
     return { content: `unknown tool ${block.name}`, is_error: true };
   } catch (e) {
     return {
@@ -1749,9 +1834,12 @@ async function execTool(job, thread, block) {
 // the API/model rejects it we drop it and use the client-side version.
 let serverSearch = true;
 function toolList() {
+  // The bundled BetterOffice MCP server contributes its office_* surface once
+  // connected (office_create stays ours — its version mounts the file card).
+  const office = officeMcpTools();
   return serverSearch
-    ? [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }, ...TOOLS]
-    : [...TOOLS, CLIENT_SEARCH];
+    ? [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }, ...TOOLS, ...office]
+    : [...TOOLS, ...office, CLIENT_SEARCH];
 }
 
 async function agentTurn(job, prompt, thread) {
@@ -1839,6 +1927,7 @@ async function artifactBlocks(rels) {
       if (["markdown", "text", "json", "html"].includes(m.kind) || m.ext === "svg") body = readFileSync(p, "utf8");
       else if (m.kind === "table") body = ((await renderFile(p)).sheets || []).map((s) => `# sheet: ${s.name}\n` + s.rows.map((r) => r.join("\t")).join("\n")).join("\n\n");
       else if (m.kind === "docx") body = (await renderFile(p)).text || "";
+      else if (m.kind === "pptx") body = await officeMarkdown(p);
       if (body != null) blocks.push({ type: "text", text: `<file name="${m.name}">\n${body.slice(0, 60000)}\n</file>` });
       else blocks.push({ type: "text", text: `<file name="${m.name}" kind="${m.kind}" size="${m.size}">(binary ${m.kind} file; its contents can't be shown as text)</file>` });
     } catch {}
@@ -1880,6 +1969,10 @@ async function generate(job, prompt) {
     const dir = join(OUT_DIR, rel);
     const paths = mockFiles(dir);
     paths.push(await mockXlsx(dir), await mockDocx(dir));
+    // the deck depends on the optional BetterOffice engine — absent, /mock
+    // still works and the card simply isn't produced
+    const pptx = await mockPptx(dir).catch((e) => (console.error(`  mock pptx: ${String(e?.message || e).slice(0, 120)}`), null));
+    if (pptx) paths.push(pptx);
     // a screen recording as the video sample, twice (gallery of two)
     const movs = readdirSync(ATTACH_DIR).filter((f) => f.endsWith(".mov"));
     if (movs.length) {
@@ -2375,10 +2468,37 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
     const p = outFile(q.get("path") || "");
     res.setHeader("content-type", "application/json");
     if (!p) return res.end(JSON.stringify({ error: "bad path" }));
-    renderFile(p)
+    renderFile(p, q.get("path") || "")
       .then((r) => res.end(JSON.stringify(r)))
       .catch((e) => res.end(JSON.stringify({ error: String(e?.message || e) })));
     return;
+  }
+  // BetterOffice viewer: a WebView page that paints the engines' display
+  // lists. /office/vendor/<pkg>/… statically serves the installed packages
+  // (dist bundles, wasm, font assets) so the page's imports resolve.
+  if (req.method === "GET" && (req.url === "/office/" || req.url.startsWith("/office/?"))) {
+    const page = join(dirname(fileURLToPath(import.meta.url)), "office", "viewer.html");
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    return res.end(readFileSync(page));
+  }
+  if (req.method === "GET" && req.url === "/office/caps") {
+    res.setHeader("content-type", "application/json");
+    return res.end(JSON.stringify(officeCaps()));
+  }
+  if (req.method === "GET" && req.url.startsWith("/office/vendor/")) {
+    const rest = decodeURIComponent(req.url.slice("/office/vendor/".length).split("?")[0]);
+    const [pkg, ...segs] = rest.split("/");
+    const root = officePkgRoot(pkg);
+    const p = root ? join(root, ...segs) : null;
+    if (!p || !p.startsWith(root + "/") || !existsSync(p) || !statSync(p).isFile()) {
+      res.statusCode = 404;
+      return res.end();
+    }
+    const ext = (p.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
+    const type = { js: "text/javascript", mjs: "text/javascript", wasm: "application/wasm", ttf: "font/ttf", otf: "font/otf", json: "application/json", map: "application/json" }[ext] || "application/octet-stream";
+    res.setHeader("content-type", type);
+    res.setHeader("cache-control", "max-age=86400");
+    return res.end(readFileSync(p));
   }
   if (req.method === "GET" && req.url.startsWith("/file/raw/")) {
     const p = outFile(decodeURIComponent(req.url.slice("/file/raw/".length).split("?")[0]));
@@ -3862,6 +3982,9 @@ mount(() => (
 
 persist(); // seed the DB on first boot / after a JSON→SQLite migration
 writeShelf(); // sync widgets/index.tsx with the DB
+// BetterOffice MCP child (office_* tools) — connected in the background; a
+// failed spawn just leaves the surface out of toolList().
+ensureOfficeMcp(OUT_DIR).catch(() => {});
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`gen-server on http://127.0.0.1:${PORT}`);
