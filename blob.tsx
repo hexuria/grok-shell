@@ -227,8 +227,12 @@ export function BotBlob(props: BotBlobProps) {
       const rx = v(2), ry = v(3) * lid;
       if (rx < 0.4 || ry < 0.3) continue;
       const rot = (v(4) * Math.PI) / 180;
-      const cx = v(0) + gx * 9;
-      const cy = v(1) + gy * 8 + (1 - lid) * v(3) * 0.45;
+      // Grok: the eyes ride the same hold ramp as the body turn — they
+      // chase the pointer only as the pivot comes up, not on the first
+      // mousemove (which read as an abrupt flick). Base drift stays so the
+      // idle up-gaze is unchanged.
+      const cx = v(0) + gx * 4 + lx * 5;
+      const cy = v(1) + gy * 4 + ly * 5 + (1 - lid) * v(3) * 0.45;
       ctx.moveTo(cx + rx * Math.cos(rot), cy + rx * Math.sin(rot));
       ctx.ellipse(cx, cy, rx, ry, rot, 0, TAU);
     }
