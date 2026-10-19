@@ -107,7 +107,9 @@ export function blobGaze() {
   const g = { x: 0, y: -0.35 };
   // bumped on change: wakes still blobs, which otherwise don't tick
   const v = signal(0);
+  let held = false;
   const follow = (e: { x: number; y: number }, cx: number, cy: number, reach = 60) => {
+    held = true;
     const x = Math.max(-1, Math.min(1, (e.x - cx) / reach));
     const y = Math.max(-1, Math.min(1, (e.y - cy) / reach));
     if (x === g.x && y === g.y) return;
@@ -116,11 +118,12 @@ export function blobGaze() {
     v.set(v() + 1);
   };
   const rest = () => {
+    held = false;
     g.x = 0;
     g.y = -0.35;
     v.set(v() + 1);
   };
-  return { g, follow, rest, v };
+  return { g, follow, rest, v, get held() { return held; } };
 }
 export type BlobGaze = ReturnType<typeof blobGaze>;
 // Hover "Edit Avatar": eases the pose to camera-facing and the fill toward
@@ -157,7 +160,7 @@ type BotBlobProps = {
 export function BotBlob(props: BotBlobProps) {
   startClock();
   const phase = Math.random() * 6;
-  let ek = 0, gx = 0, gy = -0.35, prev = -1;
+  let ek = 0, gx = 0, gy = -0.35, hk = 0, prev = -1;
   const draw = (ctx: any, { width, height }: { width: number; height: number }) => {
     // Only breathing blobs (and still ones easing their eyes/pose) follow the
     // 30fps clock; a settled still blob redraws only when its gaze/edit wakes
@@ -166,16 +169,21 @@ export function BotBlob(props: BotBlobProps) {
     props.gaze?.v();
     props.edit?.v();
     const gz0 = props.gaze?.g ?? { x: 0, y: -0.35 };
+    const held0 = props.gaze?.held === true;
     const settled =
-      Math.abs(gz0.x - gx) < 0.002 && Math.abs(gz0.y - gy) < 0.002 && Math.abs((props.edit?.s.target ?? 0) - ek) < 0.002;
+      Math.abs(gz0.x - gx) < 0.002 && Math.abs(gz0.y - gy) < 0.002 && Math.abs((props.edit?.s.target ?? 0) - ek) < 0.002 &&
+      Math.abs(hk - (held0 ? 1 : 0)) < 0.002;
     const t = !still || !settled ? clock() : Date.now() / 1000;
     const dt = prev < 0 ? 0 : Math.min(0.1, Math.max(0, t - prev));
     prev = t;
     const ease = (rate: number) => 1 - Math.exp(-dt * rate);
     ek += ((props.edit?.s.target ?? 0) - ek) * (dt ? ease(14) : 1);
     const gz = props.gaze?.g ?? { x: 0, y: -0.35 };
-    gx += (gz.x - gx) * (dt ? ease(12) : 1);
-    gy += (gz.y - gy) * (dt ? ease(12) : 1);
+    // Grok's bx: ~14% closer per frame ≈ rate 9; hold ramps the same way
+    gx += (gz.x - gx) * (dt ? ease(9) : 1);
+    gy += (gz.y - gy) * (dt ? ease(9) : 1);
+    const held = props.gaze?.held === true;
+    hk += ((held ? 1 : 0) - hk) * (dt ? ease(9) : 1);
     const { bytes, eyes } = markOf(props.shape);
     const P = MARK_POINTS, F = MARK_FRAMES, front = F;
     const stillFrame = props.pose === "rest" ? 0 : front;
@@ -184,7 +192,9 @@ export function BotBlob(props: BotBlobProps) {
     const i0 = still ? stillFrame : Math.floor(ft) % F;
     const i1 = still ? stillFrame : (i0 + 1) % F;
     const f = still ? 0 : ft - Math.floor(ft);
-    const k = still ? 0 : ek;
+    // Grok: while the pointer holds the mark the idle loop freezes — the
+    // pose blends to the front frame and the body pivots instead.
+    const k = still ? 0 : Math.max(ek, hk);
     const pt = (fr: number, j: number) => unq(bytes[fr * P * 2 + j]);
     const at = (j: number) => {
       const a = pt(i0, j) + (pt(i1, j) - pt(i0, j)) * f;
@@ -195,10 +205,11 @@ export function BotBlob(props: BotBlobProps) {
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
-    // Grok: the whole mark leans toward the gaze — tilts and drifts a
-    // little — while the eyes (offset further below) lead the face.
-    ctx.rotate(gx * 0.12);
-    ctx.translate(gx * 3, gy * 2);
+    // Grok's turn: fl()×hold×.55 — a yaw of ~9.9°·gx, a small drift of the
+    // mark size (.0165·gx/.0132·gy ≈ 2.4/1.9 sprite units) — while the eyes
+    // (offset further below) lead the face.
+    ctx.rotate(gx * 0.17 * hk);
+    ctx.translate(gx * 2.4 * hk, gy * 1.9 * hk);
     ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
     ctx.beginPath();
     ctx.moveTo(at(0), at(1));
@@ -206,7 +217,7 @@ export function BotBlob(props: BotBlobProps) {
     ctx.closePath();
     // eyes: lerped ellipses [cx, cy, rx, ry, deg], blink scales the long axis
     const e0 = eyes[i0], e1 = eyes[i1], ef = eyes[front];
-    const lid = props.lid ?? (still ? 1 : lidAt(ct));
+    const lid = props.lid ?? (still ? 1 : Math.max(lidAt(ct), hk));
     for (const o of [0, 5]) {
       const v = (n: number) => {
         const a = e0[o + n] + (e1[o + n] - e0[o + n]) * f;
