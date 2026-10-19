@@ -4,7 +4,7 @@ import { Image } from "nsh/image";
 import { cleanup, effect, signal, Text, View } from "nsh";
 import { appearance } from "./theme";
 import { mediaUrl } from "./filetile";
-import { MARKS, MARK_FPS, MARK_FRAMES, MARK_HI, MARK_LO, MARK_POINTS, MARK_SPRITE } from "./marks.data";
+import { MARKS, MARK_EYE_N, MARK_FPS, MARK_FRAMES, MARK_GAZE_N, MARK_HI, MARK_LO, MARK_POINTS, MARK_SPRITE } from "./marks.data";
 
 // ————————————————————————————————————————————————————————————————
 // Grok Bot avatar, ported from Sand's bundle (index.eager-platform).
@@ -69,17 +69,21 @@ const startClock = () => {
   };
   requestAnimationFrame(tick);
 };
-const decoded = new Map<string, Uint8Array>();
+const decoded = new Map<string, { bytes: Uint8Array; poly: Uint8Array; gBytes: Uint8Array; gPoly: Uint8Array }>();
 const markOf = (shape: string) => {
   const key = MARKS[shape] ? shape : "blob";
-  let b = decoded.get(key);
-  if (!b) {
-    const bin = atob(MARKS[key].o);
-    b = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
-    decoded.set(key, b);
+  let m = decoded.get(key);
+  if (!m) {
+    const dec = (s: string) => {
+      const bin = atob(s);
+      const b = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+      return b;
+    };
+    m = { bytes: dec(MARKS[key].o), poly: dec(MARKS[key].p), gBytes: dec(MARKS[key].g.o), gPoly: dec(MARKS[key].g.p) };
+    decoded.set(key, m);
   }
-  return { bytes: b, eyes: MARKS[key].e };
+  return m;
 };
 const unq = (v: number) => MARK_LO + (v / 255) * (MARK_HI - MARK_LO);
 // Idle_D's blinks (expression keys), each ~180ms
@@ -102,28 +106,37 @@ const darken = (hx: string, k: number) => {
 };
 
 // Pointer gaze: targets the eyes ease toward (normalized −1…1); the resting
-// gaze looks up, like Grok's idle.
+// gaze looks up, like Grok's idle. On first engagement Grok snaps cx,cy to
+// the pointer (hold===0 in setGaze) — `snap` carries that to the draw.
 export function blobGaze() {
   const g = { x: 0, y: -0.35 };
   // bumped on change: wakes still blobs, which otherwise don't tick
   const v = signal(0);
   let held = false;
   const follow = (e: { x: number; y: number }, cx: number, cy: number, reach = 60) => {
+    const first = !held;
     held = true;
     const x = Math.max(-1, Math.min(1, (e.x - cx) / reach));
     const y = Math.max(-1, Math.min(1, (e.y - cy) / reach));
+    if (first) {
+      g.x = x;
+      g.y = y;
+      r.snap = true;
+      v.set(v() + 1);
+      return;
+    }
     if (x === g.x && y === g.y) return;
     g.x = x;
     g.y = y;
     v.set(v() + 1);
   };
   const rest = () => {
+    // setGaze(null): only isHeld clears; the gaze keeps its last target
     held = false;
-    g.x = 0;
-    g.y = -0.35;
     v.set(v() + 1);
   };
-  return { g, follow, rest, v, get held() { return held; } };
+  const r = { g, follow, rest, v, snap: false, get held() { return held; } };
+  return r;
 }
 export type BlobGaze = ReturnType<typeof blobGaze>;
 // Hover "Edit Avatar": eases the pose to camera-facing and the fill toward
@@ -160,7 +173,7 @@ type BotBlobProps = {
 export function BotBlob(props: BotBlobProps) {
   startClock();
   const phase = Math.random() * 6;
-  let ek = 0, gx = 0, gy = -0.35, vx = 0, vy = 0, hk = 0, vh = 0, prev = -1;
+  let ek = 0, gx = 0, gy = -0.35, hk = 0, prev = -1;
   const draw = (ctx: any, { width, height }: { width: number; height: number }) => {
     // Only breathing blobs (and still ones easing their eyes/pose) follow the
     // 30fps clock; a settled still blob redraws only when its gaze/edit wakes
@@ -168,32 +181,27 @@ export function BotBlob(props: BotBlobProps) {
     const still = props.breathe === false || props.lid != null || props.pose != null;
     props.gaze?.v();
     props.edit?.v();
-    const gz0 = props.gaze?.g ?? { x: 0, y: -0.35 };
-    const held0 = props.gaze?.held === true;
+    const gz = props.gaze?.g ?? { x: 0, y: -0.35 };
+    const held = props.gaze?.held === true;
     const settled =
-      Math.abs(gz0.x - gx) < 0.002 && Math.abs(gz0.y - gy) < 0.002 && Math.abs(vx) < 0.01 && Math.abs(vy) < 0.01 &&
-      Math.abs((props.edit?.s.target ?? 0) - ek) < 0.002 && Math.abs(hk - (held0 ? 1 : 0)) < 0.002 && Math.abs(vh) < 0.01;
+      Math.abs(gz.x - gx) < 0.002 && Math.abs(gz.y - gy) < 0.002 &&
+      Math.abs((props.edit?.s.target ?? 0) - ek) < 0.002 && Math.abs(hk - (held ? 1 : 0)) < 0.002;
     const t = !still || !settled ? clock() : Date.now() / 1000;
     const dt = prev < 0 ? 0 : Math.min(0.1, Math.max(0, t - prev));
     prev = t;
     const ease = (rate: number) => 1 - Math.exp(-dt * rate);
     ek += ((props.edit?.s.target ?? 0) - ek) * (dt ? ease(14) : 1);
-    const gz = props.gaze?.g ?? { x: 0, y: -0.35 };
-    // Springs, not exponential chases: velocity eases in and out, so a
-    // fresh turn accelerates into the pivot and decelerates out — the
-    // smooth head-turn Grok's quat runtime produces. Slightly underdamped
-    // for life; the hold spring is clamped so the lean never exceeds 1.
-    const spr = (p: number, vel: number, target: number, k: number): [number, number] => {
-      const vel2 = vel + ((target - p) * k - vel * 2 * Math.sqrt(k) * 0.9) * dt;
-      return [p + vel2 * dt, vel2];
-    };
-    [gx, vx] = spr(gx, vx, gz.x, 55);
-    [gy, vy] = spr(gy, vy, gz.y, 55);
-    const held = props.gaze?.held === true;
-    [hk, vh] = spr(hk, vh, held ? 1 : 0, 30);
+    // Grok's se(): on first engagement the gaze coords snap to the pointer
+    // (setGaze at hold===0), then cx,cy and hold ease exponentially — bx() is
+    // mx=.14/frame at 60fps ≈ rate 9 here — and the pose lerps rest→fl() by
+    // hold. A clip playing ignores gaze entirely (S gate → still only).
+    if (props.gaze?.snap) { gx = gz.x; gy = gz.y; props.gaze.snap = false; }
+    gx += (gz.x - gx) * (dt ? ease(9) : 1);
+    gy += (gz.y - gy) * (dt ? ease(9) : 1);
+    hk += ((held ? 1 : 0) - hk) * (dt ? ease(9) : 1);
     hk = Math.min(1, Math.max(0, hk));
-    const { bytes, eyes } = markOf(props.shape);
-    const P = MARK_POINTS, F = MARK_FRAMES, front = F;
+    const { bytes, poly, gBytes, gPoly } = markOf(props.shape);
+    const P = MARK_POINTS, F = MARK_FRAMES, front = F, EN = MARK_EYE_N, EB = EN * 4;
     // A still mark idles in Idle_D's resting tilt (frame 0: slanted, eyes
     // up — Grok's sidebar/panel marks), not squared to the camera; "front"
     // stays available for cells that want the flat pose.
@@ -203,49 +211,59 @@ export function BotBlob(props: BotBlobProps) {
     const i0 = still ? stillFrame : Math.floor(ft) % F;
     const i1 = still ? stillFrame : (i0 + 1) % F;
     const f = still ? 0 : ft - Math.floor(ft);
-    // Grok: while the pointer holds the mark the idle loop freezes — the
-    // pose blends to the front frame and the body pivots instead.
-    const k = still ? 0 : Math.max(ek, hk);
-    const pt = (fr: number, j: number) => unq(bytes[fr * P * 2 + j]);
+    // The fl() gaze grid: bilinear-blend the four baked turn poses around
+    // (gx,gy), then the pose lerps base→grid by hold — real turned
+    // silhouettes and face-seated eyes, not a dragged overlay.
+    const GN = MARK_GAZE_N, P2 = P * 2;
+    const fx = Math.max(0, Math.min(GN - 1, ((gx + 1) / 2) * (GN - 1)));
+    const fy = Math.max(0, Math.min(GN - 1, ((gy + 1) / 2) * (GN - 1)));
+    const x0 = Math.floor(fx), x1 = Math.min(GN - 1, x0 + 1), ax = fx - x0;
+    const y0 = Math.floor(fy), y1 = Math.min(GN - 1, y0 + 1), ay = fy - y0;
+    const C = [y0 * GN + x0, y0 * GN + x1, y1 * GN + x0, y1 * GN + x1];
+    const W = [(1 - ax) * (1 - ay), ax * (1 - ay), (1 - ax) * ay, ax * ay];
+    const kh = still ? hk : 0;
+    const pt = (fr: number, j: number) => unq(bytes[fr * P2 + j]);
     const at = (j: number) => {
       const a = pt(i0, j) + (pt(i1, j) - pt(i0, j)) * f;
-      return a + (pt(front, j) - a) * k;
+      const p = a + (pt(front, j) - a) * ek;
+      if (!kh) return p;
+      const g = gBytes[C[0] * P2 + j] * W[0] + gBytes[C[1] * P2 + j] * W[1] + gBytes[C[2] * P2 + j] * W[2] + gBytes[C[3] * P2 + j] * W[3];
+      return p + (unq(g) - p) * kh;
+    };
+    // eyes: real face-seated outlines (16 pts each, left first), not fitted
+    // ellipses — Grok's curved slots with their true taper and turn
+    const ey = (n: number) => {
+      const a = unq(poly[i0 * EB + n]) + (unq(poly[i1 * EB + n]) - unq(poly[i0 * EB + n])) * f;
+      const p = a + (unq(poly[front * EB + n]) - a) * ek;
+      if (!kh) return p;
+      const g = gPoly[C[0] * EB + n] * W[0] + gPoly[C[1] * EB + n] * W[1] + gPoly[C[2] * EB + n] * W[2] + gPoly[C[3] * EB + n] * W[3];
+      return p + (unq(g) - p) * kh;
     };
     const box = props.size * 0.82;
     const scale = (box * 1.3913) / MARK_SPRITE;
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
-    // Grok's turn: fl()×hold×.55 — a 3D yaw/pitch of the mark. A sphere
-    // keeps its silhouette when it turns, so the body only drifts toward
-    // the pointer (.0165/.0132 of the size ≈ 2.4/1.9 units) while the eyes
-    // lead — no shear/squash, which flattened the blob.
-    const lx = gx * hk, ly = gy * hk;
-    ctx.translate(lx * 2.4, ly * 1.9);
+    // fl()'s position term: the mark drifts toward the pointer, in units of
+    // the mark's own size (non-spheres lean ~2.3× harder — Grok's .07/.055).
+    const ms = MARK_SPRITE / 1.3913;
+    ctx.translate((props.shape === "blob" ? 0.03 : 0.07) * gx * kh * ms, (props.shape === "blob" ? 0.024 : 0.055) * gy * kh * ms);
     ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
     ctx.beginPath();
     ctx.moveTo(at(0), at(1));
     for (let j = 1; j < P; j++) ctx.lineTo(at(j * 2), at(j * 2 + 1));
     ctx.closePath();
-    // eyes: lerped ellipses [cx, cy, rx, ry, deg], blink scales the long axis
-    const e0 = eyes[i0], e1 = eyes[i1], ef = eyes[front];
+    // blink squashes each outline vertically around its own center
     const lid = props.lid ?? (still ? 1 : Math.max(lidAt(ct), hk));
-    for (const o of [0, 5]) {
-      const v = (n: number) => {
-        const a = e0[o + n] + (e1[o + n] - e0[o + n]) * f;
-        return a + (ef[o + n] - a) * k;
-      };
-      const rx = v(2), ry = v(3) * lid;
-      if (rx < 0.4 || ry < 0.3) continue;
-      const rot = (v(4) * Math.PI) / 180;
-      // Grok: the eyes ride the same hold ramp as the body turn — they
-      // chase the pointer only as the pivot comes up, not on the first
-      // mousemove (which read as an abrupt flick). Base drift stays so the
-      // idle up-gaze is unchanged.
-      const cx = v(0) + gx * 4 + lx * 5;
-      const cy = v(1) + gy * 4 + ly * 5 + (1 - lid) * v(3) * 0.45;
-      ctx.moveTo(cx + rx * Math.cos(rot), cy + rx * Math.sin(rot));
-      ctx.ellipse(cx, cy, rx, ry, rot, 0, TAU);
+    for (let e = 0; e < 2; e++) {
+      const o = e * EN * 2;
+      if (ey(o) < MARK_LO + 0.5) continue;
+      let cy = 0;
+      for (let s = 0; s < EN; s++) cy += ey(o + s * 2 + 1);
+      cy /= EN;
+      ctx.moveTo(ey(o), cy + (ey(o + 1) - cy) * lid);
+      for (let s = 1; s < EN; s++) ctx.lineTo(ey(o + s * 2), cy + (ey(o + s * 2 + 1) - cy) * lid);
+      ctx.closePath();
     }
     ctx.fillStyle = props.lid != null ? props.color : darken(inkOf(props.color), 0.7 * ek);
     ctx.fill("evenodd");
