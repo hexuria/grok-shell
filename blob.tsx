@@ -116,12 +116,60 @@ let ambT = -1;
 const ambientTick = (kind: string | null, t: number, size: number): AmbientFrame | null => {
   if (!amb) amb = ambientCtl();
   amb.set(kind);
-  if (ambT !== t) { amb.advance(t - ambT); ambT = t; }
+  if (ambT !== t) { amb.advance(t - ambT, false); ambT = t; }
   const snap = amb.snapshot();
   if (snap.amount <= 0.004 && snap.kind == null) return null;
   return ambientFrame(snap, size);
 };
 const PART_K = MARK_SPRITE / 1.3913 / 192; // 192-space → sprite units (box = 144/1.3913 ≈ 103.5)
+
+// ————— head silhouette morph: loop → core.ring —————
+// Grok resamples the silhouette to bd points and lerps to the ambient ring
+// (Hh's circle, or the pencil stadium). Same here: resample the outline by
+// arc length starting at its rightmost vertex (Hh's phase), same winding,
+// then lerp by `round`.
+const resampleLoop = (pts: number[][], n: number): number[][] => {
+  const m = pts.length;
+  const seg: number[] = [];
+  let per = 0;
+  for (let i = 0; i < m; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % m];
+    const l = Math.hypot(bx - ax, by - ay);
+    seg.push(l); per += l;
+  }
+  if (per <= 0) return pts.slice(0, n);
+  // shoelace sign tells the winding — ring goes CW on screen (+y down)
+  let shoelace = 0, start = 0, best = -1e9;
+  for (let i = 0; i < m; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % m];
+    shoelace += ax * by - bx * ay;
+    if (pts[i][0] > best) { best = pts[i][0]; start = i; }
+  }
+  const out: number[][] = [];
+  let i0 = start, acc = 0;
+  for (let j = 0; j < n; j++) {
+    const target = (j / n) * per;
+    while (acc + seg[i0] < target - 1e-9) { acc += seg[i0]; i0 = (i0 + 1) % m; }
+    const f = seg[i0] > 0 ? Math.min(1, (target - acc) / seg[i0]) : 0;
+    const [ax, ay] = pts[i0], [bx, by] = pts[(i0 + 1) % m];
+    out.push([ax + (bx - ax) * f, ay + (by - ay) * f]);
+  }
+  if (shoelace >= 0) return out;
+  // flip winding but keep index 0 at the rightmost sample so vertex pairing
+  // with the ring stays aligned
+  out.reverse();
+  out.unshift(out.pop()!);
+  return out;
+};
+const morphLoop = (pts: number[][], ring: number[][], k: number, round: number): number[][] => {
+  const rs = resampleLoop(pts, ring.length);
+  return rs.map(([px, py], i) => {
+    const tx = MARK_SPRITE / 2 + (ring[i][0] - 96) * k;
+    const ty = MARK_SPRITE / 2 + (ring[i][1] - 96) * k;
+    return [px + (tx - px) * round, py + (ty - py) * round];
+  });
+};
+
 const drawPart = (ctx: any, p: Part, cx: number, cy: number, k: number, alpha = 1) => {
   const X = (v: number) => cx + (v - 96) * k;
   const Y = (v: number) => cy + (v - 96) * k;
@@ -326,7 +374,10 @@ export function BotBlob(props: BotBlobProps) {
         ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
       }
       ctx.beginPath();
-      for (const pl of fr.outline) {
+      const outline = af && af.core.round > 0.001
+        ? fr.outline.map((pl) => morphLoop(pl, af.core.ring, PART_K, af.core.round))
+        : fr.outline;
+      for (const pl of outline) {
         ctx.moveTo(pl[0][0], pl[0][1]);
         for (let j = 1; j < pl.length; j++) ctx.lineTo(pl[j][0], pl[j][1]);
         ctx.closePath();

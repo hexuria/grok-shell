@@ -51,6 +51,7 @@ export type AmbientSnapshot = {
   amount: number; spin: number; kind: string | null; outgoing: string | null;
   swap: number; clock: { stateTime: number; shotTime: number };
   outgoingClock: { stateTime: number; shotTime: number };
+  reduced: boolean;
 };
 
 // Ix() — the ambient controller. `state` is a yl/vx key (thinking, orbit…);
@@ -58,6 +59,7 @@ export type AmbientSnapshot = {
 export function ambientCtl(seed = Tx) {
   const n = ic(seed), r = Ao(0), o = Ao(1), s = Ao(0);
   let target: string | null = null, kind: string | null = null, outgoing: string | null = null;
+  let reduced = false;
   let cycle = false, g = 0, m = 0, y = 0, w = 0, S = 0, d = 0, f = 0, h = 1, active = false, E = 0;
   const set = (v: string | null) => {
     // accepts a yl state key (thinking…) or an already-resolved kind; anything
@@ -85,6 +87,7 @@ export function ambientCtl(seed = Tx) {
     if (A !== active) { if (A && !isReduced) h = n() < 0.5 ? 1 : -1; if (!isReduced) { f += Sx * h; s.t = f; } active = A; }
   };
   const advance = (dt: number, isReduced = false) => {
+    reduced = isReduced;
     const E2 = dt > 0 ? Math.min(dt, Mx) : 0;
     g += E2;
     b(isReduced);
@@ -96,6 +99,7 @@ export function ambientCtl(seed = Tx) {
     amount: le(r.x, 0, 1), spin: s.x, kind, outgoing, swap: le(o.x, 0, 1),
     clock: { stateTime: g - m, shotTime: g - y },
     outgoingClock: { stateTime: g - w, shotTime: g - S },
+    reduced,
   });
   return { set, advance, snapshot, get kind() { return kind; } };
 }
@@ -301,8 +305,44 @@ const Pi: Record<string, number> = { dots: 22, orbit: 19, radar: 19, progress: 1
 const xd: Record<string, number> = { dots: 1.5, orbit: 1.14, radar: 1.14, progress: 1.32, gather: 1.15, wave: 1.42, send: 1.12, receive: 1.12, dock: 1.3, ball: 1.22, pencil: 1.18, bang: 1.28, standby: 1.75 };
 const ZT = 0.62;
 
+// ——— head-silhouette morph targets (bd = 96-point loops in 192-space) ———
+const bd = 96, QT = Math.PI * 2;
+const Hh: Pt2[] = Array.from({ length: bd }, (_, i) => {
+  const a = (i / bd) * QT;
+  return [x + Math.cos(a) * x, x + Math.sin(a) * x];
+});
+// fh(88,18).ring — a stadium (capsule) 88 wide, 18 tall, centered on x;
+// lE(Sd, len/2) rotates its point phase by π so morphs to it don't cross
+const stadium = (w: number, h: number): Pt2[] => {
+  const r = h / 2, hx = w / 2 - r;
+  const arcLen = Math.PI * r, strLen = 2 * hx, per = 2 * arcLen + 2 * strLen;
+  // walk the boundary CCW from the rightmost tip (matches Hh's phase)
+  return Array.from({ length: bd }, (_, i) => {
+    let t = (i / bd) * per;
+    if (t < arcLen) { const a = -Math.PI / 2 + (t / arcLen) * Math.PI; return [x + hx + r * Math.cos(a), x + r * Math.sin(a)]; }
+    t -= arcLen;
+    if (t < strLen) return [x + hx - t, x + r];
+    t -= strLen;
+    if (t < arcLen) { const a = Math.PI / 2 + (t / arcLen) * Math.PI; return [x - hx + r * Math.cos(a), x + r * Math.sin(a)]; }
+    t -= arcLen;
+    return [x - hx + t, x - r];
+  });
+};
+// lE — rotates a point loop geometrically about (x,x) AND phase-shifts the
+// index by `t` slots, so morphing into it pairs the right vertices
+const lE = (e: Pt2[], t: number): Pt2[] => {
+  const n = e.length, r = (t / n) * Math.PI * 2, o = Math.cos(r), s = Math.sin(r);
+  return Array.from({ length: n }, (_, a) => {
+    const [c, u] = e[(((a - t) % n) + n) % n], l = c - x, d = u - x;
+    return [x + l * o - d * s, x + l * s + d * o];
+  });
+};
+const dE = lE(stadium(88, 18), bd / 2);
+const Ai = (k: string | null): Pt2[] => (k === "pencil" ? dE : Hh);
+const mv = (a: Pt2[], b: Pt2[], t: number): Pt2[] => a.map(([px, py], i) => [px + (b[i][0] - px) * t, py + (b[i][1] - py) * t]);
+
 export type AmbientFrame = {
-  core: { scale: number; dx: number; dy: number; rotation: number; opacity: number; round: number };
+  core: { scale: number; dx: number; dy: number; rotation: number; opacity: number; round: number; ring: Pt2[] };
   zoom: number;
   parts: Part[];
   isFaceVisible: boolean;
@@ -314,9 +354,12 @@ export function ambientFrame(e: AmbientSnapshot, t: number): AmbientFrame {
   const a = (j: string | null) => (j === n ? o * s : j === i ? o * (1 - s) : 0);
   const c = (j: string | null) => (j === n ? e.clock : e.outgoingClock);
   const u = le(o / ZT, 0, 1);
+  // the head's silhouette morphs toward this loop by `round` — Hh's circle
+  // for most kinds, the pencil's own stadium while pencil is in the swap
+  const d = n === "pencil" || i === "pencil" ? (s >= 0.999 ? Ai(n) : mv(Ai(i), Ai(n), ts(s))) : Hh;
   const f = n ? Pi[n] * s + (i ? Pi[i] : Pi[n]) * (1 - s) : 19;
   const h = a("dots"), p = n === "dots" || i === "dots";
-  const g = p ? Gh(c("dots"), 1, o, false) : yE;
+  const g = p ? Gh(c("dots"), 1, o, e.reduced) : yE;
   let m = p ? 1 + (g.pop - 1) * (h / Math.max(o, 0.001)) : 1;
   const y = a("receive");
   if (y > 0.004) { const j = Bt((c("receive").stateTime * 1e3) / xa), J = le((j - 0.58) / 0.34, 0, 1); m *= 1 + 0.11 * Math.sin(J * Math.PI) * y; }
@@ -333,7 +376,7 @@ export function ambientFrame(e: AmbientSnapshot, t: number): AmbientFrame {
   const N = (f / x) * m, R = a("standby"), B = R > 0 ? (0.28 + 0.2 * Math.sin(c("standby").stateTime * 1e3 * 0.0016)) * R : 0;
   const P = {
     scale: 1 - o + N * o, dx: b * o, dy: -g.lift * h + v * o, rotation: E * o,
-    opacity: (1 - (1 - g.tone) * h) * (1 - B), round: ts(u),
+    opacity: (1 - (1 - g.tone) * h) * (1 - B), round: ts(u), ring: d,
   };
   const I = 1 - wb(le((t - 44) / 90, 0, 1));
   const _ = n == null ? 1 : xd[n], O = i ? xd[i] : _;
@@ -342,7 +385,7 @@ export function ambientFrame(e: AmbientSnapshot, t: number): AmbientFrame {
   for (const j of [i, n]) {
     if (j == null) continue;
     const J = a(j);
-    if (J > 0.004) L.push(...FE(j, J, c(j), f, false));
+    if (J > 0.004) L.push(...FE(j, J, c(j), f, e.reduced));
   }
   return { core: P, zoom: H, parts: L.filter((j) => j.opacity > 0), isFaceVisible: o < 0.5 };
 }
