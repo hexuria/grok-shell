@@ -310,9 +310,9 @@ export function StatusAvatar(props: { shape: string; color: string; state: strin
         breathe={st().breathe}
         lid={st().lid}
         clip={st().clip}
+        fx={st().fx}
         pose={st().breathe == null && st().lid == null && st().clip == null ? "rest" : undefined}
       />
-      <FxOverlay fx={st().fx} size={s} />
     </View>
   );
 }

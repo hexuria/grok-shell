@@ -6,6 +6,7 @@ import { appearance } from "./theme";
 import { mediaUrl } from "./filetile";
 import { MARKS, MARK_EYE_N, MARK_FPS, MARK_FRAMES, MARK_GAZE_N, MARK_HI, MARK_LO, MARK_POINTS, MARK_SPRITE } from "./marks.data";
 import { clipFrame, cookClip, sampleClip } from "./clips";
+import { ambientCtl, ambientFrame, type AmbientFrame, type Part } from "./ambient";
 
 // ————————————————————————————————————————————————————————————————
 // Grok Bot avatar, ported from Sand's bundle (index.eager-platform).
@@ -106,6 +107,78 @@ const darken = (hx: string, k: number) => {
   return `rgb(${r},${g},${b})`;
 };
 
+// ————— ambient `vx` effects —————
+// One shared controller (the active state is app-wide); each blob advances
+// it once per clock tick. Parts live in a 192-unit space centered at 96 —
+// scaled to sprite space by On·n/2/x / sc0 = 144/320 = 0.45.
+let amb: ReturnType<typeof ambientCtl> | null = null;
+let ambT = -1;
+const ambientTick = (kind: string | null, t: number, size: number): AmbientFrame | null => {
+  if (!amb) amb = ambientCtl();
+  amb.set(kind);
+  if (ambT !== t) { amb.advance(t - ambT); ambT = t; }
+  const snap = amb.snapshot();
+  if (snap.amount <= 0.004 && snap.kind == null) return null;
+  return ambientFrame(snap, size);
+};
+const PART_K = MARK_SPRITE / 1.3913 / 192; // 192-space → sprite units (box = 144/1.3913 ≈ 103.5)
+const drawPart = (ctx: any, p: Part, cx: number, cy: number, k: number, alpha = 1) => {
+  const X = (v: number) => cx + (v - 96) * k;
+  const Y = (v: number) => cy + (v - 96) * k;
+  ctx.globalAlpha = alpha * p.opacity;
+  switch (p.type) {
+    case "disc":
+      ctx.beginPath();
+      ctx.arc(X(p.cx), Y(p.cy), p.r * k, 0, TAU);
+      ctx.fill();
+      break;
+    case "ring": {
+      ctx.beginPath();
+      if (p.arc) {
+        const a0 = ((p.arc.startDeg ?? -90) * Math.PI) / 180;
+        ctx.arc(X(p.cx), Y(p.cy), p.r * k, a0, a0 + p.arc.fraction * TAU);
+      } else ctx.arc(X(p.cx), Y(p.cy), p.r * k, 0, TAU);
+      ctx.lineWidth = p.width * k;
+      ctx.stroke();
+      break;
+    }
+    case "stroke":
+      ctx.beginPath();
+      ctx.moveTo(X(p.d[0][0]), Y(p.d[0][1]));
+      for (let i = 1; i < p.d.length; i++) ctx.lineTo(X(p.d[i][0]), Y(p.d[i][1]));
+      ctx.lineWidth = p.width * k;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+      break;
+    case "shape": {
+      // Vh transforms are authored in 192-space — set a matching ctx frame
+      // and replay translate/rotate/scale verbatim
+      ctx.save();
+      ctx.translate(cx - 96 * k, cy - 96 * k);
+      ctx.scale(k, k);
+      for (const m of p.transform?.matchAll(/(translate|rotate|scale)\(([^)]*)\)/g) ?? []) {
+        const a = m[2].trim().split(/[\s,]+/).map(Number);
+        if (m[1] === "translate") ctx.translate(a[0], a[1]);
+        else if (m[1] === "scale") ctx.scale(a[0], a[0]);
+        else if (m[1] === "rotate") {
+          if (a.length >= 3) { ctx.translate(a[1], a[2]); ctx.rotate((a[0] * Math.PI) / 180); ctx.translate(-a[1], -a[2]); }
+          else ctx.rotate((a[0] * Math.PI) / 180);
+        }
+      }
+      ctx.beginPath();
+      for (const loop of p.d) {
+        ctx.moveTo(loop[0][0], loop[0][1]);
+        for (let i = 1; i < loop.length; i++) ctx.lineTo(loop[i][0], loop[i][1]);
+        ctx.closePath();
+      }
+      ctx.fill();
+      ctx.restore();
+      break;
+    }
+  }
+};
+
 // Pointer gaze: targets the eyes ease toward (normalized −1…1); the resting
 // gaze looks up, like Grok's idle. On first engagement Grok snaps cx,cy to
 // the pointer (hold===0 in setGaze) — `snap` carries that to the draw.
@@ -173,6 +246,9 @@ type BotBlobProps = {
    *  the real keyframes live through the ported engine; while it plays
    *  gaze is dead (S gate) */
   clip?: string | string[];
+  /** a `vx` ambient kind (dots/orbit/radar/…) — morphs the mark itself:
+   *  head shrinks/turns/lifts per the `core` transform, glyphs draw inside */
+  fx?: string;
 };
 
 // `size` is the stage; the avatar's nominal box is 82% of it (Grok's sprite
@@ -185,7 +261,7 @@ export function BotBlob(props: BotBlobProps) {
     // Only breathing blobs (and still ones easing their eyes/pose) follow the
     // 30fps clock; a settled still blob redraws only when its gaze/edit wakes
     // it. Every blob reading the clock redrew them all, forever.
-    const still = (props.breathe === false || props.lid != null || props.pose != null) && !props.clip;
+    const still = (props.breathe === false || props.lid != null || props.pose != null) && !props.clip && !props.fx;
     props.gaze?.v();
     props.edit?.v();
     const gz = props.gaze?.g ?? { x: 0, y: 0 };
@@ -217,31 +293,67 @@ export function BotBlob(props: BotBlobProps) {
     // A playing clip owns the pose end to end (S gate): the real keyframes
     // drive rotation/position/squash/zoom and the lids track owns the eyes —
     // rendered live through the ported solid projector, not the bakes.
-    const cl = props.clip ? sampleClip(props.clip, t) : null;
+    const cl = props.clip || props.fx ? sampleClip(props.clip ?? "Idle_B", t) : null;
     if (cl) {
       // a `lid` prop is the face-morph stand-in (sleepy, squinted…): it
       // compounds the clip's own lids/blink track — open = (1−lid)·propLid
       if (props.lid != null) cl.lid = 1 - (1 - cl.lid) * props.lid;
+      let af: AmbientFrame | null = null;
+      try {
+        af = ambientTick(props.fx ?? null, t, props.size * 0.82);
+      } catch (e) {
+        console.error("ambient", e);
+      }
       const fr = clipFrame(props.shape, cl, MARK_SPRITE);
       const box0 = props.size * 0.82;
       const sc0 = (box0 * 1.3913) / MARK_SPRITE;
       ctx.save();
       ctx.translate(width / 2, height / 2);
       ctx.scale(sc0, sc0);
-      ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
+      // the mark's morph zoom (compact marks zoom less — xd/DE)
+      if (af && af.zoom !== 1) ctx.scale(af.zoom, af.zoom);
+      // the head group: WE()'s transform — ambient core scale/offset/rotate
+      // around the mark's center, its opacity dims the whole head
+      ctx.save();
+      if (af) {
+        const c = af.core;
+        ctx.translate(c.dx * PART_K, c.dy * PART_K);
+        if (c.rotation) ctx.rotate((c.rotation * Math.PI) / 180);
+        ctx.scale(c.scale, c.scale);
+        ctx.globalAlpha = c.opacity;
+        ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
+      } else {
+        ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
+      }
       ctx.beginPath();
       for (const pl of fr.outline) {
         ctx.moveTo(pl[0][0], pl[0][1]);
         for (let j = 1; j < pl.length; j++) ctx.lineTo(pl[j][0], pl[j][1]);
         ctx.closePath();
       }
-      for (const pl of fr.eyes) {
-        ctx.moveTo(pl[0][0], pl[0][1]);
-        for (let j = 1; j < pl.length; j++) ctx.lineTo(pl[j][0], pl[j][1]);
-        ctx.closePath();
+      // engaged morphs hide the face — the glyph parts take its place
+      if (!af || af.isFaceVisible) {
+        for (const pl of fr.eyes) {
+          ctx.moveTo(pl[0][0], pl[0][1]);
+          for (let j = 1; j < pl.length; j++) ctx.lineTo(pl[j][0], pl[j][1]);
+          ctx.closePath();
+        }
       }
       ctx.fillStyle = darken(inkOf(props.color), 0.7 * ek);
       ctx.fill("evenodd");
+      ctx.restore();
+      // glyph parts draw in the mark's fill inside the same box
+      if (af) {
+        const ink = darken(inkOf(props.color), 0.7 * ek);
+        ctx.fillStyle = ink;
+        ctx.strokeStyle = ink;
+        try {
+          for (const p of af.parts) drawPart(ctx, p, 0, 0, PART_K);
+        } catch (e) {
+          console.error("drawPart", e);
+        }
+        ctx.globalAlpha = 1;
+      }
       ctx.restore();
       return;
     }
@@ -448,6 +560,7 @@ export function BotAvatar(props: {
   breathe?: boolean;
   lid?: number;
   clip?: string | string[];
+  fx?: string;
 }) {
   const box = () => props.box ?? Math.round(props.size * 0.82);
   return (
@@ -465,6 +578,7 @@ export function BotAvatar(props: {
           breathe={props.breathe}
           lid={props.lid}
           clip={props.clip}
+          fx={props.fx}
         />
       </If>
     </View>

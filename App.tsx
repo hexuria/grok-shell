@@ -847,8 +847,8 @@ function App() {
       style={rowBase(b().threadId === activeId())}
     >
       <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} />
-        <If when={botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} fx={botSt(b().id)?.fx} />
+        <If when={b().image && botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
           <FxOverlay fx={botSt(b().id)!.fx} size={36} />
         </If>
       </View>
@@ -913,8 +913,8 @@ function App() {
       }}
     >
       <View style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} />
-        <If when={botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} fx={botSt(b().id)?.fx} />
+        <If when={b().image && botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
           <FxOverlay fx={botSt(b().id)!.fx} size={60} />
         </If>
       </View>
@@ -970,8 +970,8 @@ function App() {
         style={railPlate("bot:" + b().id, 54, b().threadId === activeId())}
       >
         <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-          <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} />
-          <If when={botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
+          <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} fx={botSt(b().id)?.fx} />
+          <If when={b().image && botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
             <FxOverlay fx={botSt(b().id)!.fx} size={36} />
           </If>
         </View>
@@ -1723,10 +1723,7 @@ function App() {
                 }}
               >
                 <If when={!!activeBot()}>
-                  <BotAvatar shape={activeBot()!.shape} color={activeBot()!.color} image={activeBot()!.image} crop={activeBot()!.crop} size={24} box={22} breathe={botSt(activeBot()!.id)?.breathe ?? false} lid={botSt(activeBot()!.id)?.lid} clip={botSt(activeBot()!.id)?.clip} />
-                  <If when={botSt(activeBot()!.id)?.fx && botSt(activeBot()!.id)!.fx !== "none"}>
-                    <FxOverlay fx={botSt(activeBot()!.id)!.fx} size={22} />
-                  </If>
+                  <BotAvatar shape={activeBot()!.shape} color={activeBot()!.color} image={activeBot()!.image} crop={activeBot()!.crop} size={24} box={22} breathe={botSt(activeBot()!.id)?.breathe ?? false} lid={botSt(activeBot()!.id)?.lid} clip={botSt(activeBot()!.id)?.clip} fx={botSt(activeBot()!.id)?.fx} />
                 </If>
                 <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>
                   {activeBot()?.name ?? "Gen UI Chat"}
