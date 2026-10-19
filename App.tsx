@@ -500,8 +500,9 @@ function App() {
   // controls sit level with them. Real app menu too.
   if (isAvailable) {
     Window.setTitle("Gen UI Chat");
-    // a 36pt bar: AppKit centers the traffic lights 18pt down, where Grok's sit
-    Window.setTitleBar("hidden", 36);
+    // a 44pt bar: the lights land at Grok's ~15pt inset instead of AppKit's
+    // own (9pt in a 32pt bar — the row kept its tighter native spot)
+    Window.setTitleBar("hidden", 44);
     Menu.setApplicationMenu([
       {
         label: "Gen UI Chat",
@@ -1148,7 +1149,7 @@ function App() {
       }}
     >
       <View style={{ flex: 1 }}>
-      <Scroll style={{ flex: 1 }} contentContainerStyle={{ alignItems: "center", gap: 4, paddingTop: 36 + 54 + 4, paddingBottom: 28 }}>
+      <Scroll style={{ flex: 1 }} contentContainerStyle={{ alignItems: "center", gap: 4, paddingTop: 44 + 54 + 4, paddingBottom: 28 }}>
         <Each of={pinnedBots()}>{(b) => railBtn(b, flyout)}</Each>
         <Each of={botGroups()}>
           {(g, i) => (
@@ -1199,11 +1200,11 @@ function App() {
           </View>
         </If>
       </Scroll>
-      {blurEdge("top", 36 + 54 + 6)}
+      {blurEdge("top", 44 + 54 + 6)}
       {blurEdge("bottom", 28)}
       {/* window-drag strip under the traffic lights, then the sidebar toggle (Grok's rail) */}
-      <View desktop={{ windowDrag: true }} style={{ position: "absolute", top: 0, left: 0, right: 0, height: 36, zIndex: 3 }} />
-      <View style={{ position: "absolute", top: 36, left: 0, right: 0, height: 54, alignItems: "center", justifyContent: "center", zIndex: 3 }}>
+      <View desktop={{ windowDrag: true }} style={{ position: "absolute", top: 0, left: 0, right: 0, height: 44, zIndex: 3 }} />
+      <View style={{ position: "absolute", top: 44, left: 0, right: 0, height: 54, alignItems: "center", justifyContent: "center", zIndex: 3 }}>
         <View onPress={toggleSide} onContextMenu={toggleSideMode} {...railHov("toggle")} activeOpacity={0.7} accessibilityLabel="toggle sidebar" style={railPlate("toggle", 44)}>
           {panelGlyph(false)}
         </View>
@@ -1670,7 +1671,7 @@ function App() {
 
         {/* hidden sidebar: the toggle sits right of the traffic lights, on their line */}
         <If when={sideEff() === "hidden"}>
-          <View style={{ position: "absolute", top: 18 - 14, left: (titleBar().left || 77) + 2, zIndex: 5 }}>
+          <View style={{ position: "absolute", top: (titleBar().height || 44) / 2 - 14, left: (titleBar().left || 77) + 2, zIndex: 5 }}>
             <View onPress={toggleSide} onContextMenu={toggleSideMode} activeOpacity={0.7} accessibilityLabel="toggle sidebar" style={{ width: 28, height: 28, borderRadius: 7, alignItems: "center", justifyContent: "center" }}>
               {panelGlyph(false)}
             </View>

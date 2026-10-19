@@ -3688,7 +3688,7 @@ const wantW = Math.min(720, Math.max(240, Math.round(exact?.w ?? (mod as any).po
 const capH = ${capH};
 if (isAvailable) {
   Window.setTitle("widget · " + ${JSON.stringify(name)});
-  Window.setTitleBar("hidden", 26); // the top 26pt is the drag holdout below
+  Window.setTitleBar("hidden", 32); // natural height: the lights land at AppKit's own (9,9) spot
   if (DESK) {
     // a desktop widget: behind every window, on the desktop surface —
     // slotted down the right edge like the system's own widgets.
