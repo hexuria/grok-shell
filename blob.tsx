@@ -109,7 +109,7 @@ const darken = (hx: string, k: number) => {
 // gaze looks up, like Grok's idle. On first engagement Grok snaps cx,cy to
 // the pointer (hold===0 in setGaze) — `snap` carries that to the draw.
 export function blobGaze() {
-  const g = { x: 0, y: -0.35 };
+  const g = { x: 0, y: 0 };
   // bumped on change: wakes still blobs, which otherwise don't tick
   const v = signal(0);
   let held = false;
@@ -117,7 +117,9 @@ export function blobGaze() {
     const first = !held;
     held = true;
     const x = Math.max(-1, Math.min(1, (e.x - cx) / reach));
-    const y = Math.max(-1, Math.min(1, (e.y - cy) / reach));
+    // Grok's IL/xx gaze space is y-up: the mark's baked fl() poses take
+    // positive gy as "look up" — the raw pointer delta would read inverted.
+    const y = Math.max(-1, Math.min(1, (cy - e.y) / reach));
     if (first) {
       g.x = x;
       g.y = y;
@@ -173,7 +175,7 @@ type BotBlobProps = {
 export function BotBlob(props: BotBlobProps) {
   startClock();
   const phase = Math.random() * 6;
-  let ek = 0, gx = 0, gy = -0.35, hk = 0, prev = -1;
+  let ek = 0, gx = 0, gy = 0, hk = 0, prev = -1;
   const draw = (ctx: any, { width, height }: { width: number; height: number }) => {
     // Only breathing blobs (and still ones easing their eyes/pose) follow the
     // 30fps clock; a settled still blob redraws only when its gaze/edit wakes
@@ -181,7 +183,7 @@ export function BotBlob(props: BotBlobProps) {
     const still = props.breathe === false || props.lid != null || props.pose != null;
     props.gaze?.v();
     props.edit?.v();
-    const gz = props.gaze?.g ?? { x: 0, y: -0.35 };
+    const gz = props.gaze?.g ?? { x: 0, y: 0 };
     const held = props.gaze?.held === true;
     const settled =
       Math.abs(gz.x - gx) < 0.002 && Math.abs(gz.y - gy) < 0.002 &&
@@ -191,11 +193,15 @@ export function BotBlob(props: BotBlobProps) {
     prev = t;
     const ease = (rate: number) => 1 - Math.exp(-dt * rate);
     ek += ((props.edit?.s.target ?? 0) - ek) * (dt ? ease(14) : 1);
-    // Grok's se(): on first engagement the gaze coords snap to the pointer
-    // (setGaze at hold===0), then cx,cy and hold ease exponentially — bx() is
-    // mx=.14/frame at 60fps ≈ rate 9 here — and the pose lerps rest→fl() by
-    // hold. A clip playing ignores gaze entirely (S gate → still only).
-    if (props.gaze?.snap) { gx = gz.x; gy = gz.y; props.gaze.snap = false; }
+    // Grok's se(): on first engagement the gaze coords snap to the pointer —
+    // setGaze snaps cx,cy only while hold===0, so re-entering mid-release
+    // eases across instead of jumping — then cx,cy and hold ease
+    // exponentially (bx() = 1−.86^(dt·60) ≡ rate 9) and the pose lerps
+    // rest→fl() by hold. A clip playing ignores gaze entirely (S gate).
+    if (props.gaze?.snap) {
+      if (hk < 0.05) { gx = gz.x; gy = gz.y; }
+      props.gaze.snap = false;
+    }
     gx += (gz.x - gx) * (dt ? ease(9) : 1);
     gy += (gz.y - gy) * (dt ? ease(9) : 1);
     hk += ((held ? 1 : 0) - hk) * (dt ? ease(9) : 1);
@@ -247,7 +253,7 @@ export function BotBlob(props: BotBlobProps) {
     // fl()'s position term: the mark drifts toward the pointer, in units of
     // the mark's own size (non-spheres lean ~2.3× harder — Grok's .07/.055).
     const ms = MARK_SPRITE / 1.3913;
-    ctx.translate((props.shape === "blob" ? 0.03 : 0.07) * gx * kh * ms, (props.shape === "blob" ? 0.024 : 0.055) * gy * kh * ms);
+    ctx.translate((props.shape === "blob" ? 0.03 : 0.07) * gx * kh * ms, -(props.shape === "blob" ? 0.024 : 0.055) * gy * kh * ms);
     ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
     ctx.beginPath();
     ctx.moveTo(at(0), at(1));

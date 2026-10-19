@@ -25,18 +25,22 @@ import { FileTile, type Attachment } from "./filetile";
 import { FileViewer, viewing } from "./fileviewer";
 import { Lightbox } from "./lightbox";
 import { WidgetShelf } from "./widgets/index";
+import { AGENT_STATUS, ShimmerText, StatusAvatar } from "./statusfx";
 
 const GEN = "http://127.0.0.1:8787";
 
-const PHASE_ICON: Record<string, string> = {
-  queued: "…",
-  thinking: "🧠",
-  writing: "✍️",
-  checking: "🔍",
-  retrying: "♻️",
-  fallback: "⚠️",
-  publishing: "🚀",
-  done: "✓",
+// generation phases → Grok's agent states (the vx/yl table, see statusfx.tsx)
+const PHASE_STATE: Record<string, string> = {
+  queued: "loading",
+  thinking: "thinking",
+  tool: "working",
+  writing: "writing",
+  checking: "searching",
+  retrying: "alerting",
+  generating: "working",
+  fallback: "alerting",
+  publishing: "uploading",
+  done: "finished",
 };
 
 const SUGGESTIONS = [
@@ -85,7 +89,42 @@ const hue = (s: string) =>
 function App() {
   const draft = signal("");
   const inflight = signal(0);
-  const status = signal("");
+  // the agent's live state — Grok's status row: a mark playing the ambient
+  // effect plus the shimmering label. Set by the generator's phases while a
+  // run is in flight, or by /status:<state> to preview one without a call.
+  const agent = signal<{ state: string; label: string } | null>(null);
+  let mockTimer: ReturnType<typeof setInterval> | null = null;
+  const mockStatus = (arg: string) => {
+    if (mockTimer) { clearInterval(mockTimer); mockTimer = null; }
+    if (!arg || arg === "off" || arg === "idle" || arg === "clear") {
+      agent.set(null);
+      return;
+    }
+    const put = (name: string, demo = false) => {
+      const st = AGENT_STATUS[name];
+      agent.set({ state: name, label: demo ? `${name} — ${st.label || name}` : st.label || name });
+    };
+    if (arg === "demo") {
+      const names = Object.keys(AGENT_STATUS).filter((n) => n !== "idle");
+      let i = 0;
+      put(names[0], true);
+      mockTimer = setInterval(() => {
+        if (++i >= names.length) {
+          if (mockTimer) clearInterval(mockTimer);
+          mockTimer = null;
+          agent.set(null);
+          return;
+        }
+        put(names[i], true);
+      }, 1700);
+      return;
+    }
+    if (AGENT_STATUS[arg]) {
+      put(arg);
+    } else {
+      agent.set({ state: "idle", label: `unknown status "${arg}" — try /status:demo` });
+    }
+  };
   // the floating composer's height: the transcript pads its end by it, so the
   // scroll view (and its scrollbar) runs to the window's bottom like Grok's
   const dockH = signal(96);
@@ -393,7 +432,7 @@ function App() {
   );
   const run = async (prompt: string, extra: { reply?: { i: number; text: string } | null; attachments?: Attach[] } = {}) => {
     inflight.update((n) => n + 1);
-    status.set("sending to the generator…");
+    agent.set({ state: "sending", label: "sending to the generator…" });
     try {
       const r = await fetch(`${GEN}/chat`, {
         method: "POST",
@@ -415,14 +454,18 @@ function App() {
         fails = 0;
         const extra =
           inflight() > 1 ? ` · ${inflight()} generations running` : "";
-        status.set(
-          `${PHASE_ICON[s.phase] ?? "…"} ${s.detail || s.phase}${extra}`,
-        );
+        agent.set({
+          state: PHASE_STATE[s.phase] ?? "working",
+          label: `${s.detail || s.phase}${extra}`,
+        });
         if (s.done) break;
       }
       refreshThreads();
+      agent.set(null);
     } catch (e) {
-      status.set(`no generator — run  node tools/gen-server.mjs  (${String(e)})`);
+      agent.set({ state: "alerting", label: `no generator — run  node tools/gen-server.mjs` });
+      const stuck = agent();
+      setTimeout(() => { if (agent() === stuck) agent.set(null); }, 5000);
     }
     inflight.update((n) => n - 1);
     scrollToEnd();
@@ -436,6 +479,12 @@ function App() {
     draft.set("");
     replyTo.set(null);
     attachments.set([]);
+    // /status:<state> previews the agent status row without a generation —
+    // /status:demo cycles Grok's whole state table, /status:off clears.
+    if (prompt === "/status" || prompt.startsWith("/status:")) {
+      mockStatus(prompt === "/status" ? "demo" : prompt.slice(8).trim());
+      return;
+    }
     run(prompt, { reply, attachments: files });
   };
 
@@ -658,7 +707,10 @@ function App() {
       "mod+t": () => setTheme(nextTheme(themePref())),
       "mod+n": () => botModal.set(true),
       "mod+shift+m": () => tab.set(tab() === "work" ? "chat" : "work"),
-      "mod+d": () => status.set("Dictation is coming soon"),
+      "mod+d": () => {
+        agent.set({ state: "dictating", label: "Dictation is coming soon" });
+        setTimeout(() => { if (agent()?.label === "Dictation is coming soon") agent.set(null); }, 2400);
+      },
       ...Object.fromEntries(
         Array.from({ length: 9 }, (_, k) => [
           `mod+${k + 1}`,
@@ -1429,10 +1481,22 @@ function App() {
             onLayout={(e) => dockH.set(e.height)}
             style={{ position: "absolute", left: 0, right: 0, bottom: 0 }}
           >
-          {/* progress line: only while a reply is being made (no idle hint) */}
-          <If when={inflight() > 0 && !!status()}>
-            <View pointerEvents="none" style={{ alignSelf: "center", width: "100%", maxWidth: 960 + 32, paddingHorizontal: 16 + 4, paddingBottom: 4 }}>
-              <Text numberOfLines={1} style={{ color: tc("#f5f5f58a"), fontSize: 11 }}>{status()}</Text>
+          {/* agent status row: the mark playing the ambient effect + the
+              shimmering label — Grok's status line */}
+          <If when={!!agent()}>
+            <View pointerEvents="none" style={{ alignSelf: "center", width: "100%", maxWidth: 960 + 32, paddingHorizontal: 16 + 4, paddingBottom: 4, flexDirection: "row", alignItems: "center", gap: 7 }}>
+              <StatusAvatar
+                shape={activeBot()?.shape ?? "blob"}
+                color={activeBot()?.color ?? "#FFFFFF"}
+                state={agent()!.state}
+                size={20}
+              />
+              <ShimmerText
+                text={agent()!.label}
+                size={11}
+                color={tc("#f5f5f58a")}
+                hi={tc("#f5f5f5")}
+              />
             </View>
           </If>
           <KeyboardAvoidingView>
