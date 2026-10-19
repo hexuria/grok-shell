@@ -261,6 +261,13 @@ const scrubber = (w: () => number, a: { dur: () => number; seek: (t: number) => 
   }).panHandlers;
 };
 
+// unplayed waveform bars: the tint at ~55% — hex takes an alpha suffix,
+// rgba() colors (the neutral bubble fill) get their alpha scaled
+const fade = (c: string) =>
+  c.startsWith("rgba(")
+    ? c.replace(/[\d.]+\)$/, (a) => `${Math.round(parseFloat(a) * 55) / 100})`)
+    : c + "8c";
+
 /** 230×112: glyph · name · "0:00 · size" · save, then ▶ · 1× · waveform · time. */
 export function AudioCard(props: { f: ReplyFile; onOpen: (f: ReplyFile) => void; tint: string }) {
   const f = props.f;
@@ -296,7 +303,7 @@ export function AudioCard(props: { f: ReplyFile; onOpen: (f: ReplyFile) => void;
                 width: 1.5,
                 height: Math.max(2, p * 24),
                 borderRadius: 1,
-                backgroundColor: a.dur() && i / arr.length < a.time() / a.dur() ? props.tint : props.tint + "8c",
+                backgroundColor: a.dur() && i / arr.length < a.time() / a.dur() ? props.tint : fade(props.tint),
               }}
             />
           ))}
