@@ -204,7 +204,10 @@ export function BotBlob(props: BotBlobProps) {
     }
     gx += (gz.x - gx) * (dt ? ease(9) : 1);
     gy += (gz.y - gy) * (dt ? ease(9) : 1);
-    hk += ((held ? 1 : 0) - hk) * (dt ? ease(9) : 1);
+    // the turn itself eases in over ~800ms — slower than Grok's bx so the
+    // engagement reads as a settle, not a snap (cx,cy stay at Grok's rate:
+    // once held, tracking is still responsive)
+    hk += ((held ? 1 : 0) - hk) * (dt ? ease(4) : 1);
     hk = Math.min(1, Math.max(0, hk));
     const { bytes, poly, gBytes, gPoly } = markOf(props.shape);
     const P = MARK_POINTS, F = MARK_FRAMES, front = F, EN = MARK_EYE_N, EB = EN * 4;
