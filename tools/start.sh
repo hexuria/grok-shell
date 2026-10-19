@@ -8,7 +8,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NSH="${NSH:-/Volumes/goldcoders/Projects/nsh/target/debug/nsh}"
+# Release first: the debug host is several times slower on the UI thread
+# (objc2 checks every message's signature in debug builds).
+NSH_REPO=/Volumes/goldcoders/Projects/nsh
+NSH="${NSH:-$NSH_REPO/target/release/nsh}"
+[ -x "$NSH" ] || NSH="$NSH_REPO/target/debug/nsh"
 [ -x "$NSH" ] || NSH=nsh
 
 # Generation server (idempotent: an existing one is reused).

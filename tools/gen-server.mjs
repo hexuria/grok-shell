@@ -13,6 +13,8 @@
 // tool among several, not the only reply format.
 
 import { createServer } from "node:http";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { fileMeta, highlight, mockDocx, mockFiles, mockXlsx, renderFile } from "./files.mjs";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import {
   copyFileSync,
@@ -20,6 +22,7 @@ import {
   mkdirSync,
   rmSync,
   readFileSync,
+  statSync,
   readdirSync,
   unlinkSync,
   writeFileSync,
@@ -54,10 +57,41 @@ const MOCK = !!process.env.MOCK;
 // longbridge/nsh, PR #61) over the installed CLI; NSH env overrides either.
 const LOCAL_NSH = "/Volumes/goldcoders/Projects/nsh/target/debug/nsh";
 const NSH = process.env.NSH || (existsSync(LOCAL_NSH) ? LOCAL_NSH : "nsh");
-const anthropic =
+const anthropicDirect =
   PROVIDER === "anthropic" && process.env.ANTHROPIC_API_KEY
     ? new Anthropic()
     : null;
+// Model picker: a thread's choice ({ model, effort, fast }) rides an async
+// context; every Claude call made for it goes to opencodex's Anthropic
+// Messages endpoint with that model instead (fast = its "--fast" variant,
+// effort as output_config.effort / reasoning_effort).
+const OPENCODEX = process.env.OPENCODEX_URL || "http://localhost:8080";
+const modelCtx = new AsyncLocalStorage();
+let opencodex = null;
+const routed = (params) => {
+  const c = modelCtx.getStore();
+  if (!c?.model) return [anthropicDirect, params];
+  opencodex ??= new Anthropic({ baseURL: OPENCODEX, apiKey: "opencodex" });
+  const p = { ...params, model: c.model + (c.fast ? "--fast" : "") };
+  if (c.effort) {
+    p.output_config = { effort: c.effort };
+    p.reasoning_effort = c.effort;
+  }
+  return [opencodex, p];
+};
+const anthropic = anthropicDirect && {
+  messages: {
+    create: (p, o) => { const [c, q] = routed(p); return c.messages.create(q, o); },
+    stream: (p, o) => { const [c, q] = routed(p); return c.messages.stream(q, o); },
+  },
+};
+const choiceFor = (threadId) => {
+  const b = store.bots.find((x) => x.threadId === threadId);
+  if (b?.model) return { model: b.model, effort: b.effort || "", fast: !!b.fast };
+  const m = metaGet("model");
+  return m ? { model: m, effort: metaGet("effort") || "", fast: metaGet("fast") === "1" } : null;
+};
+const labelOf = (c) => (c?.model ? c.model + (c.fast ? "--fast" : "") : MODEL);
 
 mkdirSync(GEN_DIR, { recursive: true });
 mkdirSync(STAGE_DIR, { recursive: true });
@@ -192,7 +226,7 @@ mount(() => (
   <View
     style={{
       flex: 1,
-      backgroundColor: colorScheme() === "dark" ? "#17181a" : "#f2f2f4",
+      backgroundColor: colorScheme() === "dark" ? "#161616" : "#ffffff",
       overflow: "hidden",
     }}
   >
@@ -261,11 +295,21 @@ db.exec(`
     retries INTEGER DEFAULT 0, widget INTEGER DEFAULT 0);
   CREATE TABLE IF NOT EXISTS widgets(
     name TEXT PRIMARY KEY, title TEXT, prompt TEXT, published_at TEXT);
+  CREATE TABLE IF NOT EXISTS bots(
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, shape TEXT NOT NULL,
+    color TEXT NOT NULL, thread_id TEXT, ord INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS kv(name TEXT PRIMARY KEY, data TEXT);
   CREATE TABLE IF NOT EXISTS timeclock(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clock_in TEXT NOT NULL, clock_out TEXT);
 `);
+
+// A user turn's reply quote and attachments (JSON).
+try { db.exec("ALTER TABLE turns ADD COLUMN meta TEXT"); } catch {}
+// Grok's sidebar organization: pinned tiles, named sections, hidden bots.
+for (const col of ["pinned INTEGER DEFAULT 0", "section TEXT", "hidden INTEGER DEFAULT 0", "image TEXT", "crop TEXT", "model TEXT", "effort TEXT", "fast INTEGER DEFAULT 0"]) {
+  try { db.exec(`ALTER TABLE bots ADD COLUMN ${col}`); } catch {}
+}
 
 const metaGet = (k) => db.prepare("SELECT v FROM meta WHERE k=?").get(k)?.v;
 const metaSet = (k, v) =>
@@ -276,6 +320,7 @@ function loadStore() {
     active: metaGet("active") || "t1",
     seq: Number(metaGet("seq") || 0),
     list: [],
+    bots: [],
   };
   for (const t of db.prepare("SELECT * FROM threads ORDER BY ord").all())
     s.list.push({
@@ -286,7 +331,7 @@ function loadStore() {
         .all(t.id)
         .map((u) =>
           u.role === "user"
-            ? { role: "user", text: u.text }
+            ? { role: "user", text: u.text, ...(u.meta ? JSON.parse(u.meta) : {}) }
             : {
                 role: "ai",
                 text: u.text ?? null,
@@ -296,9 +341,27 @@ function loadStore() {
                 reaction: u.reaction || "",
                 retries: u.retries || 0,
                 widget: !!u.widget,
+                ...(u.meta ? { files: JSON.parse(u.meta).files } : {}),
               },
         ),
     });
+  for (const b of db.prepare("SELECT * FROM bots ORDER BY ord").all())
+    s.bots.push({
+      id: b.id,
+      name: b.name,
+      shape: b.shape,
+      color: b.color,
+      threadId: b.thread_id,
+      pinned: !!b.pinned,
+      section: b.section || "",
+      hidden: !!b.hidden,
+      image: b.image || "",
+      crop: b.crop ? JSON.parse(b.crop) : null,
+      model: b.model || "",
+      effort: b.effort || "",
+      fast: !!b.fast,
+    });
+  s.sections = JSON.parse(metaGet("sections") || "[]");
   return s;
 }
 
@@ -314,6 +377,7 @@ if (store.list.length === 0 && existsSync(LEGACY_STATE)) {
   store = {
     active: "t1",
     seq: 0,
+    bots: [],
     list: [
       {
         id: "t1",
@@ -326,17 +390,131 @@ if (store.list.length === 0 && existsSync(LEGACY_STATE)) {
   };
 }
 
+// Files with HTTP byte ranges: AVPlayer (nsh's Video) refuses media from a
+// server without them ("Operation Stopped").
+function sendRanged(req, res, path, type) {
+  const buf = readFileSync(path);
+  res.setHeader("content-type", type);
+  res.setHeader("accept-ranges", "bytes");
+  const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || "");
+  if (!m) {
+    res.setHeader("content-length", buf.length);
+    return res.end(buf);
+  }
+  const start = m[1] ? +m[1] : Math.max(0, buf.length - +m[2]);
+  const end = m[1] && m[2] ? Math.min(+m[2], buf.length - 1) : buf.length - 1;
+  if (start >= buf.length || start > end) {
+    res.statusCode = 416;
+    res.setHeader("content-range", `bytes */${buf.length}`);
+    return res.end();
+  }
+  res.statusCode = 206;
+  res.setHeader("content-range", `bytes ${start}-${end}/${buf.length}`);
+  res.setHeader("content-length", end - start + 1);
+  return res.end(buf.subarray(start, end + 1));
+}
+
+const AVATAR_DIR = join(GEN_DIR, "avatars");
+mkdirSync(AVATAR_DIR, { recursive: true });
+const ATTACH_DIR = join(GEN_DIR, "attachments");
+mkdirSync(ATTACH_DIR, { recursive: true });
+// files a reply produced (Grok's file cards), one folder per turn
+const OUT_DIR = join(GEN_DIR, "files");
+mkdirSync(OUT_DIR, { recursive: true });
+const outFile = (rel) => {
+  const p = join(OUT_DIR, rel);
+  return p.startsWith(OUT_DIR + "/") ? p : null;
+};
+const osa = (script) =>
+  new Promise((ok, fail) =>
+    execFile("osascript", ["-e", script], (err, out) => (err ? fail(err) : ok(out.trim()))),
+  );
+const keyOf = (name) => {
+  if (process.env[name]) return process.env[name];
+  try { return (process.env[name] = execFileSync("secret", ["get", name], { encoding: "utf8" }).trim()); } catch { return ""; }
+};
+// Renders the avatar with Gemini's image model (falls back to OpenAI's
+// gpt-image-1); keys come from the environment or `secret`.
+async function generateAvatarImage(description, out) {
+  const prompt = `A square profile avatar image, centered subject filling the frame, clean simple background: ${description}`;
+  const gem = keyOf("GEMINI_API_KEY");
+  if (gem) {
+    const r = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${gem}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "1:1" } },
+        }),
+      },
+    );
+    const j = await r.json();
+    const data = j?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData?.data;
+    if (data) {
+      writeFileSync(out + ".raw", Buffer.from(data, "base64"));
+      execFileSync("sips", ["-s", "format", "png", out + ".raw", "--out", out], { stdio: "ignore" });
+      unlinkSync(out + ".raw");
+      return;
+    }
+  }
+  const oai = keyOf("OPENAI_API_KEY");
+  if (oai) {
+    const r = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${oai}` },
+      body: JSON.stringify({ model: "gpt-image-1", size: "1024x1024", quality: "medium", prompt }),
+    });
+    const j = await r.json();
+    if (r.ok && j?.data?.[0]?.b64_json) {
+      writeFileSync(out, Buffer.from(j.data[0].b64_json, "base64"));
+      return;
+    }
+  }
+  // No image model with quota: Claude illustrates it as SVG, ImageMagick
+  // rasterizes it.
+  if (!anthropic) throw new Error("no image model available (add GEMINI or OPENAI quota)");
+  const m = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 8000,
+    messages: [{
+      role: "user",
+      content: `Draw a polished, detailed flat-illustration profile avatar as a single SVG (viewBox 0 0 512 512, square, full-bleed colored background, the subject centered and filling most of the frame, rich shading with gradients). Subject: ${description}. Reply with only the <svg>…</svg> markup.`,
+    }],
+  });
+  const text = m.content.map((c) => c.text || "").join("");
+  const svg = /<svg[\s\S]*<\/svg>/.exec(text)?.[0];
+  if (!svg) throw new Error("the illustrator returned no SVG");
+  // QuickLook renders SVG through WebKit (gradients, filters intact)
+  const svgPath = out.replace(/\.png$/, ".svg");
+  writeFileSync(svgPath, svg);
+  execFileSync("qlmanage", ["-t", "-s", "1024", "-o", AVATAR_DIR, svgPath], { stdio: "ignore" });
+  execFileSync("mv", [svgPath + ".png", out]);
+  unlinkSync(svgPath);
+}
+
 function persist() {
   db.exec("BEGIN");
   try {
     db.exec("DELETE FROM threads");
     db.exec("DELETE FROM turns");
+    db.exec("DELETE FROM bots");
     const it = db.prepare(
       "INSERT INTO threads(id,title,ord) VALUES(?,?,?)",
     );
+    const ib = db.prepare(
+      "INSERT INTO bots(id,name,shape,color,thread_id,ord,pinned,section,hidden,image,crop,model,effort,fast) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    );
     const iu = db.prepare(
-      `INSERT INTO turns(thread_id,seq,role,text,name,label,caption,reaction,retries,widget)
-       VALUES(?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO turns(thread_id,seq,role,text,name,label,caption,reaction,retries,widget,meta)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+    );
+    store.bots.forEach((b, k) =>
+      ib.run(b.id, b.name, b.shape, b.color, b.threadId ?? null, k,
+        b.pinned ? 1 : 0, b.section || null, b.hidden ? 1 : 0,
+        b.image || null, b.crop ? JSON.stringify(b.crop) : null,
+        b.model || null, b.effort || null, b.fast ? 1 : 0),
     );
     store.list.forEach((t, i) => {
       it.run(t.id, t.title, i);
@@ -345,10 +523,14 @@ function persist() {
           t.id, j, u.role, u.text ?? null, u.name ?? null, u.label ?? null,
           u.caption ?? null, u.reaction ?? null, u.retries ?? 0,
           u.widget ? 1 : 0,
+          u.reply || u.attachments?.length || u.files?.length
+            ? JSON.stringify({ reply: u.reply, attachments: u.attachments, files: u.files })
+            : null,
         ),
       );
     });
     metaSet("active", store.active);
+    metaSet("sections", JSON.stringify(store.sections || []));
     metaSet("seq", String(seq));
     db.exec("COMMIT");
   } catch (e) {
@@ -453,89 +635,62 @@ ${sourcesBlock()}
 - KEYBOARD: import { keymap } from "nsh/keymap"; inside the component call keymap.bind({ left: () => move(-1), right: () => move(1), down: () => step(), up: () => rotate(), space: () => drop() }, { repeat: true }). Keystrokes: letters/numbers/space/enter/escape/tab/arrows/f1-f24, optional mod+/cmd+/ctrl+/alt+/shift+ prefix. Bindings auto-unbind with the component and don't fire while a text input eats the key. Reserved keys (cmd+q etc.) throw — skip them. A binding fires while ITS OWN window has the focus: inside the chat card the chat's input still owns typing keys (arrows/space included), so a keyboard-driven app MUST ALSO render tap controls for the chat surface — the user can send it to its own window (the ↗ action), where every bound key goes to it. Games SHOULD use it: arrows + space beat tap buttons.
 - CLIPBOARD: import { Clipboard } from "nsh/clipboard"; Clipboard.setString(text) copies natively — use it for copy-to-clipboard affordances (a small ⧉ button on values, ids, results).
 - POP-OUT SIZE (optional): the same module may be opened in its own floating window — resizable, normal z-order. Its WIDTH there is what you declare: export const popoutWidth = 520; (plain number, 240–720). Canvas apps/games may fix BOTH axes: export const popoutSize = { w: 320, h: 560 }; — the window is exactly that, no measuring. Without either: 360pt wide, height hugs content. Pop-out rules: (a) the top ~26pt of the window is an invisible drag strip — keep essential controls out of it (traffic lights sit in its left ~80pt); (b) lists that can grow tall MUST wrap in a bounded Scroll (max-h-96 or a fixed height) — an unbounded list measures its full content height and the window swallows the screen; (c) keep a min-h on the root so a transient empty/loading render never collapses the window.
-- THEME: pop-out windows follow the system light/dark appearance — your surfaces must too: put dark: variants on every bg/text/border color (bg-white dark:bg-zinc-900, text-gray-900 dark:text-gray-100); a hardcoded light card glows on a dark desktop. Canvas code may read colorScheme() from "nsh/device" inside draw() — reading it there redraws on theme change.
+- THEME (Sand design system — match it exactly): pop-out windows follow the system light/dark appearance — put dark: variants on every bg/text/border color; a hardcoded light card glows on a dark desktop. Surfaces: bg-white dark:bg-[#161616] (pane) · bg-[#f5f5f5] dark:bg-[#1f1f1f] (elevated card) · bg-black/5 dark:bg-white/5 (inset/track). Text: text-[#1c1c1c] dark:text-[#f5f5f5] (primary) · /60 alpha for secondary, /40 for tertiary (e.g. text-[#1c1c1c99] dark:text-[#f5f5f599]). Hairline borders: border-black/10 dark:border-white/10. Accent: #1680f3 light / #1884fc dark. Radius: 6 small, 10 medium, 14 card, 18 bubble/pill-ish. Spacing on a 4pt grid (p-2=8, p-3=12). Type: 12–14px body, 600 weight for emphasis — SF look, no exotic fonts. Canvas code may read colorScheme() from "nsh/device" inside draw() — reading it there redraws on theme change.
 - DESKTOP WIDGET: the same module can live in a macOS Notification Center widget, rendered natively from YOUR persisted state — not a screenshot. To control how it looks there, include a "widget" object inside the state you POST to /state (computed live, alongside your real fields). Shape: { kind, ...fields }. Kinds: "clock" {running:boolean, startedAt:ISO|null, todayMin:number, label?} (the widget shows a LIVE ticking timer) · "stat" {value:string, unit?, label?, sub?} (big number) · "progress" {fraction:0-1, value?, sub?} (ring) · "weather" {temp:number, unit?, condition?, high?, low?, days?:[{label,icon?,high?,low?}]} · "list" {rows:[{title,detail?,url?}]} · "note" {headline, body?}. e.g. a pomodoro POSTs {sessions, minutesFocused, widget:{kind:"progress",fraction:elapsed()/1500,value:"25:00",sub:"focus"}}. If you don't emit one, a template is inferred from your state's shape (status/running→clock, numbers→stat). You may also pin the template with export const widgetKind = "stat";.
 - No props, no imports beyond nsh modules, no fetch other than /state and /data: render standalone inside a ~340pt-wide chat card (it may also run in its own window).
 - Make it a small, polished, interactive widget for the user's request: cards, charts as View bars, forms, lists, counters, steppers, games with real loops. Compact code, but take the lines a working game needs (~150 is fine).`;
 
-// A plain conversation turn — no module, just the model's markdown answer.
-function textCard(t, i) {
-  return `<View class="max-w-[92%] self-start px-1 py-1 flex-row items-start gap-1"><View class="flex-1"><Markdown text=${JSON.stringify(
-    t.text || "",
-  )} /></View><DelBtn k=${JSON.stringify("idx:" + i)} /></View>`;
-}
-
-function userBubble(text) {
-  return `<View class="max-w-[85%] self-end px-4 py-2.5" style={{ backgroundColor: "#2f2f2f", borderRadius: 20 }}><Text class="text-[15px]" style={{ color: "#ececec" }}>{${JSON.stringify(
-    text,
-  )}}</Text></View>`;
-}
-
-function aiCard(t) {
-  const label = t.widget
-    ? `widget · ${t.name}.tsx`
-    : `generated · ${t.name}.tsx · ${t.label}${t.retries ? ` · ↻${t.retries}` : ""}`;
-  // Widget turns render ../widgets/R<n> as <R<n>w> — the alias keeps the
-  // binding unique if the same module also appears as a generated card.
-  const tag = t.widget ? `${t.name}w` : t.name;
-  return `<CardShell name=${JSON.stringify(t.name)} label=${JSON.stringify(label)} caption=${JSON.stringify(t.caption || "")} reaction=${JSON.stringify(t.reaction || "")}><${tag} /></CardShell>`;
-}
-
 const dirOf = (t) => (t.widget ? WIDGETS_DIR : GEN_DIR);
 
-function writeIndex() {
-  const turns = activeThread().turns;
-  // Never import a module that isn't on disk — a crashed job would leave a
-  // phantom turn and the whole conversation build fails on the device.
-  const ais = turns.filter(
-    (t) => t.role === "ai" && existsSync(join(dirOf(t), `${t.name}.tsx`)),
-  );
-  const missing = new Set(
-    turns
-      .filter((t) => t.role === "ai" && !ais.includes(t))
-      .map((t) => t.name),
-  );
-  // One import line per module — reusing a widget in a second turn must not
-  // redeclare it (a duplicated identifier is a parse error that kills the
-  // whole conversation build).
-  const imports = [
-    ...new Set(
-      ais.map((t) =>
-        t.widget
-          ? `import ${t.name}w from "../widgets/${t.name}";`
-          : `import ${t.name} from "./${t.name}";`,
-      ),
-    ),
-  ].join("\n");
-  const body = turns
-    .map((t, i) =>
-      t.role === "user"
-        ? userBubble(t.text)
-        : !t.name
-          ? t.text
-            ? textCard(t, i)
-            : ""
-          : missing.has(t.name)
-          ? ""
-          : aiCard(t),
-    )
-    .join("\n      ");
-  const src = `import { Text, View } from "nsh";
-import { CardShell, DelBtn } from "../shell";
-import { Markdown } from "../md";
-${imports}
-
-// Regenerated by tools/gen-server.mjs after every chat message.
-
-export function Conversation() {
-  return (
-    <View class="gap-3 px-4 py-4">
-      ${body}
-    </View>
-  );
+// The turns the app renders — plain JSON so a thread switch is a data swap,
+// not a code rebuild. `i` is the turn's index (DelBtn keys off it).
+function turnsJson(thread = activeThread()) {
+  return thread.turns.map((t, i) => ({
+    i,
+    role: t.role,
+    text: t.text || "",
+    name: t.name || "",
+    label: t.label || "",
+    caption: t.caption || "",
+    reaction: t.reaction || "",
+    retries: t.retries || 0,
+    widget: !!t.widget,
+    reply: t.reply || null,
+    attachments: t.attachments || [],
+    files: t.files || [],
+  }));
 }
-`;
-  writeFileSync(join(GEN_DIR, "index.tsx"), src);
+
+// generated/index.tsx is a STABLE registry: every module on disk gets one
+// import + one map entry, and the file is only rewritten when the set of
+// modules changes — never on a thread switch or a new text turn. That keeps
+// the conversation a data-driven view: no bundle rebuild, no blank flash.
+let lastModuleKey = "";
+function writeIndex() {
+  const gen = readdirSync(GEN_DIR)
+    .filter((f) => /^R\d+\.tsx$/.test(f) && f !== "index.tsx")
+    .map((f) => f.slice(0, -4));
+  const pubs = readdirSync(WIDGETS_DIR)
+    .filter((f) => /^R\d+\.tsx$/.test(f) && f !== "index.tsx")
+    .map((f) => f.slice(0, -4));
+  const key = [...gen].sort().join(",") + "|" + [...pubs].sort().join(",");
+  if (key !== lastModuleKey) {
+    lastModuleKey = key;
+    const imports = [
+      ...gen.map((n) => `import ${n} from "./${n}";`),
+      // Published widgets get a w-suffix key so a module that exists in both
+      // dirs can appear in both turn kinds without a duplicate binding.
+      ...pubs.map((n) => `import ${n}w from "../widgets/${n}";`),
+    ].join("\n");
+    const map = [
+      ...gen.map((n) => `  ${JSON.stringify(n)}: ${n},`),
+      ...pubs.map((n) => `  ${JSON.stringify(n + "w")}: ${n}w,`),
+    ].join("\n");
+    writeFileSync(
+      join(GEN_DIR, "index.tsx"),
+      `${imports}\n\n// Regenerated by tools/gen-server.mjs — module registry only.\n\nexport const MODULES: Record<string, any> = {\n${map}\n};\n`,
+    );
+  }
   store.seq = seq;
   persist();
 }
@@ -577,7 +732,7 @@ const KIND_COLOR: Record<string, string> = {
   db: "#10a37f",
   api: "#5e6ad2",
   keys: "#f2994a",
-  mem: "#8e8e93",
+  mem: "#f5f5f585",
 };
 
 function TitleBox(props: {
@@ -634,12 +789,12 @@ function TitleBox(props: {
           accessibilityLabel="double-click to rename"
         >
           <Text
-            style={{ color: "#ececec", fontSize: 12.5, fontWeight: "600" }}
+            style={{ color: "#f5f5f5", fontSize: 12.5, fontWeight: "600" }}
             numberOfLines={1}
           >
             {props.item.title}
           </Text>
-          <Text style={{ color: "#52525b", fontSize: 10 }}>✎</Text>
+          <Text style={{ color: "#f5f5f566", fontSize: 10 }}>✎</Text>
         </View>
       }
     >
@@ -659,10 +814,10 @@ function TitleBox(props: {
         style={{
           fontSize: 12.5,
           fontWeight: "600",
-          color: "#ececec",
+          color: "#f5f5f5",
           paddingVertical: 1,
           paddingHorizontal: 5,
-          backgroundColor: "#262626",
+          backgroundColor: "#f5f5f50f",
           borderRadius: 5,
         }}
       />
@@ -714,10 +869,10 @@ function TagBox(props: {
             borderRadius: 999,
             paddingHorizontal: 7,
             paddingVertical: 2,
-            backgroundColor: "#262626",
+            backgroundColor: "#f5f5f50f",
           }}
         >
-          <Text style={{ color: "#6e6e73", fontSize: 9 }}>+tag</Text>
+          <Text style={{ color: "#f5f5f566", fontSize: 9 }}>+tag</Text>
         </View>
       }
     >
@@ -725,7 +880,7 @@ function TagBox(props: {
         ref={input}
         defaultValue=""
         placeholder="+tag"
-        placeholderTextColor="#6e6e73"
+        placeholderTextColor="#f5f5f566"
         returnKeyType="done"
         autoFocus
         onChangeText={(t) => (latest = t)}
@@ -739,10 +894,10 @@ function TagBox(props: {
         style={{
           width: 56,
           fontSize: 10,
-          color: "#d4d4d8",
+          color: "#f5f5f5",
           paddingVertical: 2,
           paddingHorizontal: 6,
-          backgroundColor: "#262626",
+          backgroundColor: "#f5f5f50f",
           borderRadius: 6,
         }}
       />
@@ -838,10 +993,10 @@ export function WidgetShelf() {
         borderRadius: 7,
         paddingHorizontal: 8,
         paddingVertical: 4,
-        backgroundColor: on ? "#2f2f2f" : "transparent",
+        backgroundColor: on ? "#f5f5f514" : "transparent",
       }}
     >
-      <Text style={{ color: on ? "#ececec" : "#8e8e93", fontSize: 12 }}>{g}</Text>
+      <Text style={{ color: on ? "#f5f5f5" : "#f5f5f585", fontSize: 12 }}>{g}</Text>
     </View>
   );
 
@@ -853,10 +1008,10 @@ export function WidgetShelf() {
         borderRadius: 999,
         paddingHorizontal: 10,
         paddingVertical: 3,
-        backgroundColor: on ? color : "#262626",
+        backgroundColor: on ? color : "#f5f5f50f",
       }}
     >
-      <Text style={{ color: on ? "#ececec" : "#a3a3a3", fontSize: 10, fontWeight: "600" }}>
+      <Text style={{ color: on ? "#f5f5f5" : "#f5f5f5a8", fontSize: 10, fontWeight: "600" }}>
         {label}
       </Text>
     </View>
@@ -869,8 +1024,8 @@ export function WidgetShelf() {
         width: "48%",
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: "#2a2a2a",
-        backgroundColor: "#181818",
+        borderColor: "#f5f5f51f",
+        backgroundColor: "#1f1f1f",
         padding: 12,
         gap: 7,
       }}
@@ -881,7 +1036,7 @@ export function WidgetShelf() {
             width: 30,
             height: 30,
             borderRadius: 9,
-            backgroundColor: KIND_COLOR[w().kinds[0]] || "#8e8e93",
+            backgroundColor: KIND_COLOR[w().kinds[0]] || "#f5f5f585",
             alignItems: "center",
             justifyContent: "center",
           }}
@@ -890,7 +1045,7 @@ export function WidgetShelf() {
             {w().title.slice(0, 1).toUpperCase()}
           </Text>
         </View>
-        <Text style={{ color: "#6e6e73", fontSize: 9.5, flex: 1 }}>
+        <Text style={{ color: "#f5f5f566", fontSize: 9.5, flex: 1 }}>
           {w().name}.tsx · {w().publishedAt?.slice(0, 10)}
         </Text>
         {act("↗", () => post("/popout", { name: w().name }), false)}
@@ -911,12 +1066,12 @@ export function WidgetShelf() {
                 borderRadius: 999,
                 paddingHorizontal: 7,
                 paddingVertical: 2,
-                backgroundColor: (KIND_COLOR[k()] || "#8e8e93") + "26",
+                backgroundColor: (KIND_COLOR[k()] || "#f5f5f585") + "26",
               }}
             >
               <Text
                 style={{
-                  color: KIND_COLOR[k()] || "#8e8e93",
+                  color: KIND_COLOR[k()] || "#f5f5f585",
                   fontSize: 9,
                   fontWeight: "700",
                 }}
@@ -940,10 +1095,10 @@ export function WidgetShelf() {
                 borderRadius: 999,
                 paddingHorizontal: 7,
                 paddingVertical: 2,
-                backgroundColor: "#262626",
+                backgroundColor: "#f5f5f50f",
               }}
             >
-              <Text style={{ color: "#a3a3a3", fontSize: 9 }}>#{t()}</Text>
+              <Text style={{ color: "#f5f5f5a8", fontSize: 9 }}>#{t()}</Text>
             </View>
           )}
         </Each>
@@ -967,10 +1122,10 @@ export function WidgetShelf() {
             borderRadius: 8,
             paddingHorizontal: 9,
             paddingVertical: 4,
-            backgroundColor: "#2f2f2f",
+            backgroundColor: "#f5f5f514",
           }}
         >
-          <Text style={{ color: "#ececec", fontSize: 10.5 }}>
+          <Text style={{ color: "#f5f5f5", fontSize: 10.5 }}>
             {sent() === w().name ? "＋ chat ✓" : "＋ chat"}
           </Text>
         </View>
@@ -981,21 +1136,21 @@ export function WidgetShelf() {
   return (
     <View class="gap-3 px-4 py-4">
       <View class="flex-row items-center justify-between">
-        <Text style={{ color: "#6e6e73", fontSize: 12, fontWeight: "600" }}>
+        <Text style={{ color: "#f5f5f566", fontSize: 12, fontWeight: "600" }}>
           {"MINI APPS — " + shown().length}
         </Text>
         <Input
           value={q()}
           onChangeText={(t) => q.set(t)}
           placeholder="filter…"
-          placeholderTextColor="#6e6e73"
+          placeholderTextColor="#f5f5f566"
           style={{
             width: 140,
             fontSize: 11,
-            color: "#ececec",
+            color: "#f5f5f5",
             paddingVertical: 4,
             paddingHorizontal: 10,
-            backgroundColor: "#262626",
+            backgroundColor: "#f5f5f50f",
             borderRadius: 8,
           }}
         />
@@ -1004,7 +1159,7 @@ export function WidgetShelf() {
         {chip("all", kind() === "all" && !tag(), () => {
           kind.set("all");
           tag.set("");
-        }, "#3f3f46")}
+        }, "#f5f5f53d")}
         {chip("db", kind() === "db", () => kind.set(kind() === "db" ? "all" : "db"), KIND_COLOR.db)}
         {chip("api", kind() === "api", () => kind.set(kind() === "api" ? "all" : "api"), KIND_COLOR.api)}
         {chip("keys", kind() === "keys", () => kind.set(kind() === "keys" ? "all" : "keys"), KIND_COLOR.keys)}
@@ -1020,7 +1175,7 @@ export function WidgetShelf() {
         <Each of={shown()} key={(i) => i.name}>{(w) => card(w)}</Each>
       </View>
       <If when={!shown().length}>
-        <Text style={{ color: "#6e6e73", fontSize: 13 }}>
+        <Text style={{ color: "#f5f5f566", fontSize: 13 }}>
           Nothing here — publish a generated card with ⬆, or loosen the filter.
         </Text>
       </If>
@@ -1472,11 +1627,11 @@ async function toolGenerateApp(job, thread, input) {
   thread.turns.push({
     role: "ai",
     name,
-    label: MODEL,
+    label: labelOf(modelCtx.getStore()),
     caption: String(input.caption || ""),
   });
   job.cards = (job.cards || 0) + 1;
-  console.log(`✓ ${name}.tsx via ${MODEL} (tool)`);
+  console.log(`✓ ${name}.tsx via ${labelOf(modelCtx.getStore())} (tool)`);
   return { content: `mounted as ${name} — the card is live in the conversation.` };
 }
 
@@ -1609,12 +1764,13 @@ async function agentTurn(job, prompt, thread) {
             content: t.name ? `[mounted card ${t.name}]` : t.text || "",
           },
     ),
-    { role: "user", content: prompt },
+    { role: "user", content: userContent(prompt, job.extra, job.ctx) },
   ];
   let reply = "";
   for (let i = 0; i < 8; i++) {
-    setJob(job, "thinking", i === 0 ? `${MODEL} is thinking` : "continuing…");
+    setJob(job, "thinking", i === 0 ? `${labelOf(modelCtx.getStore())} is thinking` : "continuing…");
     let msg;
+    const t0 = Date.now();
     try {
       msg = await anthropic.messages.create({
         model: MODEL,
@@ -1633,6 +1789,9 @@ async function agentTurn(job, prompt, thread) {
       throw new Error(`llm-api ${e.status ?? ""}: ${m}`);
     }
     messages.push({ role: "assistant", content: msg.content });
+    console.log(
+      `  · call ${i}: ${Date.now() - t0}ms stop=${msg.stop_reason} blocks=${msg.content.map((b) => b.type).join(",")}`,
+    );
     // pause_turn = a server-side tool (web_search) is still mid-run — keep
     // polling with the same messages; tool_use = a client tool needs us.
     if (msg.stop_reason === "pause_turn") continue;
@@ -1660,12 +1819,97 @@ async function agentTurn(job, prompt, thread) {
   return reply;
 }
 
+// A reply on an artifact: the file itself becomes context — images as image
+// blocks, text/code/json/html/csv verbatim, xlsx as tab-separated sheets,
+// docx as its text; anything else (audio, video, pdf…) is described.
+const IMG_TYPE = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+async function artifactBlocks(rels) {
+  const blocks = [];
+  for (const rel of (rels || []).slice(0, 8)) {
+    const p = outFile(String(rel));
+    if (!p || !existsSync(p)) continue;
+    const m = fileMeta(p);
+    try {
+      if (m.kind === "image" && IMG_TYPE[m.ext]) {
+        blocks.push({ type: "image", source: { type: "base64", media_type: IMG_TYPE[m.ext], data: readFileSync(p).toString("base64") } });
+        blocks.push({ type: "text", text: `(the image above is ${m.name}, ${m.width}×${m.height})` });
+        continue;
+      }
+      let body;
+      if (["markdown", "text", "json", "html"].includes(m.kind) || m.ext === "svg") body = readFileSync(p, "utf8");
+      else if (m.kind === "table") body = ((await renderFile(p)).sheets || []).map((s) => `# sheet: ${s.name}\n` + s.rows.map((r) => r.join("\t")).join("\n")).join("\n\n");
+      else if (m.kind === "docx") body = (await renderFile(p)).text || "";
+      if (body != null) blocks.push({ type: "text", text: `<file name="${m.name}">\n${body.slice(0, 60000)}\n</file>` });
+      else blocks.push({ type: "text", text: `<file name="${m.name}" kind="${m.kind}" size="${m.size}">(binary ${m.kind} file; its contents can't be shown as text)</file>` });
+    } catch {}
+  }
+  return blocks;
+}
+
+// The model's view of a user turn: the quoted message it replies to, then
+// the text, with attached images as image blocks and documents inlined.
+function userContent(prompt, extra, ctx = []) {
+  const quote = extra?.reply?.text ? `> ${extra.reply.text.replace(/\n/g, "\n> ")}\n\n` : "";
+  const text = quote + (prompt || "(see the attachments)");
+  const files = (extra?.attachments || []).filter((a) => a.uri?.startsWith("file://"));
+  if (!files.length && !ctx.length) return text;
+  const blocks = [...ctx];
+  for (const a of files) {
+    const path = decodeURIComponent(a.uri.slice(7));
+    try {
+      if (a.kind === "image") {
+        blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: readFileSync(path).toString("base64") } });
+      } else {
+        blocks.push({ type: "text", text: `<file name="${a.name}">\n${readFileSync(path, "utf8").slice(0, 60000)}\n</file>` });
+      }
+    } catch {}
+  }
+  return [...blocks, { type: "text", text }];
+}
+
 async function generate(job, prompt) {
   // The job stays on the thread it was sent from — you can switch threads
   // while a generation is still running and it lands where it belongs.
   const thread =
     store.list.find((t) => t.id === job.thread) || activeThread();
   let name, aiTurn;
+  // "/mock files": a canned reply carrying one file of every kind — tests the
+  // viewers without a model call
+  if (!job.retry && /^\/mock\b/i.test(prompt.trim())) {
+    const rel = `m${Date.now().toString(36)}`;
+    const dir = join(OUT_DIR, rel);
+    const paths = mockFiles(dir);
+    paths.push(await mockXlsx(dir), await mockDocx(dir));
+    // a screen recording as the video sample, twice (gallery of two)
+    const movs = readdirSync(ATTACH_DIR).filter((f) => f.endsWith(".mov"));
+    if (movs.length) {
+      copyFileSync(join(ATTACH_DIR, movs[0]), join(dir, "demo.mov"));
+      copyFileSync(join(ATTACH_DIR, movs[0]), join(dir, "replay.mov"));
+      paths.push(join(dir, "demo.mov"), join(dir, "replay.mov"));
+    }
+    const files = paths.map((p) => {
+      const m = fileMeta(p);
+      return { path: `${rel}/${p.split("/").pop()}`, ...m, ...(m.poster ? { poster: `${rel}/${m.poster}` } : {}) };
+    });
+    // an image whose file is gone: the gallery shows "Image unavailable"
+    const firstImg = files.findIndex((f) => f.kind === "image");
+    files.splice(firstImg + 1, 0, { path: `${rel}/missing.png`, name: "missing.png", ext: "png", size: 0, kind: "image", variant: "media" });
+    // "/mock media": just the gallery (images · videos) and the diagram
+    if (/media/i.test(prompt)) files.splice(0, files.length, ...files.filter((f) => f.kind === "image" || f.kind === "video"));
+    if (thread.turns.length === 0) thread.title = "Mock files";
+    thread.turns.push({ role: "user", text: prompt, ...(job.extra || {}) });
+    thread.turns.push({
+      role: "ai",
+      text: `Here are ${files.length} sample files — one of each kind the viewer handles.\n\n\`\`\`mermaid\nflowchart LR\n  A[You ask] --> B[Kiffy makes the file] --> C[You click to view]\n\`\`\``,
+      label: "mock",
+      files,
+    });
+    writeIndex();
+    setJob(job, "done", "replied");
+    job.done = true;
+    job.result = "reply";
+    return;
+  }
   const useTools =
     !MOCK && PROVIDER === "anthropic" && !!process.env.ANTHROPIC_API_KEY;
   if (!job.retry && useTools) {
@@ -1673,11 +1917,11 @@ async function generate(job, prompt) {
     // cards, or a composition (search → build). Cards land as they pass the
     // compiler; the final text answer lands last.
     if (thread.turns.length === 0) thread.title = prompt.slice(0, 42);
-    thread.turns.push({ role: "user", text: prompt });
+    thread.turns.push({ role: "user", text: prompt, ...(job.extra || {}) });
     const text = await agentTurn(job, prompt, thread);
-    if (text) thread.turns.push({ role: "ai", text, label: MODEL });
+    if (text) thread.turns.push({ role: "ai", text, label: labelOf(modelCtx.getStore()) });
     writeIndex();
-    console.log(`✓ turn (${prompt.slice(0, 60)}) — ${job.cards || 0} card(s)`);
+    console.log(`✓ turn via ${labelOf(modelCtx.getStore())} (${prompt.slice(0, 60)}) — ${job.cards || 0} card(s)`);
     setJob(job, "done", job.cards ? `${job.cards} card(s)` : "replied");
     job.done = true;
     job.result = job.cards ? "cards" : "reply";
@@ -1687,11 +1931,11 @@ async function generate(job, prompt) {
     // Conversation ≠ generation — "hi" gets a text reply, not a greeting card.
     const intent = await classifyIntent(prompt);
     if (intent === "chat") {
-      setJob(job, "thinking", `${MODEL} is replying`);
+      setJob(job, "thinking", `${labelOf(modelCtx.getStore())} is replying`);
       if (thread.turns.length === 0) thread.title = prompt.slice(0, 42);
       const text = await chatReply(prompt, thread);
-      thread.turns.push({ role: "user", text: prompt });
-      thread.turns.push({ role: "ai", text, label: MODEL });
+      thread.turns.push({ role: "user", text: prompt, ...(job.extra || {}) });
+      thread.turns.push({ role: "ai", text, label: labelOf(modelCtx.getStore()) });
       writeIndex();
       console.log(`✓ reply (${prompt.slice(0, 60)})`);
       setJob(job, "done", "replied");
@@ -1708,14 +1952,14 @@ async function generate(job, prompt) {
       thread.turns.find(
         (t) => t.role === "ai" && t.name === name && t.widget,
       ) || thread.turns.find((t) => t.role === "ai" && t.name === name);
-    if (!aiTurn) aiTurn = { role: "ai", name, label: MODEL };
+    if (!aiTurn) aiTurn = { role: "ai", name, label: labelOf(modelCtx.getStore()) };
     aiTurn.retries = (aiTurn.retries || 0) + 1;
   } else {
     seq += 1;
     name = `R${seq}`;
     if (thread.turns.length === 0) thread.title = prompt.slice(0, 42);
-    thread.turns.push({ role: "user", text: prompt });
-    aiTurn = { role: "ai", name, label: MODEL };
+    thread.turns.push({ role: "user", text: prompt, ...(job.extra || {}) });
+    aiTurn = { role: "ai", name, label: labelOf(modelCtx.getStore()) };
     thread.turns.push(aiTurn);
   }
 
@@ -1748,7 +1992,7 @@ async function generate(job, prompt) {
           "retrying",
           `compile error — feeding it back to the model (attempt ${attempt + 1})`,
         );
-      else setJob(job, "thinking", `${MODEL} is working on it`);
+      else setJob(job, "thinking", `${labelOf(modelCtx.getStore())} is working on it`);
       try {
         const r = await askModel(job, prompt, err, lastCode, name);
         lastCaption = r.caption || "";
@@ -1923,8 +2167,9 @@ const server = createServer((req, res) => {
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
       try {
-        const { prompt } = JSON.parse(body || "{}");
-        if (!prompt) throw new Error("missing prompt");
+        const { prompt: rawPrompt, reply, attachments } = JSON.parse(body || "{}");
+        const prompt = rawPrompt || (attachments?.length ? "" : null);
+        if (prompt == null) throw new Error("missing prompt");
         const job = {
           id: nextJobId++,
           thread: store.active,
@@ -1933,12 +2178,21 @@ const server = createServer((req, res) => {
           detail: "",
           done: false,
           result: null,
+          extra: {
+            ...(reply?.text ? { reply: { i: reply.i, text: String(reply.text).slice(0, 400), ...(reply.files?.length ? { files: reply.files.slice(0, 8).map(String) } : {}) } } : {}),
+            ...(attachments?.length ? { attachments } : {}),
+          },
         };
         jobs.set(job.id, job);
         if (jobs.size > 25) jobs.delete(jobs.keys().next().value);
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ ok: true, id: job.id }));
-        generate(job, prompt) // files land after the response; nsh dev hot-patches
+        // a reply on an artifact: read the file(s) into the model's context first
+        artifactBlocks(job.extra.reply?.files)
+          .then((ctx) => {
+            job.ctx = ctx;
+            return modelCtx.run(choiceFor(job.thread), () => generate(job, prompt)); // files land after the response; nsh dev hot-patches
+          })
           .catch((e) => {
             console.error(`✗ job ${job.id} crashed:`, e);
             job.done = true;
@@ -1957,13 +2211,340 @@ const server = createServer((req, res) => {
       JSON.stringify({
         active: activeThread().id,
         model: MOCK ? "mock" : MODEL,
-        list: store.list.map((t) => ({
-          id: t.id,
-          title: t.title,
-          count: t.turns.length,
-        })),
+        list: store.list.map((t) => {
+          const bot = store.bots.find((b) => b.threadId === t.id);
+          return {
+            id: t.id,
+            title: t.title,
+            count: t.turns.length,
+            lastApp: [...t.turns].reverse().find((x) => x.name)?.name || "",
+            bot: bot
+              ? { id: bot.id, name: bot.name, shape: bot.shape, color: bot.color }
+              : null,
+          };
+        }),
+        sections: store.sections || [],
+        bots: store.bots.map((b) => {
+          const t = store.list.find((x) => x.id === b.threadId);
+          // the subtitle / hover popover: the latest message, flattened
+          const last = t && [...t.turns].reverse().find((x) => x.text || x.caption);
+          return {
+            id: b.id,
+            name: b.name,
+            shape: b.shape,
+            color: b.color,
+            threadId: b.threadId,
+            pinned: !!b.pinned,
+            section: b.section || "",
+            hidden: !!b.hidden,
+            image: b.image || "",
+            crop: b.crop || null,
+            model: b.model || "",
+            effort: b.effort || "",
+            fast: !!b.fast,
+            preview: String(last?.text || last?.caption || "").replace(/[#*`>_]/g, "").replace(/\s+/g, " ").trim().slice(0, 160),
+          };
+        }),
       }),
     );
+  }
+  // A bot is a named agent persona (blob avatar: shape + color) that owns
+  // one thread — Grok Bot's model.
+  if (req.method === "POST" && req.url === "/bot/new") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const { name, shape, color } = JSON.parse(body || "{}");
+        if (!name?.trim()) throw new Error("bot needs a name");
+        const tid = `t${threadSeq++}`;
+        const id = `b${Date.now().toString(36)}${Math.floor(Math.random() * 46656).toString(36)}`;
+        store.list.unshift({ id: tid, title: name.trim(), turns: [] });
+        store.bots.push({
+          id,
+          name: name.trim(),
+          shape: shape || "blob",
+          color: color || "#1084FE",
+          threadId: tid,
+        });
+        store.active = tid;
+        writeIndex();
+        persist();
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            ok: true,
+            bot: {
+              id,
+              name: name.trim(),
+              shape: shape || "blob",
+              color: color || "#1084FE",
+              threadId: tid,
+            },
+            turns: turnsJson(),
+          }),
+        );
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    });
+    return;
+  }
+  if (req.method === "POST" && req.url === "/bot/update") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const { id, name, shape, color, pinned, section, hidden, image, crop, model, effort, fast } = JSON.parse(body || "{}");
+        const bot = store.bots.find((b) => b.id === id);
+        if (!bot) throw new Error(`unknown bot ${id}`);
+        if (name?.trim()) bot.name = name.trim();
+        if (shape) bot.shape = shape;
+        if (color) bot.color = color;
+        if (pinned !== undefined) bot.pinned = !!pinned;
+        if (hidden !== undefined) bot.hidden = !!hidden;
+        if (image !== undefined) bot.image = String(image);
+        if (crop !== undefined) bot.crop = crop;
+        if (model !== undefined) bot.model = String(model);
+        if (effort !== undefined) bot.effort = String(effort);
+        if (fast !== undefined) bot.fast = !!fast;
+        if (section !== undefined) {
+          bot.section = String(section).trim();
+          store.sections ??= [];
+          if (bot.section && !store.sections.includes(bot.section)) store.sections.push(bot.section);
+        }
+        const thread = store.list.find((t) => t.id === bot.threadId);
+        if (thread) thread.title = bot.name;
+        persist();
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    });
+    return;
+  }
+  // Image avatars (Grok's Generate / Upload tabs): files land in
+  // generated/avatars and the app shows them by file:// URI.
+  // Mermaid, rendered by mermaid.js in a web view (served locally: the web
+  // view's grant is 127.0.0.1). The page reports its size; "full" mode zooms.
+  if (req.method === "GET" && req.url === "/mermaid.js") {
+    res.setHeader("content-type", "text/javascript");
+    return res.end(readFileSync(new URL("../node_modules/mermaid/dist/mermaid.min.js", import.meta.url)));
+  }
+  if (req.method === "GET" && req.url.startsWith("/mermaid?")) {
+    const q = new URL(req.url, "http://x").searchParams;
+    const code = Buffer.from(q.get("d") || "", "base64url").toString("utf8");
+    const dark = q.get("theme") === "dark";
+    const full = q.get("mode") === "full";
+    const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    res.setHeader("content-type", "text/html; charset=utf-8");
+    return res.end(`<!doctype html><html><head><meta charset="utf-8"><style>
+html,body{margin:0;background:transparent;overflow:hidden;font-family:-apple-system,system-ui}
+#wrap{display:inline-block;transform-origin:${full ? "center" : "0 0"};${full ? "padding:28px;background:" + (dark ? "#262626" : "#fff") + ";border-radius:12px" : ""}}
+${full ? "body{display:flex;align-items:center;justify-content:center;height:100vh}" : ""}
+</style></head><body><div id="wrap"><pre class="mermaid">${esc(code)}</pre></div>
+<script src="/mermaid.js"></script><script>
+mermaid.initialize({startOnLoad:false,markdownAutoWrap:false,flowchart:{wrappingWidth:600,useMaxWidth:false},theme:${JSON.stringify(dark ? "dark" : "neutral")},securityLevel:"strict",fontFamily:"-apple-system,system-ui"});
+let z=1;const w=document.getElementById("wrap");
+const post=(m)=>window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(m));
+mermaid.run().then(()=>{const r=w.getBoundingClientRect();post({w:Math.ceil(r.width),h:Math.ceil(r.height)});}).catch(e=>post({error:String(e)}));
+window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1.25):c==="out"?Math.max(0.25,z/1.25):1;w.style.transform="scale("+z+")";const r=w.getBoundingClientRect();post({w:Math.ceil(r.width),h:Math.ceil(r.height)});});
+</script></body></html>`);
+  }
+  // Shiki tokens for a markdown code fence (Grok's cursor palettes)
+  if (req.method === "POST" && req.url === "/highlight") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const { code, lang } = JSON.parse(body || "{}");
+      const ALIAS = { rust: "rs", typescript: "ts", javascript: "js", python: "py", shell: "sh", bash: "sh", zsh: "sh", golang: "go", yml: "yaml", "c++": "cpp", "c#": "cs", csharp: "cs", kotlin: "kt", ruby: "rb", markdown: "md" };
+      const ext = ALIAS[String(lang).toLowerCase()] || String(lang).toLowerCase();
+      res.setHeader("content-type", "application/json");
+      highlight(String(code || "").slice(0, 200000), ext)
+        .then((lines) => res.end(JSON.stringify({ lines })))
+        .catch(() => res.end(JSON.stringify({ lines: null })));
+    });
+    return;
+  }
+  // Reply files (Grok's file cards → fullscreen viewer)
+  if (req.method === "GET" && req.url.startsWith("/file/render?")) {
+    const q = new URL(req.url, "http://x").searchParams;
+    const p = outFile(q.get("path") || "");
+    res.setHeader("content-type", "application/json");
+    if (!p) return res.end(JSON.stringify({ error: "bad path" }));
+    renderFile(p)
+      .then((r) => res.end(JSON.stringify(r)))
+      .catch((e) => res.end(JSON.stringify({ error: String(e?.message || e) })));
+    return;
+  }
+  if (req.method === "GET" && req.url.startsWith("/file/raw/")) {
+    const p = outFile(decodeURIComponent(req.url.slice("/file/raw/".length).split("?")[0]));
+    if (!p || !existsSync(p)) {
+      res.statusCode = 404;
+      return res.end();
+    }
+    const ext = (p.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
+    const type = { pdf: "application/pdf", html: "text/html; charset=utf-8", htm: "text/html; charset=utf-8", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", mp4: "video/mp4", mov: "video/quicktime", m4v: "video/mp4", m4a: "audio/mp4", mp3: "audio/mpeg", wav: "audio/wav", aac: "audio/aac" }[ext] || "application/octet-stream";
+    return sendRanged(req, res, p, type);
+  }
+  // Download: the native save panel, then a copy
+  if (req.method === "POST" && req.url === "/file/save") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const { path } = JSON.parse(body || "{}");
+      const p = outFile(path || "");
+      res.setHeader("content-type", "application/json");
+      if (!p || !existsSync(p)) return res.end(JSON.stringify({ ok: false }));
+      const name = p.split("/").pop().replace(/"/g, "");
+      osa(`POSIX path of (choose file name with prompt "Download" default name "${name}")`)
+        .then((dest) => {
+          copyFileSync(p, dest);
+          res.end(JSON.stringify({ ok: true, dest }));
+        })
+        .catch(() => res.end(JSON.stringify({ ok: false, cancelled: true })));
+    });
+    return;
+  }
+  // Avatar and attachment files over http: the app's media grant covers
+  // 127.0.0.1, not file:// paths. Only these two folders, by bare file name.
+  if (req.method === "GET" && /^\/files\/(attachments|avatars)\//.test(req.url)) {
+    const [, dir, raw] = req.url.match(/^\/files\/(attachments|avatars)\/([^?]+)/);
+    const name = decodeURIComponent(raw);
+    const path = join(dir === "attachments" ? ATTACH_DIR : AVATAR_DIR, name.split("/").pop());
+    if (!existsSync(path)) {
+      res.statusCode = 404;
+      return res.end();
+    }
+    const ext = (path.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
+    const type = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", mov: "video/quicktime", mp4: "video/mp4" }[ext] || "application/octet-stream";
+    res.setHeader("cache-control", "max-age=86400");
+    return sendRanged(req, res, path, type);
+  }
+  // Composer attachments (Grok's + menu): the native picker, several files;
+  // images are normalized to PNG for the model, documents kept as they are.
+  if (req.method === "POST" && req.url === "/attach/pick") {
+    res.setHeader("content-type", "application/json");
+    osa('set fs to choose file with prompt "Attach photos & files" with multiple selections allowed\nset out to ""\nrepeat with f in fs\nset out to out & POSIX path of f & linefeed\nend repeat\nreturn out')
+      .then((list) => {
+        const files = list.split("\n").filter(Boolean).map((src) => {
+          const name = src.split("/").pop();
+          const ext = (name.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
+          const image = /^(png|jpe?g|gif|heic|webp|tiff?|bmp)$/.test(ext);
+          const video = /^(mov|mp4|m4v|webm|avi|mkv)$/.test(ext);
+          const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+          const out = join(ATTACH_DIR, image ? `${id}.png` : `${id}-${name}`);
+          if (image) execFileSync("sips", ["-s", "format", "png", src, "--out", out], { stdio: "ignore" });
+          else copyFileSync(src, out);
+          // a 256px thumbnail: sips for images, Quick Look's frame for video
+          let thumb = "";
+          try {
+            if (image) {
+              thumb = join(ATTACH_DIR, `${id}.thumb.png`);
+              execFileSync("sips", ["-Z", "256", out, "--out", thumb], { stdio: "ignore" });
+            } else if (video) {
+              execFileSync("qlmanage", ["-t", "-s", "256", "-o", ATTACH_DIR, out], { stdio: "ignore", timeout: 15000 });
+              const ql = `${out}.png`;
+              if (existsSync(ql)) thumb = ql;
+            }
+          } catch {}
+          return {
+            uri: `file://${out}`,
+            thumb: thumb ? `file://${thumb}` : "",
+            name,
+            ext,
+            kind: image ? "image" : video ? "video" : "file",
+          };
+        });
+        res.end(JSON.stringify({ ok: true, files }));
+      })
+      .catch(() => res.end(JSON.stringify({ ok: false, cancelled: true, files: [] })));
+    return;
+  }
+  if (req.method === "POST" && req.url.startsWith("/avatar/image/")) {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", async () => {
+      res.setHeader("content-type", "application/json");
+      try {
+        const kind = req.url.slice("/avatar/image/".length);
+        const out = join(AVATAR_DIR, `${Date.now().toString(36)}.png`);
+        let name = "";
+        if (kind === "gen") {
+          const { description } = JSON.parse(body || "{}");
+          if (!description?.trim()) throw new Error("describe the avatar");
+          await generateAvatarImage(description.trim(), out);
+          name = description.trim();
+        } else if (kind === "pick") {
+          const picked = await osa(
+            'POSIX path of (choose file with prompt "Choose an avatar image" of type {"public.image"})',
+          ).catch(() => "");
+          if (!picked) return res.end(JSON.stringify({ ok: false, cancelled: true }));
+          name = picked.split("/").pop();
+          execFileSync("sips", ["-s", "format", "png", picked, "--out", out], { stdio: "ignore" });
+        } else if (kind === "paste") {
+          await osa(
+            `set f to open for access POSIX file "${out}" with write permission
+             write (the clipboard as «class PNGf») to f
+             close access f`,
+          );
+          name = "Pasted image";
+        } else throw new Error(`unknown avatar source ${kind}`);
+        const dims = execFileSync("sips", ["-g", "pixelWidth", "-g", "pixelHeight", out], { encoding: "utf8" });
+        const w = Number(/pixelWidth: (\d+)/.exec(dims)?.[1] || 0);
+        const h = Number(/pixelHeight: (\d+)/.exec(dims)?.[1] || 0);
+        res.end(JSON.stringify({ ok: true, uri: `file://${out}`, name, w, h }));
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    });
+    return;
+  }
+  if (req.method === "POST" && req.url === "/avatar/gen") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", async () => {
+      const SHAPES = [
+        "blob", "cloud", "square", "sparkle", "clover", "heart", "flower",
+        "teardrop", "tablet", "wedge", "house", "star", "hex",
+      ];
+      const COLORS = [
+        "#FFFFFF", "#936439", "#FF263C", "#FF6700", "#FF9800", "#00C972",
+        "#00BCA6", "#1084FE", "#9159FE", "#FF309B", "#777777",
+      ];
+      try {
+        const { description } = JSON.parse(body || "{}");
+        if (!description?.trim()) throw new Error("describe the avatar");
+        let shape = "blob", color = "#1084FE";
+        if (PROVIDER === "anthropic" && anthropic) {
+          const m = await anthropic.messages.create({
+            model: MODEL,
+            max_tokens: 120,
+            system:
+              "Pick an avatar shape and color for a blob character from a description. " +
+              `Reply ONLY with JSON {"shape":<one of ${SHAPES.join("|")}>,"color":<one of ${COLORS.join("|")}>}.`,
+            messages: [{ role: "user", content: description.trim() }],
+          });
+          const txt = (m.content || [])
+            .filter((b) => b.type === "text")
+            .map((b) => b.text)
+            .join("");
+          const j = JSON.parse((txt.match(/\{[\s\S]*\}/) || ["{}"])[0]);
+          if (SHAPES.includes(j.shape)) shape = j.shape;
+          if (COLORS.includes(j.color)) color = j.color;
+        }
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ ok: true, shape, color }));
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    });
+    return;
   }
   if (req.method === "POST" && req.url === "/thread/new") {
     const id = `t${threadSeq++}`;
@@ -1973,18 +2554,24 @@ const server = createServer((req, res) => {
     res.setHeader("content-type", "application/json");
     return res.end(JSON.stringify({ ok: true, id }));
   }
+  if (req.method === "GET" && req.url === "/turns") {
+    res.setHeader("content-type", "application/json");
+    return res.end(
+      JSON.stringify({ active: activeThread().id, turns: turnsJson() }),
+    );
+  }
   if (req.method === "POST" && req.url === "/thread/select") {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       try {
         const { id } = JSON.parse(body || "{}");
-        if (!store.list.some((t) => t.id === id))
-          throw new Error(`unknown thread ${id}`);
+        const thread = store.list.find((t) => t.id === id);
+        if (!thread) throw new Error(`unknown thread ${id}`);
         store.active = id;
         writeIndex();
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ ok: true }));
+        res.end(JSON.stringify({ ok: true, turns: turnsJson(thread) }));
       } catch (e) {
         res.statusCode = 400;
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
@@ -2033,11 +2620,16 @@ const server = createServer((req, res) => {
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       try {
-        const { name, r } = JSON.parse(body || "{}");
-        for (const t of store.list)
-          for (const turn of t.turns)
-            if (turn.role === "ai" && turn.name === name)
-              turn.reaction = r || undefined;
+        const { name, key, r } = JSON.parse(body || "{}");
+        if (typeof key === "string" && key.startsWith("idx:")) {
+          const turn = activeThread().turns[Number(key.slice(4))];
+          if (turn) turn.reaction = r || undefined;
+        } else {
+          for (const t of store.list)
+            for (const turn of t.turns)
+              if (turn.role === "ai" && turn.name === name)
+                turn.reaction = r || undefined;
+        }
         writeIndex();
         res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ ok: true }));
@@ -2068,13 +2660,16 @@ const server = createServer((req, res) => {
           );
         } else if (typeof key === "string" && key.startsWith("idx:")) {
           const n = Number(key.slice(4));
-          const t = thread.turns[n];
-          if (t && t.role === "ai" && !t.name) i = n;
+          if (thread.turns[n]) i = n;
         }
         if (i < 0) throw new Error("no such turn");
         const drop = [i];
-        const prev = thread.turns[i - 1];
-        if (prev?.role === "user") drop.unshift(i - 1);
+        // name: keys delete the exchange (card + the prompt that made it);
+        // idx: keys delete just that one message, either role.
+        if (typeof key === "string" && key.startsWith("name:")) {
+          const prev = thread.turns[i - 1];
+          if (prev?.role === "user") drop.unshift(i - 1);
+        }
         thread.turns = thread.turns.filter((_, j) => !drop.includes(j));
         writeIndex();
         res.setHeader("content-type", "application/json");
@@ -2179,6 +2774,78 @@ const server = createServer((req, res) => {
     return res.end(JSON.stringify({ ok: true }));
   }
   // ————— publish / widgets shelf / persisted state —————
+  // The right pane's Details / Library: the active thread's generated apps
+  // (newest first) with their caption, Mini Apps state and file age.
+  if (req.method === "GET" && req.url === "/thread/apps") {
+    const t = activeThread();
+    const published = new Set(db.prepare("SELECT name FROM widgets").all().map((w) => w.name));
+    const seen = new Set();
+    const apps = [];
+    for (let i = t.turns.length - 1; i >= 0; i--) {
+      const u = t.turns[i];
+      if (u.role !== "ai" || !u.name || seen.has(u.name)) continue;
+      seen.add(u.name);
+      let prompt = "";
+      for (let j = i - 1; j >= 0; j--) if (t.turns[j].role === "user") { prompt = t.turns[j].text || ""; break; }
+      const file = join(GEN_DIR, `${u.name}.tsx`);
+      const caption = u.caption && !/error|implicit|rejected/i.test(u.caption) ? u.caption : "";
+      apps.push({
+        name: u.name,
+        title: u.label || caption || prompt.slice(0, 60) || u.name,
+        subtitle: prompt.replace(/\s+/g, " ").slice(0, 120),
+        published: published.has(u.name),
+        mtime: existsSync(file) ? statSync(file).mtimeMs : 0,
+      });
+    }
+    res.setHeader("content-type", "application/json");
+    return res.end(JSON.stringify({ apps }));
+  }
+  // The model picker's catalog: opencodex's models (its "--fast" twins fold
+  // into a `fast` flag), each with its effort ladder and default.
+  if (req.method === "GET" && req.url === "/models") {
+    res.setHeader("content-type", "application/json");
+    fetch(`${OPENCODEX}/v1/models`)
+      .then((r) => r.json())
+      .then((j) => {
+        const ids = new Set(j.data.map((m) => m.id));
+        const models = j.data
+          .filter((m) => !m.id.endsWith("--fast"))
+          .map((m) => ({
+            id: m.id,
+            owner: m.owned_by || "",
+            fast: ids.has(m.id + "--fast"),
+            efforts: (m.reasoning_efforts || []).map((e) => ({ value: e.value, label: String(e.label || e.value).replace(/ Effort$/i, "") })),
+            defaultEffort: m.reasoning_effort || "",
+          }));
+        res.end(JSON.stringify({ ok: true, default: MODEL, models }));
+      })
+      .catch(() => res.end(JSON.stringify({ ok: false, default: MODEL, models: [], error: `opencodex at ${OPENCODEX} unreachable` })));
+    return;
+  }
+  // App preferences (theme: system | dark | light), kept in the meta table.
+  if (req.url === "/prefs") {
+    if (req.method === "GET") {
+      res.setHeader("content-type", "application/json");
+      return res.end(JSON.stringify({
+        theme: metaGet("theme") || "dark",
+        model: metaGet("model") || "",
+        effort: metaGet("effort") || "",
+        fast: metaGet("fast") === "1",
+      }));
+    }
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const { theme, model, effort, fast } = JSON.parse(body || "{}");
+      if (["system", "dark", "light"].includes(theme)) metaSet("theme", theme);
+      if (model !== undefined) metaSet("model", String(model));
+      if (effort !== undefined) metaSet("effort", String(effort));
+      if (fast !== undefined) metaSet("fast", fast ? "1" : "0");
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ ok: true }));
+    });
+    return;
+  }
   if (req.method === "GET" && req.url === "/widgets") {
     res.setHeader("content-type", "application/json");
     return res.end(
@@ -3076,7 +3743,7 @@ mount(() => (
       flex: 1,
       // Follows the system appearance — a resize or a resize gap shows a
       // themed surface, never a black void behind a light card.
-      backgroundColor: colorScheme() === "dark" ? "#17181a" : "#f2f2f4",
+      backgroundColor: colorScheme() === "dark" ? "#161616" : "#ffffff",
       overflow: "hidden",
     }}
   >

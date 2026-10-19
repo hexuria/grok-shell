@@ -12,6 +12,11 @@ generated/turns.json
 generated/assets/
 generated/shots/
 
+# runtime media — /mock files regenerates these; attachments and avatars are user data
+generated/files/
+generated/attachments/
+generated/avatars/
+
 # regenerated per pop-out / snapshot — runtime artifacts
 windows/
 

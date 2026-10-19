@@ -1,4 +1,7 @@
-import { signal, Text, View } from "nsh";
+import { Scroll, signal, Text, View } from "nsh";
+import { appearance, tc, tg } from "./theme";
+import { WebView } from "nsh/webview";
+import { mermaidUrl, openLightbox } from "./lightbox";
 
 // Minimal native markdown renderer — no webview, no JS libs.
 // Blocks: #/##/### headings, ``` fenced code (with copy), - / 1. lists, > quotes, paragraphs.
@@ -78,7 +81,7 @@ function inline(src: string): Seg[] {
 
 function Segs({ text }: { text: string }) {
   return (
-    <Text style={{ color: "#d4d4d8", fontSize: 14, lineHeight: 21 }}>
+    <Text style={{ color: tc("#f5f5f5"), fontSize: 14, lineHeight: 21 }}>
       {inline(text).map((s) =>
         s.code ? (
           <Text
@@ -93,7 +96,7 @@ function Segs({ text }: { text: string }) {
         ) : (
           <Text
             style={{
-              color: "#d4d4d8",
+              color: tc("#f5f5f5"),
               fontSize: 14,
               fontWeight: s.b ? "700" : undefined,
               fontStyle: s.i ? "italic" : undefined,
@@ -107,8 +110,54 @@ function Segs({ text }: { text: string }) {
   );
 }
 
+// ```mermaid: drawn by mermaid.js in a web view sized to the diagram (the page
+// reports it); a tap opens it in the lightbox with Grok's zoom pill
+// measured diagram sizes, so a thread opened again lays out at its final
+// height at once (a growing diagram shifts the transcript)
+const mermaidSizes = new Map<string, { w: number; h: number }>();
+function MermaidBlock({ code }: { code: string }) {
+  const size = signal(mermaidSizes.get(code) ?? { w: 0, h: 60 });
+  return (
+    <View style={{ width: size().w || "100%", maxWidth: "100%", height: size().h }}>
+      <WebView
+        source={{ uri: mermaidUrl(code, "inline") }}
+        scrollEnabled={false}
+        onMessage={(e) => {
+          try {
+            const d = JSON.parse(e.data);
+            if (d.h && (d.w !== size().w || d.h !== size().h)) {
+              mermaidSizes.set(code, { w: d.w, h: d.h });
+              size.set({ w: d.w, h: d.h });
+            }
+          } catch {}
+        }}
+        style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
+      />
+      <View
+        onPress={() => openLightbox([{ kind: "diagram", code, name: "Diagram" }])}
+        accessibilityLabel="Open diagram"
+        style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }}
+      />
+    </View>
+  );
+}
+
+// Shiki tokens in Grok's cursor-dark / cursor-light palettes, from the server
+const tokCache = new Map<string, [string, string, string][][]>();
 function CodeBlock({ code, lang }: { code: string; lang: string }) {
   const copied = signal(false);
+  const key = lang + "\u0000" + code;
+  const toks = signal<[string, string, string][][] | null>(tokCache.get(key) ?? null);
+  if (!toks() && lang)
+    fetch("http://127.0.0.1:8787/highlight", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, lang }) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.lines) {
+          tokCache.set(key, d.lines);
+          toks.set(d.lines);
+        }
+      })
+      .catch(() => {});
   const onCopy = () => {
     copy(code);
     copied.set(true);
@@ -118,9 +167,9 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
     <View
       style={{
         borderRadius: 10,
-        backgroundColor: "#0d0d0f",
+        backgroundColor: tc("#121212"),
         borderWidth: 1,
-        borderColor: "#262626",
+        borderColor: tc("#f5f5f514"),
         overflow: "hidden",
       }}
     >
@@ -131,23 +180,32 @@ function CodeBlock({ code, lang }: { code: string; lang: string }) {
           justifyContent: "space-between",
           paddingHorizontal: 10,
           paddingVertical: 6,
-          backgroundColor: "#1c1c1e",
+          backgroundColor: tc("#f5f5f50f"),
         }}
       >
-        <Text style={{ color: "#8e8e93", fontSize: 11, fontFamily: "Menlo" }}>
+        <Text style={{ color: tc("#f5f5f585"), fontSize: 11, fontFamily: "Menlo" }}>
           {lang || "code"}
         </Text>
         <View onPress={onCopy} activeOpacity={0.7}>
-          <Text style={{ color: "#8e8e93", fontSize: 11 }}>
+          <Text style={{ color: tc("#f5f5f585"), fontSize: 11 }}>
             {copied() ? "✓ copied" : "⧉ copy"}
           </Text>
         </View>
       </View>
       <View style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
         <Text
-          style={{ fontFamily: "Menlo", fontSize: 12, color: "#d4d4d8", lineHeight: 18 }}
+          style={{ fontFamily: "Menlo", fontSize: 12, color: tc("#f5f5f5"), lineHeight: 18 }}
         >
-          {code}
+          {toks()
+            ? toks()!.map((line, i) => (
+                <Text>
+                  {line.map(([t, d, l]) => (
+                    <Text style={{ color: (appearance() === "dark" ? d : l) || tc("#f5f5f5") }}>{t}</Text>
+                  ))}
+                  {i < toks()!.length - 1 ? "\n" : ""}
+                </Text>
+              ))
+            : code}
         </Text>
       </View>
     </View>
@@ -159,6 +217,7 @@ type Block =
   | { kind: "code"; code: string; lang: string }
   | { kind: "list"; items: string[]; ordered: boolean }
   | { kind: "quote"; text: string }
+  | { kind: "table"; rows: string[][] }
   | { kind: "p"; text: string };
 
 function parse(src: string): Block[] {
@@ -182,12 +241,22 @@ function parse(src: string): Block[] {
     const lines = c.md.split("\n");
     let list: string[] | null = null;
     let ordered = false;
+    let table: string[][] | null = null;
     const flush = () => {
       if (list?.length) blocks.push({ kind: "list", items: list, ordered });
       list = null;
+      if (table?.length) blocks.push({ kind: "table", rows: table });
+      table = null;
     };
     for (const line of lines) {
       const t = line.trim();
+      // GFM table rows: | a | b |  (the |---| separator row is dropped)
+      if (/^\|.*\|$/.test(t)) {
+        if (list) flush();
+        if (!/^\|[\s:|-]+\|$/.test(t)) (table ??= []).push(t.slice(1, -1).split("|").map((c) => c.trim()));
+        continue;
+      }
+      if (table) flush();
       const li = /^([-*])\s+(.*)$/.exec(t) || /^(\d+)[.)]\s+(.*)$/.exec(t);
       if (li) {
         if (!list) {
@@ -217,7 +286,7 @@ export function Markdown({ text }: { text: string }) {
         b.kind === "h" ? (
           <Text
             style={{
-              color: "#ececec",
+              color: tc("#f5f5f5"),
               fontSize: b.level === 1 ? 19 : b.level === 2 ? 17 : 15,
               fontWeight: "700",
               marginTop: 4,
@@ -225,30 +294,76 @@ export function Markdown({ text }: { text: string }) {
           >
             {b.text}
           </Text>
+        ) : b.kind === "table" ? (
+          <Scroll horizontal contentContainerStyle={{ flexDirection: "column" }}>
+            <View style={{ borderWidth: 0.5, borderColor: tc("#f5f5f51f"), borderRadius: 8, overflow: "hidden" }}>
+              {b.rows.map((row, r) => (
+                <View style={{ flexDirection: "row", backgroundColor: r === 0 ? tc("#f5f5f50a") : "transparent" }}>
+                  {row.map((cell, c) => (
+                    <View
+                      style={{
+                        minWidth: 96,
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderLeftWidth: c > 0 ? 0.5 : 0,
+                        borderTopWidth: r > 0 ? 0.5 : 0,
+                        borderColor: tc("#f5f5f51a"),
+                      }}
+                    >
+                      <Text style={{ color: tc("#f5f5f5"), fontSize: 13.5, lineHeight: 20, fontWeight: r === 0 ? "600" : "400" }}>{cell}</Text>
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+          </Scroll>
         ) : b.kind === "code" ? (
-          <CodeBlock code={b.code} lang={b.lang} />
+          b.lang === "mermaid" ? <MermaidBlock code={b.code} /> : <CodeBlock code={b.code} lang={b.lang} />
         ) : b.kind === "list" ? (
           <View class="gap-1">
             {b.items.map((it, ix) => (
-              <View style={{ flexDirection: "row", gap: 8 }}>
-                <Text style={{ color: "#8e8e93", fontSize: 14 }}>
-                  {b.ordered ? `${ix + 1}.` : "•"}
+              <Text
+                style={{ color: tc("#f5f5f5"), fontSize: 14, lineHeight: 21 }}
+              >
+                <Text style={{ color: tc("#f5f5f585"), fontSize: 14 }}>
+                  {b.ordered ? `${ix + 1}.  ` : "•  "}
                 </Text>
-                <View style={{ flex: 1 }}>
-                  <Segs text={it} />
-                </View>
-              </View>
+                {inline(it).map((s) =>
+                  s.code ? (
+                    <Text
+                      style={{
+                        fontFamily: "Menlo",
+                        fontSize: 12.5,
+                        color: "#e8b339",
+                      }}
+                    >
+                      {s.t}
+                    </Text>
+                  ) : (
+                    <Text
+                      style={{
+                        color: tc("#f5f5f5"),
+                        fontSize: 14,
+                        fontWeight: s.b ? "700" : undefined,
+                        fontStyle: s.i ? "italic" : undefined,
+                      }}
+                    >
+                      {s.t}
+                    </Text>
+                  ),
+                )}
+              </Text>
             ))}
           </View>
         ) : b.kind === "quote" ? (
           <View
             style={{
               borderLeftWidth: 3,
-              borderLeftColor: "#3f3f46",
+              borderLeftColor: tc("#f5f5f53d"),
               paddingLeft: 10,
             }}
           >
-            <Text style={{ color: "#a3a3a3", fontSize: 14, fontStyle: "italic" }}>
+            <Text style={{ color: tc("#f5f5f5a8"), fontSize: 14, fontStyle: "italic" }}>
               {b.text}
             </Text>
           </View>
