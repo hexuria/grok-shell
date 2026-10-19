@@ -5,6 +5,7 @@ import { cleanup, effect, signal, Text, View } from "nsh";
 import { appearance } from "./theme";
 import { mediaUrl } from "./filetile";
 import { MARKS, MARK_EYE_N, MARK_FPS, MARK_FRAMES, MARK_GAZE_N, MARK_HI, MARK_LO, MARK_POINTS, MARK_SPRITE } from "./marks.data";
+import { clipFrame, cookClip, sampleClip } from "./clips";
 
 // ————————————————————————————————————————————————————————————————
 // Grok Bot avatar, ported from Sand's bundle (index.eager-platform).
@@ -168,6 +169,10 @@ type BotBlobProps = {
   lid?: number;
   /** a still pose: "rest" (Idle_D's resting tilt, Grok's picker cells) or "front" */
   pose?: "rest" | "front";
+  /** a Grok clip name or a cycling list (Working_A…Streaming_C…) — plays
+   *  the real keyframes live through the ported engine; while it plays
+   *  gaze is dead (S gate) */
+  clip?: string | string[];
 };
 
 // `size` is the stage; the avatar's nominal box is 82% of it (Grok's sprite
@@ -180,7 +185,7 @@ export function BotBlob(props: BotBlobProps) {
     // Only breathing blobs (and still ones easing their eyes/pose) follow the
     // 30fps clock; a settled still blob redraws only when its gaze/edit wakes
     // it. Every blob reading the clock redrew them all, forever.
-    const still = props.breathe === false || props.lid != null || props.pose != null;
+    const still = (props.breathe === false || props.lid != null || props.pose != null) && !props.clip;
     props.gaze?.v();
     props.edit?.v();
     const gz = props.gaze?.g ?? { x: 0, y: 0 };
@@ -209,6 +214,37 @@ export function BotBlob(props: BotBlobProps) {
     // still responsive)
     hk += ((held ? 1 : 0) - hk) * (dt ? ease(2) : 1);
     hk = Math.min(1, Math.max(0, hk));
+    // A playing clip owns the pose end to end (S gate): the real keyframes
+    // drive rotation/position/squash/zoom and the lids track owns the eyes —
+    // rendered live through the ported solid projector, not the bakes.
+    const cl = props.clip ? sampleClip(props.clip, t) : null;
+    if (cl) {
+      // a `lid` prop is the face-morph stand-in (sleepy, squinted…): it
+      // compounds the clip's own lids/blink track — open = (1−lid)·propLid
+      if (props.lid != null) cl.lid = 1 - (1 - cl.lid) * props.lid;
+      const fr = clipFrame(props.shape, cl, MARK_SPRITE);
+      const box0 = props.size * 0.82;
+      const sc0 = (box0 * 1.3913) / MARK_SPRITE;
+      ctx.save();
+      ctx.translate(width / 2, height / 2);
+      ctx.scale(sc0, sc0);
+      ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
+      ctx.beginPath();
+      for (const pl of fr.outline) {
+        ctx.moveTo(pl[0][0], pl[0][1]);
+        for (let j = 1; j < pl.length; j++) ctx.lineTo(pl[j][0], pl[j][1]);
+        ctx.closePath();
+      }
+      for (const pl of fr.eyes) {
+        ctx.moveTo(pl[0][0], pl[0][1]);
+        for (let j = 1; j < pl.length; j++) ctx.lineTo(pl[j][0], pl[j][1]);
+        ctx.closePath();
+      }
+      ctx.fillStyle = darken(inkOf(props.color), 0.7 * ek);
+      ctx.fill("evenodd");
+      ctx.restore();
+      return;
+    }
     const { bytes, poly, gBytes, gPoly } = markOf(props.shape);
     const P = MARK_POINTS, F = MARK_FRAMES, front = F, EN = MARK_EYE_N, EB = EN * 4;
     // A still mark idles in Idle_D's resting tilt (frame 0: slanted, eyes
@@ -411,6 +447,7 @@ export function BotAvatar(props: {
   editK?: any;
   breathe?: boolean;
   lid?: number;
+  clip?: string | string[];
 }) {
   const box = () => props.box ?? Math.round(props.size * 0.82);
   return (
@@ -427,6 +464,7 @@ export function BotAvatar(props: {
           edit={props.edit}
           breathe={props.breathe}
           lid={props.lid}
+          clip={props.clip}
         />
       </If>
     </View>

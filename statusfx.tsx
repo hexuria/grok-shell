@@ -42,63 +42,68 @@ export type AgentFx =
 export type AgentState = {
   fx: AgentFx;
   label: string;
-  /** play the idle loop (the stand-in for Working/Streaming clips) */
+  /** play the idle loop (fallback when no clip is named) */
   breathe?: boolean;
   /** lid amount for face states (squinted, sleepy…) */
   lid?: number;
+  /** Grok clip(s) from `yl` — real keyframes played through clips.ts */
+  clip?: string | string[];
 };
+
+const WORKING = ["Working_A", "Working_B", "Working_C", "Working_D", "Working_E", "Working_F"];
+const IDLE_B = "Idle_B";
 
 export const AGENT_STATUS: Record<string, AgentState> = {
   idle: { fx: "none", label: "" },
-  listening: { fx: "none", label: "Listening…" },
-  thinking: { fx: "dots", label: "Thinking…" },
-  streaming: { fx: "wave", label: "Streaming…", breathe: true },
-  searching: { fx: "radar", label: "Searching…" },
-  reading: { fx: "radar", label: "Reading…", breathe: true },
-  working: { fx: "orbit", label: "Working…", breathe: true },
-  coding: { fx: "orbit", label: "Coding…", breathe: true },
-  running: { fx: "orbit", label: "Running…", breathe: true },
-  computing: { fx: "orbit", label: "Computing…", breathe: true },
-  controlling: { fx: "orbit", label: "Controlling…", breathe: true },
-  waiting: { fx: "orbit", label: "Waiting…" },
-  blocked: { fx: "bang", label: "Blocked", lid: 0.55 },
-  finished: { fx: "none", label: "Done" },
-  failed: { fx: "bang", label: "Failed", lid: 0.55 },
-  sleeping: { fx: "none", label: "Sleeping", lid: 0.15 },
-  waking: { fx: "none", label: "Waking…" },
-  happy: { fx: "none", label: "Happy" },
-  excited: { fx: "none", label: "Excited", breathe: true },
-  laughing: { fx: "none", label: "Laughing", breathe: true },
-  proud: { fx: "none", label: "Proud", breathe: true },
-  curious: { fx: "none", label: "Curious…", breathe: true },
-  playful: { fx: "none", label: "Playful", breathe: true },
-  shy: { fx: "none", label: "Shy" },
-  surprised: { fx: "none", label: "Surprised" },
-  suspicious: { fx: "none", label: "Suspicious", lid: 0.55 },
-  angry: { fx: "none", label: "Angry", lid: 0.55 },
-  confused: { fx: "bang", label: "Confused", lid: 0.55 },
-  sad: { fx: "none", label: "Sad", lid: 0.4 },
-  drowsy: { fx: "none", label: "Drowsy", lid: 0.3 },
-  bored: { fx: "none", label: "Bored", lid: 0.3 },
-  scared: { fx: "none", label: "Scared" },
-  celebrate: { fx: "none", label: "Celebrate", breathe: true },
-  approving: { fx: "none", label: "Approving" },
-  orbit: { fx: "orbit", label: "Orbit" },
-  radar: { fx: "radar", label: "Radar" },
-  progress: { fx: "progress", label: "Progress" },
-  spawning: { fx: "gather", label: "Spawning…" },
-  loading: { fx: "progress", label: "Loading…" },
-  dictating: { fx: "wave", label: "Dictating…" },
-  sending: { fx: "send", label: "Sending…" },
-  receiving: { fx: "receive", label: "Receiving…" },
-  uploading: { fx: "dock", label: "Uploading…" },
-  writing: { fx: "pencil", label: "Writing…" },
-  alerting: { fx: "bang", label: "Alert" },
-  bouncing: { fx: "ball", label: "Bouncing" },
-  "powering-down": { fx: "standby", label: "Powering down…" },
-  humming: { fx: "none", label: "Humming" },
-  notifying: { fx: "bang", label: "Notification" },
-  dragging: { fx: "none", label: "Dragging" },
+  listening: { fx: "none", label: "Listening…", clip: "Idle_D" },
+  thinking: { fx: "dots", label: "Thinking…", clip: IDLE_B },
+  streaming: { fx: "wave", label: "Streaming…", clip: ["Streaming_A", "Streaming_B", "Streaming_C"] },
+  searching: { fx: "radar", label: "Searching…", clip: IDLE_B },
+  reading: { fx: "radar", label: "Reading…", clip: WORKING },
+  working: { fx: "orbit", label: "Working…", clip: WORKING },
+  coding: { fx: "orbit", label: "Coding…", clip: WORKING },
+  running: { fx: "orbit", label: "Running…", clip: WORKING },
+  computing: { fx: "orbit", label: "Computing…", clip: WORKING },
+  controlling: { fx: "orbit", label: "Controlling…", clip: WORKING },
+  waiting: { fx: "orbit", label: "Waiting…", clip: IDLE_B },
+  blocked: { fx: "bang", label: "Blocked", clip: "Blocked_A" },
+  finished: { fx: "none", label: "Done", clip: ["Done_B", "Done_A"] },
+  failed: { fx: "bang", label: "Failed", clip: "Blocked_B" },
+  sleeping: { fx: "none", label: "Sleeping", lid: 0.15, clip: IDLE_B },
+  waking: { fx: "none", label: "Waking…", clip: IDLE_B },
+  happy: { fx: "none", label: "Happy", clip: "Done_A" },
+  excited: { fx: "none", label: "Excited", clip: "Done_C" },
+  laughing: { fx: "none", label: "Laughing", clip: "Done_B" },
+  proud: { fx: "none", label: "Proud", clip: "Marketing_B" },
+  curious: { fx: "none", label: "Curious…", clip: "Working_B" },
+  playful: { fx: "none", label: "Playful", clip: "Bodymoves_A" },
+  shy: { fx: "none", label: "Shy", clip: "Idle_D" },
+  surprised: { fx: "none", label: "Surprised", clip: IDLE_B },
+  suspicious: { fx: "none", label: "Suspicious", clip: "Idle_D" },
+  angry: { fx: "none", label: "Angry", clip: "Blocked_A" },
+  confused: { fx: "bang", label: "Confused", clip: "Blocked_A" },
+  sad: { fx: "none", label: "Sad", clip: "Blocked_B" },
+  drowsy: { fx: "none", label: "Drowsy", clip: "Blocked_C" },
+  bored: { fx: "none", label: "Bored", clip: IDLE_B },
+  scared: { fx: "none", label: "Scared", clip: "Idle_D" },
+  celebrate: { fx: "none", label: "Celebrate", clip: "Rotation_A" },
+  approving: { fx: "none", label: "Approving", clip: "Rotation_C" },
+  orbit: { fx: "orbit", label: "Orbit", clip: IDLE_B },
+  radar: { fx: "radar", label: "Radar", clip: IDLE_B },
+  progress: { fx: "progress", label: "Progress", clip: IDLE_B },
+  spawning: { fx: "gather", label: "Spawning…", clip: IDLE_B },
+  loading: { fx: "progress", label: "Loading…", clip: IDLE_B },
+  dictating: { fx: "wave", label: "Dictating…", clip: IDLE_B },
+  sending: { fx: "send", label: "Sending…", clip: IDLE_B },
+  receiving: { fx: "receive", label: "Receiving…", clip: IDLE_B },
+  uploading: { fx: "dock", label: "Uploading…", clip: IDLE_B },
+  writing: { fx: "pencil", label: "Writing…", clip: IDLE_B },
+  alerting: { fx: "bang", label: "Alert", clip: IDLE_B },
+  bouncing: { fx: "ball", label: "Bouncing", clip: IDLE_B },
+  "powering-down": { fx: "standby", label: "Powering down…", clip: IDLE_B },
+  humming: { fx: "none", label: "Humming", clip: IDLE_B },
+  notifying: { fx: "bang", label: "Notification", clip: "Done_B" },
+  dragging: { fx: "none", label: "Dragging", clip: IDLE_B },
 };
 
 // ————— ambient overlay: the vx effect drawn around the mark —————
@@ -304,7 +309,8 @@ export function StatusAvatar(props: { shape: string; color: string; state: strin
         size={s}
         breathe={st().breathe}
         lid={st().lid}
-        pose={st().breathe == null && st().lid == null ? "rest" : undefined}
+        clip={st().clip}
+        pose={st().breathe == null && st().lid == null && st().clip == null ? "rest" : undefined}
       />
       <FxOverlay fx={st().fx} size={s} />
     </View>
