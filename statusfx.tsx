@@ -1,6 +1,7 @@
 import { Canvas } from "nsh/canvas";
 import { signal, View } from "nsh";
-import { BotBlob, inkOf } from "./blob";
+import { BotBlob } from "./blob";
+import { tc } from "./theme";
 
 // ————————————————————————————————————————————————————————————————
 // Agent status, ported from Sand's bundle (index.eager-platform/app).
@@ -270,20 +271,31 @@ const drawFx = (fx: AgentFx, ctx: any, w: number, h: number, t: number, ink: str
   }
 };
 
+// The ambient overlay by itself — drawn in the theme ink (the mark's fill is
+// the bot color, so drawing effects in that ink would be invisible on it).
+export function FxOverlay(props: { fx: AgentFx; size: number; ink?: string }) {
+  startFx();
+  const draw = (ctx: any, { width, height }: { width: number; height: number }) => {
+    ctx.clearRect(0, 0, width, height);
+    ctx.globalAlpha = 1;
+    drawFx(props.fx, ctx, width, height, fxClock(), props.ink ?? tc("#f5f5f5"));
+    ctx.globalAlpha = 1;
+  };
+  return (
+    <Canvas
+      pointerEvents="none"
+      style={{ position: "absolute", left: -props.size * 0.25, top: -props.size * 0.25, width: props.size * 1.5, height: props.size * 1.5 }}
+      draw={draw}
+    />
+  );
+}
+
 // The status row's mark: the bot's avatar at 22pt with the ambient effect
 // drawn over it; clip-states stand in with the idle loop, face states with
 // the lid amount.
 export function StatusAvatar(props: { shape: string; color: string; state: string; size?: number }) {
-  startFx();
   const s = props.size ?? 22;
   const st = () => AGENT_STATUS[props.state] ?? { fx: "none", label: props.state };
-  const ink = () => inkOf(props.color);
-  const draw = (ctx: any, { width, height }: { width: number; height: number }) => {
-    ctx.clearRect(0, 0, width, height);
-    ctx.globalAlpha = 1;
-    drawFx(st().fx, ctx, width, height, fxClock(), ink());
-    ctx.globalAlpha = 1;
-  };
   return (
     <View style={{ width: s, height: s }}>
       <BotBlob
@@ -294,11 +306,7 @@ export function StatusAvatar(props: { shape: string; color: string; state: strin
         lid={st().lid}
         pose={st().breathe == null && st().lid == null ? "rest" : undefined}
       />
-      <Canvas
-        pointerEvents="none"
-        style={{ position: "absolute", left: -s * 0.25, top: -s * 0.25, width: s * 1.5, height: s * 1.5 }}
-        draw={draw}
-      />
+      <FxOverlay fx={st().fx} size={s} />
     </View>
   );
 }
