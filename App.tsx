@@ -109,78 +109,13 @@ function App() {
     if (!g) railGazes.set(id, (g = blobGaze()));
     return g;
   };
-  // Grok parity (extracted from its bundle): a pointer-following mark
-  // listens on window, derives gaze from its own rect — reach is half the
-  // mark's width, each axis clamped ±1 — and holds the last gaze (the only
-  // reset is unmount). Marks register their node on the avatar's own box;
-  // the root view's onMouseMove stands in for the window listener and fans
-  // out to every mark; rects are measured and re-measured when stale.
-  type GazeMark = { node: YNode; cx: number; cy: number; reach: number; stale: boolean; at: number; g: BlobGaze };
-  const gazeMarks = new Map<string, GazeMark>();
-  const measureMark = (m: GazeMark) => {
-    void m.node
-      .measure()
-      .then((r) => {
-        if (!r) {
-          for (const [k, v2] of gazeMarks) if (v2 === m) gazeMarks.delete(k);
-          return;
-        }
-        m.cx = r.pageX + r.width / 2;
-        m.cy = r.pageY + r.height / 2;
-        m.reach = Math.max(r.width, 1) / 2;
-        m.stale = false;
-      })
-      .catch(() => {});
-  };
-  // The root view that carries the window-wide onMouseMove; its own origin
-  // is subtracted so event coords and measure()'s pageX/pageY share a space.
-  let gazeRoot: YNode | undefined;
-  let gazeRootStale = true;
-  let gazeRootX = 0;
-  let gazeRootY = 0;
-  const gazeStale = () => {
-    gazeRootStale = true;
-    for (const m of gazeMarks.values()) m.stale = true;
-  };
-  const gazeSpotFns = new Map<string, (node: YNode) => void>();
-  const gazeSpot = (key: string) => {
-    let f = gazeSpotFns.get(key);
-    if (!f) {
-      f = (node: YNode) => {
-        const m: GazeMark = { node, cx: 0, cy: 0, reach: 1, stale: true, at: 0, g: railGaze(key) };
-        gazeMarks.set(key, m);
-        measureMark(m);
-      };
-      gazeSpotFns.set(key, f);
-    }
-    return f;
-  };
-  const followMarks = (e: { x: number; y: number }) => {
-    const now = Date.now();
-    if (gazeRootStale && gazeRoot) {
-      gazeRootStale = false;
-      void gazeRoot
-        .measure()
-        .then((r) => {
-          if (r) {
-            gazeRootX = r.pageX;
-            gazeRootY = r.pageY;
-          }
-        })
-        .catch(() => {});
-    }
-    const abs = { x: e.x + gazeRootX, y: e.y + gazeRootY };
-    for (const m of gazeMarks.values()) {
-      if (m.stale) {
-        if (now - m.at > 150) {
-          m.at = now;
-          measureMark(m);
-        }
-        continue;
-      }
-      m.g.follow(abs, m.cx, m.cy, m.reach);
-    }
-  };
+  // Grok parity (extracted from its bundle): attachMarkHoverGaze listens on
+  // the bot's container — row, tile or rail button — and computes gaze from
+  // the mark's rect inside it: center of the avatar box, reach half its
+  // width, each axis clamped ±1, y up positive. pointerleave resets to the
+  // resting pose. onMouseMove gives container-local coords, so each site
+  // passes its mark's own center + half-width as the reach.
+
   const panelGaze = blobGaze(); // right-panel editor blob
   const panelEditK = createNativeValue(0); // avatar hover → image avatars darken
   const panelEdit = blobEdit();            // avatar hover → blob straightens + darkens
@@ -846,11 +781,13 @@ function App() {
     <View
       onPress={() => selectThread(b().threadId)}
       onContextMenu={() => botMenu(b())}
+      onMouseMove={(e) => railGaze(b().id + ":row").follow(e, 26, 27, 18)}
+      onHoverOut={() => railGaze(b().id + ":row").rest()}
       activeOpacity={0.7}
       accessibilityLabel={b().name}
       style={rowBase(b().threadId === activeId())}
     >
-      <View ref={gazeSpot(b().id + ":row")} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
         <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} />
       </View>
       {rowText(b().name, b().preview || "No messages yet")}
@@ -884,6 +821,8 @@ function App() {
     <View
       onPress={() => selectThread(b().threadId)}
       onContextMenu={() => botMenu(b())}
+      onMouseMove={(e) => railGaze(b().id + ":pin").follow(e, 47.5, 36, 30)}
+      onHoverOut={() => railGaze(b().id + ":pin").rest()}
       activeOpacity={0.7}
       accessibilityLabel={b().name}
       style={{
@@ -899,7 +838,7 @@ function App() {
         backgroundColor: b().threadId === activeId() ? tc("#f5f5f514") : "transparent",
       }}
     >
-      <View ref={gazeSpot(b().id + ":pin")} style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
         <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} />
       </View>
       <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 16, maxWidth: 79 }}>
@@ -945,12 +884,14 @@ function App() {
           popSeq++;
           railPop.set(null);
           if (railHover() === "bot:" + b().id) railHover.set("");
+          railGaze(b().id + ":rail").rest();
         }}
+        onMouseMove={(e) => railGaze(b().id + ":rail").follow(e, 27, 27, 18)}
         activeOpacity={0.7}
         accessibilityLabel={b().name}
         style={railPlate("bot:" + b().id, 54, b().threadId === activeId())}
       >
-        <View ref={gazeSpot(b().id + ":rail")} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+        <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
           <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} />
         </View>
       </View>
@@ -1274,7 +1215,7 @@ function App() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: tc("#121212") }}>
       <View style={{ flex: 1 }}>
-        <View ref={(n: YNode) => { gazeRoot = n; gazeRootStale = true; }} style={{ flex: 1, flexDirection: "row" }} onMouseMove={followMarks} onLayout={gazeStale}>
+        <View style={{ flex: 1, flexDirection: "row" }}>
         {/* ————— mini rail: icon column when the full sidebar is tucked away ————— */}
         <If when={sideEff() === "rail"}>{railView(false)}</If>
 
@@ -1304,7 +1245,7 @@ function App() {
           <View style={{ flex: 1 }}>
           {blurEdge("top", TOP)}
           {blurEdge("bottom", 28)}
-          <Scroll style={{ flex: 1 }} onScroll={gazeStale} contentContainerStyle={{ paddingTop: TOP + 4, paddingHorizontal: 12, paddingBottom: 32, gap: 10 }}>
+          <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingTop: TOP + 4, paddingHorizontal: 12, paddingBottom: 32, gap: 10 }}>
             <If when={pinnedBots().length > 0}>
               <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, paddingTop: 6, paddingBottom: 8 }}>
                 <Each of={pinnedBots()}>{(b) => pinTile(b)}</Each>

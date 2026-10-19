@@ -195,6 +195,10 @@ export function BotBlob(props: BotBlobProps) {
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
+    // Grok: the whole mark leans toward the gaze — tilts and drifts a
+    // little — while the eyes (offset further below) lead the face.
+    ctx.rotate(gx * 0.12);
+    ctx.translate(gx * 3, gy * 2);
     ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
     ctx.beginPath();
     ctx.moveTo(at(0), at(1));
