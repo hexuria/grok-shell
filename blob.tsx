@@ -194,7 +194,10 @@ export function BotBlob(props: BotBlobProps) {
     hk = Math.min(1, Math.max(0, hk));
     const { bytes, eyes } = markOf(props.shape);
     const P = MARK_POINTS, F = MARK_FRAMES, front = F;
-    const stillFrame = props.pose === "rest" ? 0 : front;
+    // A still mark idles in Idle_D's resting tilt (frame 0: slanted, eyes
+    // up — Grok's sidebar/panel marks), not squared to the camera; "front"
+    // stays available for cells that want the flat pose.
+    const stillFrame = props.pose === "front" ? front : 0;
     const ct = (t + phase) % 6;
     const ft = ct * MARK_FPS;
     const i0 = still ? stillFrame : Math.floor(ft) % F;
