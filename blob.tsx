@@ -205,11 +205,14 @@ export function BotBlob(props: BotBlobProps) {
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
-    // Grok's turn: fl()×hold×.55 — a yaw of ~9.9°·gx, a small drift of the
-    // mark size (.0165·gx/.0132·gy ≈ 2.4/1.9 sprite units) — while the eyes
-    // (offset further below) lead the face.
-    ctx.rotate(gx * 0.17 * hk);
-    ctx.translate(gx * 2.4 * hk, gy * 1.9 * hk);
+    // Grok's turn: fl()×hold×.55 — a 3D yaw/pitch of the mark. On a 2D
+    // sprite a yaw reads as the top leaning toward the cursor while the
+    // face narrows (it turned), plus a small shoulder-tilt for the nod and
+    // a drift — while the eyes (offset further below) lead the face.
+    const lx = gx * hk, ly = gy * hk;
+    ctx.rotate(lx * 0.08);
+    ctx.transform(1 - Math.abs(lx) * 0.06, ly * 0.05, -lx * 0.2, 1, 0, 0);
+    ctx.translate(lx * 2.4, ly * 1.9);
     ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
     ctx.beginPath();
     ctx.moveTo(at(0), at(1));
