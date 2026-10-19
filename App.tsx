@@ -788,7 +788,7 @@ function App() {
       style={rowBase(b().threadId === activeId())}
     >
       <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} />
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} breathe={false} />
       </View>
       {rowText(b().name, b().preview || "No messages yet")}
     </View>
@@ -851,7 +851,7 @@ function App() {
       }}
     >
       <View style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} />
+        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} breathe={false} />
       </View>
       <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 16, maxWidth: 79 }}>
         {b().name}
@@ -905,7 +905,7 @@ function App() {
         style={railPlate("bot:" + b().id, 54, b().threadId === activeId())}
       >
         <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-          <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} />
+          <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} breathe={false} />
         </View>
       </View>
     );
@@ -1753,6 +1753,7 @@ function App() {
                   gaze={panelGaze}
                   edit={panelEdit}
                   editK={panelEditK}
+                  breathe={false}
                 />
                 <View
                   style={{

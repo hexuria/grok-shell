@@ -160,7 +160,7 @@ type BotBlobProps = {
 export function BotBlob(props: BotBlobProps) {
   startClock();
   const phase = Math.random() * 6;
-  let ek = 0, gx = 0, gy = -0.35, hk = 0, prev = -1;
+  let ek = 0, gx = 0, gy = -0.35, vx = 0, vy = 0, hk = 0, vh = 0, prev = -1;
   const draw = (ctx: any, { width, height }: { width: number; height: number }) => {
     // Only breathing blobs (and still ones easing their eyes/pose) follow the
     // 30fps clock; a settled still blob redraws only when its gaze/edit wakes
@@ -171,20 +171,27 @@ export function BotBlob(props: BotBlobProps) {
     const gz0 = props.gaze?.g ?? { x: 0, y: -0.35 };
     const held0 = props.gaze?.held === true;
     const settled =
-      Math.abs(gz0.x - gx) < 0.002 && Math.abs(gz0.y - gy) < 0.002 && Math.abs((props.edit?.s.target ?? 0) - ek) < 0.002 &&
-      Math.abs(hk - (held0 ? 1 : 0)) < 0.002;
+      Math.abs(gz0.x - gx) < 0.002 && Math.abs(gz0.y - gy) < 0.002 && Math.abs(vx) < 0.01 && Math.abs(vy) < 0.01 &&
+      Math.abs((props.edit?.s.target ?? 0) - ek) < 0.002 && Math.abs(hk - (held0 ? 1 : 0)) < 0.002 && Math.abs(vh) < 0.01;
     const t = !still || !settled ? clock() : Date.now() / 1000;
     const dt = prev < 0 ? 0 : Math.min(0.1, Math.max(0, t - prev));
     prev = t;
     const ease = (rate: number) => 1 - Math.exp(-dt * rate);
     ek += ((props.edit?.s.target ?? 0) - ek) * (dt ? ease(14) : 1);
     const gz = props.gaze?.g ?? { x: 0, y: -0.35 };
-    // Grok's bx is ~14%/frame ≈ rate 9; the hold ramp runs slower (5 ≈
-    // 0.6s in) so the turn reads as a smooth pivot, not a snap.
-    gx += (gz.x - gx) * (dt ? ease(7) : 1);
-    gy += (gz.y - gy) * (dt ? ease(7) : 1);
+    // Springs, not exponential chases: velocity eases in and out, so a
+    // fresh turn accelerates into the pivot and decelerates out — the
+    // smooth head-turn Grok's quat runtime produces. Slightly underdamped
+    // for life; the hold spring is clamped so the lean never exceeds 1.
+    const spr = (p: number, vel: number, target: number, k: number): [number, number] => {
+      const vel2 = vel + ((target - p) * k - vel * 2 * Math.sqrt(k) * 0.9) * dt;
+      return [p + vel2 * dt, vel2];
+    };
+    [gx, vx] = spr(gx, vx, gz.x, 55);
+    [gy, vy] = spr(gy, vy, gz.y, 55);
     const held = props.gaze?.held === true;
-    hk += ((held ? 1 : 0) - hk) * (dt ? ease(5) : 1);
+    [hk, vh] = spr(hk, vh, held ? 1 : 0, 30);
+    hk = Math.min(1, Math.max(0, hk));
     const { bytes, eyes } = markOf(props.shape);
     const P = MARK_POINTS, F = MARK_FRAMES, front = F;
     const stillFrame = props.pose === "rest" ? 0 : front;
