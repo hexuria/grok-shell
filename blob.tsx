@@ -205,13 +205,11 @@ export function BotBlob(props: BotBlobProps) {
     ctx.save();
     ctx.translate(width / 2, height / 2);
     ctx.scale(scale, scale);
-    // Grok's turn: fl()×hold×.55 — a 3D yaw/pitch of the mark. On a 2D
-    // sprite a yaw reads as the top leaning toward the cursor while the
-    // face narrows (it turned), plus a small shoulder-tilt for the nod and
-    // a drift — while the eyes (offset further below) lead the face.
+    // Grok's turn: fl()×hold×.55 — a 3D yaw/pitch of the mark. A sphere
+    // keeps its silhouette when it turns, so the body only drifts toward
+    // the pointer (.0165/.0132 of the size ≈ 2.4/1.9 units) while the eyes
+    // lead — no shear/squash, which flattened the blob.
     const lx = gx * hk, ly = gy * hk;
-    ctx.rotate(lx * 0.08);
-    ctx.transform(1 - Math.abs(lx) * 0.06, ly * 0.05, -lx * 0.2, 1, 0, 0);
     ctx.translate(lx * 2.4, ly * 1.9);
     ctx.translate(-MARK_SPRITE / 2, -MARK_SPRITE / 2);
     ctx.beginPath();
@@ -229,8 +227,8 @@ export function BotBlob(props: BotBlobProps) {
       const rx = v(2), ry = v(3) * lid;
       if (rx < 0.4 || ry < 0.3) continue;
       const rot = (v(4) * Math.PI) / 180;
-      const cx = v(0) + gx * 6;
-      const cy = v(1) + gy * 5 + (1 - lid) * v(3) * 0.45;
+      const cx = v(0) + gx * 9;
+      const cy = v(1) + gy * 8 + (1 - lid) * v(3) * 0.45;
       ctx.moveTo(cx + rx * Math.cos(rot), cy + rx * Math.sin(rot));
       ctx.ellipse(cx, cy, rx, ry, rot, 0, TAU);
     }
