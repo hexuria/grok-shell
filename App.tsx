@@ -596,7 +596,7 @@ function App() {
   const collapsedSecs = signal<Record<string, boolean>>({ __hidden: true });
   const toggleSec = (k: string) => collapsedSecs.update((m) => ({ ...m, [k]: !m[k] }));
   const hoverSec = signal("");
-  const railPop = signal<{ bot: BotMeta; y: number } | null>(null);
+  const railPop = signal<{ bot: BotMeta; cy: number; x: number } | null>(null);
   const sectionPrompt = signal<string | null>(null);
   const sectionName = signal("");
   const pinnedBots = () => bots().filter((b) => b.pinned && !b.hidden);
@@ -817,12 +817,24 @@ function App() {
       {rowText(t().title, `${t().count} messages`)}
     </View>
   );
-  const pinTile = (b: () => BotMeta) => (
+  const pinTile = (b: () => BotMeta) => {
+    let node!: YNode;
+    return (
     <View
+      ref={node}
       onPress={() => selectThread(b().threadId)}
       onContextMenu={() => botMenu(b())}
       onMouseMove={(e) => railGaze(b().id + ":pin").follow(e, 47.5, 36, 30)}
-      onHoverOut={() => railGaze(b().id + ":pin").rest()}
+      onHoverIn={async () => {
+        const seq = ++popSeq;
+        const m = await node?.measure();
+        if (m && seq === popSeq) railPop.set({ bot: b(), cy: m.pageY + m.height / 2, x: m.pageX + m.width + 6 });
+      }}
+      onHoverOut={() => {
+        popSeq++;
+        railPop.set(null);
+        railGaze(b().id + ":pin").rest();
+      }}
       activeOpacity={0.7}
       accessibilityLabel={b().name}
       style={{
@@ -845,7 +857,8 @@ function App() {
         {b().name}
       </Text>
     </View>
-  );
+    );
+  };
   // rail: 54×54 buttons (pad 9, radius 10) with 36 avatars, 0.5px rules
   // between groups, and a popover (name + 2-line preview) on hover
   let popSeq = 0;
@@ -878,7 +891,7 @@ function App() {
           railHover.set("bot:" + b().id);
           const seq = ++popSeq;
           const m = await node?.measure();
-          if (m && seq === popSeq) railPop.set({ bot: b(), y: m.pageY });
+          if (m && seq === popSeq) railPop.set({ bot: b(), cy: m.pageY + m.height / 2, x: m.pageX + m.width + 6 });
         }}
         onHoverOut={() => {
           popSeq++;
@@ -2057,13 +2070,18 @@ function App() {
         </View>
         </If>
 
-        {/* ————— rail hover popover: name + 2-line preview, centered on the button ————— */}
-        <If when={!!railPop() && sideEff() !== "full"}>
+        {/* ————— rail/pin hover popover: name + 2-line preview, vertically
+            centered on the hovered element's measured center ————— */}
+        <If when={!!railPop()}>
           <View
             style={{
               position: "absolute",
-              left: RAIL_W - 9,
-              top: Math.max(8, railPop()!.y - 12),
+              left: railPop()!.x,
+              top: Math.max(
+                8,
+                railPop()!.cy -
+                  (20 + 18 + 4 + Math.min(2, Math.max(1, Math.ceil((railPop()!.bot.preview || "No messages yet").length / 34))) * 18) / 2,
+              ),
               width: 260,
               padding: 10,
               gap: 4,
