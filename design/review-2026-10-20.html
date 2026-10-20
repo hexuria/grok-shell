@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grok Shell — issue review · 2026-10-20</title>
+<style>
+  :root{
+    --bg:#0c0c0d; --pane:#131313; --card:#1f1f1f; --card2:#161616;
+    --line:#f5f5f50f; --line2:#f5f5f514;
+    --tx:#f5f5f5; --mut:#f5f5f5a8; --dim:#f5f5f566; --faint:#f5f5f540;
+    --acc:#f9670e; --green:#32bb78; --red:#ff5f57; --yellow:#febc2e; --gnd:#28c840;
+    --blue:#4f8dff; --purple:#9b7bff;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--tx);font:14px/1.5 -apple-system,"SF Pro Text",Inter,sans-serif;padding:40px 0 120px}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+  h1{font-size:26px;letter-spacing:-.02em}
+  .sub{color:var(--dim);margin-top:6px;font-size:13px}
+  .legend{display:flex;gap:18px;margin:26px 0 40px;flex-wrap:wrap}
+  .legend div{display:flex;gap:8px;align-items:center;color:var(--mut);font-size:12.5px}
+  .dot{width:8px;height:8px;border-radius:99px}
+  .iss{margin:44px 0 90px}
+  .iss-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+  .num{color:var(--acc);font-weight:700;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+  .iss h2{font-size:19px;letter-spacing:-.01em}
+  .chip{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:99px;letter-spacing:.04em;text-transform:uppercase}
+  .c-bug{background:#ff5f5722;color:#ff8f89}
+  .c-ux{background:#febc2e22;color:#ffd28a}
+  .c-done{background:#32bb7822;color:#6fe0ab}
+  .c-plan{background:#7aa2ff22;color:#a8c1ff}
+  .c-agree{background:#32bb7833;color:#6fe0ab;border:1px solid #32bb7855}
+  .story{color:var(--mut);font-size:13.5px;max-width:820px;margin:10px 0 8px}
+  .story b{color:var(--tx);font-weight:600}
+  .cause{margin:14px 0 22px;border-left:2px solid var(--acc);padding:10px 16px;background:#f9670e0d;border-radius:0 10px 10px 0;max-width:860px}
+  .cause .t{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--acc);font-weight:700;margin-bottom:4px}
+  .cause p{color:var(--mut);font-size:13px}
+  .cause code, .story code, .notes code{background:#ffffff14;padding:1px 6px;border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#ffd9c4}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:16px}
+  .col-label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:10px}
+  .before .col-label{color:#ff8f89}.after .col-label{color:#6fe0ab}
+  /* ————— app mock ————— */
+  .mock{background:var(--pane);border:1px solid var(--line2);border-radius:14px;overflow:hidden;display:flex;font-size:12.5px;min-height:300px}
+  .m-sidebar{width:150px;background:#0f0f10;border-right:1px solid var(--line);padding:12px 10px;flex-shrink:0}
+  .m-railav{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#f9670e,#b93c00);display:flex;align-items:center;justify-content:center;font-size:15px;margin-bottom:14px}
+  .m-nav{color:var(--dim);font-size:11px;margin:10px 2px 6px;letter-spacing:.05em;text-transform:uppercase}
+  .m-chat-item{display:flex;gap:7px;align-items:center;padding:5px 7px;border-radius:7px}
+  .m-chat-item .av{width:20px;height:20px;border-radius:99px;background:#2f6df6;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .m-chat-item span{color:var(--mut);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m-feed{flex:1;padding:16px 16px 12px;min-width:0;position:relative}
+  .m-bub{max-width:82%;padding:7px 12px;border-radius:16px;margin-bottom:12px;font-size:12px;line-height:1.5}
+  .m-bub.me{margin-left:auto;background:var(--acc);color:#fff}
+  .m-bub.ai{background:var(--card);border:1px solid var(--line);color:#f5f5f5d9}
+  .m-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:10px;position:relative}
+  .m-card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .m-tag{font-size:9.5px;letter-spacing:.1em;color:var(--dim);font-weight:600;text-transform:uppercase}
+  .m-cap{color:#f5f5f5d9;font-size:11.5px;margin-bottom:8px}
+  .m-tomb{color:var(--dim);font-size:11.5px;padding:4px 2px;display:flex;gap:8px;align-items:center}
+  .m-tomb .x{color:var(--faint);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:10px}
+  .vchip{font-size:9px;font-weight:700;background:#4f8dff22;color:#8fb6ff;border:1px solid #4f8dff44;border-radius:5px;padding:0 5px;letter-spacing:.03em}
+  .vchip.cur{background:#32bb7822;color:#6fe0ab;border-color:#32bb7855}
+  .vchip.br{background:#9b7bff22;color:#c4b0ff;border-color:#9b7bff55}
+  /* mini app content mocks */
+  .bars{display:flex;gap:10px;align-items:flex-end;height:74px;padding:4px 6px 0;position:relative}
+  .bars i{flex:1;background:#4f8dff;border-radius:4px 4px 0 0;display:block}
+  .bars + .xl{display:flex;justify-content:space-around;color:var(--faint);font-size:9px;margin-top:3px}
+  .mw{background:#f4f4f6;border-radius:10px;padding:10px 12px;color:#191919;font-size:11px}
+  .mw h4{font-size:13px;display:flex;justify-content:space-between;align-items:center}
+  .mw h4 em{font-style:normal;font-size:9px;background:#2f6df6;color:#fff;border-radius:99px;padding:1px 7px}
+  .mw .sub2{color:#8a8a90;font-size:9.5px;margin:2px 0 8px}
+  .mw .rowq{display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#fff;border-radius:7px;margin-bottom:5px;border:1px solid #00000008}
+  .mw .rowq b{font-size:11.5px}.mw .rowq small{display:block;color:#8a8a90;font-size:9px}
+  .mw .rowq .q{text-align:right;color:#b0b0b8;font-size:10px}
+  .mw .rowq .q s{color:#c8c8d0;text-decoration:none;font-size:13px}
+  .codep{background:#121212;border:1px solid var(--line2);border-radius:9px;margin-top:8px;overflow:hidden}
+  .codep .h{display:flex;justify-content:space-between;padding:5px 10px;background:#f5f5f50f;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--mut)}
+  .codep .b{padding:8px 10px;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#f5f5f5a8;min-height:26px}
+  .codep .b.empty{color:#ff8f89;font-family:-apple-system,sans-serif;font-size:11px;display:flex;align-items:center;gap:6px}
+  .arow{display:flex;gap:2px;align-items:center;margin-top:8px;color:var(--mut)}
+  .arow .ab{border:1px dashed #ff5f5766;color:#f5f5f585;font-size:11.5px;padding:3px 8px;border-radius:7px}
+  .card-live{position:relative}
+  .card-live .live-bar{position:absolute;right:10px;bottom:8px;display:flex;gap:2px;opacity:0;transition:opacity .12s}
+  .card-live:hover .live-bar{opacity:1}
+  .live-bar .ab2{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--mut)}
+  .live-bar .ab2:hover{background:#f5f5f514}
+  .menu-mock{position:absolute;right:10px;bottom:34px;background:#282828;border:1px solid #ffffff1f;border-radius:10px;box-shadow:0 12px 34px #000a;padding:5px;min-width:190px;z-index:5}
+  .menu-mock div{padding:5px 10px;border-radius:6px;font-size:12px;color:#f5f5f5e6;display:flex;justify-content:space-between;gap:14px}
+  .menu-mock div:hover{background:#3a6cd8}
+  .menu-mock .sep{height:1px;background:#ffffff14;margin:4px 6px;padding:0}
+  .menu-mock .k{color:#f5f5f580;font-size:11px}
+  .m-lib{width:186px;border-left:1px solid var(--line);padding:12px 10px;flex-shrink:0;overflow:hidden}
+  .m-lib-tabs{display:flex;gap:4px;margin-bottom:10px}
+  .m-lib-tabs span{font-size:10px;padding:3px 8px;border-radius:6px;color:var(--dim)}
+  .m-lib-tabs span.on{background:#ffffff10;color:var(--tx)}
+  .m-lib-grp{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:8px 0 5px}
+  .m-lib-row{display:flex;gap:7px;align-items:center;padding:5px 6px;border-radius:8px}
+  .m-lib-row:hover{background:#ffffff08}
+  .m-lib-ic{width:22px;height:22px;border-radius:5px;background:#2f6df6;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .m-lib-ic.g{background:#32bb78}.m-lib-ic.o{background:#f9670e}
+  .m-lib-row .t{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;gap:5px;align-items:center}
+  .m-lib-row .f{font-size:9.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m-lib-row .age{margin-left:auto;color:var(--faint);font-size:10px;flex-shrink:0}
+  /* version graph mock (git log style) */
+  .vgraph{margin:6px 2px 2px;padding:8px 8px;background:#101012;border:1px solid var(--line);border-radius:10px}
+  .vg-title{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:6px;display:flex;justify-content:space-between}
+  .vg-row{display:flex;align-items:center;gap:8px;height:22px;position:relative}
+  .vg-dot{width:10px;height:10px;border-radius:99px;border:2px solid var(--blue);flex-shrink:0;z-index:2;background:#101012}
+  .vg-dot.cur{border-color:var(--gnd);background:var(--gnd)}
+  .vg-dot.br2{border-color:var(--purple);margin-left:16px}
+  .vg-lab{font-size:10.5px;color:var(--mut);white-space:nowrap}
+  .vg-lab b{color:var(--tx)}
+  .vg-lab .who{color:var(--faint);font-size:9.5px}
+  .vg-line{position:absolute;left:4px;top:11px;bottom:-11px;width:2px;background:var(--blue);opacity:.5;z-index:1}
+  .vg-row:last-child .vg-line{display:none}
+  .vg-branchline{position:absolute;left:4px;top:11px;width:16px;height:11px;border-left:2px solid var(--purple);border-bottom:2px solid var(--purple);border-radius:0 0 0 8px;opacity:.6}
+  .vg-dot.br2{position:relative}
+  .brtag{font-size:8.5px;color:var(--purple);background:#9b7bff18;border-radius:4px;padding:0 4px;margin-left:4px}
+  /* popout mock */
+  .pop-mock{background:var(--pane);border:1px solid var(--line2);border-radius:12px;overflow:hidden;width:230px;flex-shrink:0;box-shadow:0 18px 50px #0009}
+  .pop-tl{display:flex;gap:6px;padding:9px 10px 6px;align-items:center}
+  .pop-tl i{width:9px;height:9px;border-radius:99px;display:block}
+  .pop-tl .r{background:var(--red)}.pop-tl .y{background:var(--yellow)}.pop-tl .g{background:var(--gnd)}
+  .pop-tl span{margin-left:8px;font-size:9.5px;color:var(--dim)}
+  .pop-body{padding:2px 10px 12px}
+  /* composer mock */
+  .composer{background:var(--card);border:1px solid var(--line2);border-radius:16px;padding:10px 12px;margin-top:10px}
+  .composer .q{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+  .composer .qchip{display:inline-flex;gap:5px;align-items:center;background:#ffffff14;border-radius:7px;padding:2px 8px;font-size:11px;color:var(--mut)}
+  .composer .qchip b{color:var(--tx);font-weight:500}
+  .composer .inp{color:var(--dim);font-size:12.5px}
+  .composer .inp .hl{color:var(--tx);background:#f9670e33;border-radius:4px;padding:0 3px}
+  .mention{background:#282828;border:1px solid #ffffff1f;border-radius:10px;box-shadow:0 12px 34px #000a;padding:5px;margin-top:6px;max-width:300px}
+  .mention .mh{font-size:9.5px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;padding:4px 8px 3px}
+  .mention .mi{display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:7px;font-size:12px}
+  .mention .mi.sel{background:#3a6cd8;color:#fff}
+  .mention .mi .ic{width:18px;height:18px;border-radius:5px;background:#2f6df6;color:#fff;font-size:8.5px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mention .mi small{color:#f5f5f580;margin-left:auto;font-size:10px}
+  .mention .mi.sel small{color:#ffffffb3}
+  .notes{margin-top:18px;border:1px solid #f5f5f518;border-radius:12px;padding:14px 16px;background:#141414}
+  .notes h3{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  .notes li{color:var(--mut);font-size:12.5px;margin:5px 0 5px 18px}
+  .notes li b{color:var(--tx)}
+  .ask{margin-top:12px;display:flex;flex-direction:column;gap:7px}
+  .ask .q{border:1px solid #7aa2ff33;background:#7aa2ff11;border-radius:10px;padding:9px 13px;font-size:12.5px;color:#cdd9ff}
+  .ask .q b{color:#fff}
+  .locked{border-color:#32bb7855;background:#32bb780d}
+  .locked b{color:#6fe0ab}
+  .rootcall{margin:18px 0 6px;border:1px solid var(--acc);border-radius:12px;padding:12px 16px;background:#f9670e0d}
+  .rootcall b{color:var(--acc)}
+  .rootcall p{color:var(--mut);font-size:12.5px;margin-top:3px}
+  @media (max-width:1000px){.pair{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Grok Shell — issue review <span style="color:var(--dim);font-size:15px">v2</span></h1>
+  <div class="sub">2026-10-20 · updated with your calls: <b style="color:#6fe0ab">3 → A</b> (delete removes the card, atomically) · <b style="color:#6fe0ab">4 → versioned artifacts</b> with branching · <b style="color:#6fe0ab">6</b> builds on the version model.</div>
+  <div class="legend">
+    <div><span class="dot" style="background:#ff8f89"></span> bug — broken now</div>
+    <div><span class="dot" style="background:#6fe0ab"></span> decided / done</div>
+    <div><span class="dot" style="background:#a8c1ff"></span> planned — not built yet</div>
+  </div>
+
+  <div class="rootcall">
+    <b>One root cause behind issues 1, 3 and 4:</b>
+    <p>the chat renders modules from a <code>MODULES</code> map baked into <code>bundle.nshc</code> at package time — a snapshot. Everything else (Library, pop-outs, View Code) reads the live filesystem. Any module created or rewritten after the last build shows "module missing" in chat while launching fine as a pop-out. The versioned-artifact model (issue 4) makes this sharper: versions live on disk, and the chat must render whatever version a card points at.</p>
+  </div>
+
+  <!-- ═══════════ ISSUE 1 ═══════════ -->
+  <div class="iss">
+    <div class="iss-head">
+      <span class="num">1</span><h2>"app · R6 — module missing" — but the app exists and launches</h2>
+      <span class="chip c-bug">bug</span>
+    </div>
+    <p class="story">Library's <b>Rate Pad</b> launches a working mini app (<i>Market watch</i>) while its chat card says <code>module missing</code>. R6 was generated at runtime — the file is on disk, so pop-outs and Library see it; the chat card can't, because chat renders only what was compiled into the app bundle.</p>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now</div>
+        <div class="mock">
+          <div class="m-sidebar"><div class="m-railav">✦</div><div class="m-nav">Chats</div>
+            <div class="m-chat-item"><div class="av">i</div><span>i wanna learn basic of…</span></div>
+          </div>
+          <div class="m-feed">
+            <div class="m-bub me">try again</div>
+            <div class="m-card">
+              <div class="m-card-h"><span class="m-tag">generated · R5.tsx · gpt-6-luna</span><span style="color:var(--faint);font-size:10px">⤴ ✕</span></div>
+              <div class="m-cap">Manual quote tracker · seeded with indicative October 20, 2026 reference prices.</div>
+              <div class="bars"><i style="height:38%"></i><i style="height:62%"></i><i style="height:30%"></i><i style="height:78%"></i><i style="height:55%"></i><i style="height:20%"></i><i style="height:66%"></i></div>
+              <div class="xl"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+            </div>
+            <div class="m-tomb" style="outline:1.5px dashed #ff5f57;border-radius:8px">app · R6 — module missing <span class="x">✕</span></div>
+            <div class="m-bub ai">The Rate Pad is mounted above. It tracks all three pairs with manually entered quotes; it doesn't fetch live prices.</div>
+          </div>
+          <div class="m-lib">
+            <div class="m-lib-tabs"><span>Details</span><span class="on">Library</span><span>Computer</span></div>
+            <div class="m-lib-grp">Today</div>
+            <div class="m-lib-row"><div class="m-lib-ic g">&lt;/&gt;</div><div><div class="t">Brick Breaker</div><div class="f">brick-breaker.tsx</div></div><span class="age">35m</span></div>
+            <div class="m-lib-row" style="outline:1.5px dashed #ff5f57"><div class="m-lib-ic o">&lt;/&gt;</div><div><div class="t">Rate Pad</div><div class="f">rate-pad.tsx</div></div><span class="age">1h</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label">After the fix</div>
+        <div class="mock">
+          <div class="m-sidebar"><div class="m-railav">✦</div><div class="m-nav">Chats</div>
+            <div class="m-chat-item"><div class="av">i</div><span>i wanna learn basic of…</span></div>
+          </div>
+          <div class="m-feed">
+            <div class="m-bub me">try again</div>
+            <div class="m-card">
+              <div class="m-card-h"><span class="m-tag">generated · R5.tsx · v1 · gpt-6-luna</span><span style="color:var(--faint);font-size:10px">⤴ ✕</span></div>
+              <div class="m-cap">Manual quote tracker · seeded with indicative October 20, 2026 reference prices.</div>
+              <div class="bars"><i style="height:38%"></i><i style="height:62%"></i><i style="height:30%"></i><i style="height:78%"></i><i style="height:55%"></i><i style="height:20%"></i><i style="height:66%"></i></div>
+              <div class="xl"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+            </div>
+            <div class="m-card" style="outline:1.5px solid #32bb78">
+              <div class="m-card-h"><span class="m-tag">generated · R6.tsx · v1 · gpt-6-luna</span><span style="color:var(--faint);font-size:10px">⤴ ✕</span></div>
+              <div class="m-cap">Rate Pad — manual quote tracker.</div>
+              <div class="mw"><h4>Market watch <em>3 pairs</em></h4><div class="sub2">Manual quote tracker</div>
+                <div class="rowq"><div><b>XAU/USD</b><small>USD per troy oz</small></div><div class="q"><s>–</s><br>No quote yet</div></div>
+                <div class="rowq"><div><b>BTC/USD</b><small>USD per BTC</small></div><div class="q"><s>–</s><br>No quote yet</div></div>
+                <div class="rowq"><div><b>PHP/USD</b><small>USD per PHP</small></div><div class="q"><s>–</s><br>No quote yet</div></div>
+              </div>
+            </div>
+            <div class="m-bub ai">The Rate Pad is mounted above. It tracks all three pairs with manually entered quotes; it doesn't fetch live prices.</div>
+          </div>
+          <div class="m-lib">
+            <div class="m-lib-tabs"><span>Details</span><span class="on">Library</span><span>Computer</span></div>
+            <div class="m-lib-grp">Today</div>
+            <div class="m-lib-row"><div class="m-lib-ic g">&lt;/&gt;</div><div><div class="t">Brick Breaker <span class="vchip cur">v2</span></div><div class="f">brick-breaker.tsx</div></div><span class="age">35m</span></div>
+            <div class="m-lib-row"><div class="m-lib-ic o">&lt;/&gt;</div><div><div class="t">Rate Pad <span class="vchip cur">v1</span></div><div class="f">rate-pad.tsx</div></div><span class="age">1h</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cause"><div class="t">Root cause</div>
+      <p><code>shell.tsx</code> resolves cards via <code>import { MODULES } from "../generated/index"</code> — a static import compiled into the packaged bundle. R6's file exists (server wrote it at runtime), but it isn't in that snapshot. This is <b>not a path bug</b> — it's build-time vs runtime module loading.</p></div>
+
+    <div class="notes"><h3>The fix — how chat loads live modules</h3>
+      <li><b>Same trick as pop-outs:</b> the server already compiles a module to bytecode on demand for pop-outs (<code>nsh build → .nshc → host</code>). The chat needs the equivalent: a <b>runtime-loadable module registry</b> instead of the baked <code>MODULES</code> import.</li>
+      <li><b>Honest caveat:</b> the packaged runner is hardened (no <code>eval</code>), so the app can't interpret new TSX itself. Loading runtime modules inside the chat needs the host to load a <b>server-compiled chunk</b> — likely a small upstream nsh change (the Rust <code>Host</code> already supports chunk bundles; it just isn't exposed). I'll confirm the cleanest path before writing it.</li>
+      <li><b>With versioning (issue 4):</b> the registry keys become <code>R6/v3</code> — a card renders the version it produced, not the current one. The loader must resolve versioned paths.</li>
+      <li>Until that lands, every artifact generated <i>after</i> packaging will hit this. Dev mode is unaffected (JIT reads the filesystem).</li>
+    </div>
+  </div>
+
+  <!-- ═══════════ ISSUE 2 ═══════════ -->
+  <div class="iss">
+    <div class="iss-head">
+      <span class="num">2</span><h2>View Code opens an empty panel</h2>
+      <span class="chip c-bug">bug — small fix</span>
+    </div>
+    <p class="story">The R5 card's <b>View Code</b> expands a panel headed <code>R5.tsx · ⧉ copy</code> — with nothing in it. R5's file was deleted earlier, so <code>/module</code> returns an empty source and the panel renders blank space instead of saying so.</p>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now</div>
+        <div class="mock" style="min-height:170px">
+          <div class="m-feed">
+            <div class="m-card">
+              <div class="m-card-h"><span class="m-tag">generated · R5.tsx · gpt-6-luna</span></div>
+              <div class="codep">
+                <div class="h"><span>R5.tsx</span><span>⧉ copy</span></div>
+                <div class="b">—</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label">After the fix</div>
+        <div class="mock" style="min-height:170px">
+          <div class="m-feed">
+            <div class="m-card">
+              <div class="m-card-h"><span class="m-tag">generated · R5.tsx · gpt-6-luna</span></div>
+              <div class="codep">
+                <div class="h"><span>R5.tsx</span><span>⧉ copy</span></div>
+                <div class="b empty">⚠ source unavailable — artifact was deleted</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="cause"><div class="t">Root cause & fix</div>
+      <p><code>/module</code> returns <code>source:""</code> for missing files and the panel renders it verbatim. Fix: empty source → a "deleted/unavailable" row, and the ⋯ menu greys out <b>View Code</b> / <b>Copy Source</b>. With issue 3's atomic delete this state becomes rare anyway (the whole card goes).</p></div>
+  </div>
+
+  <!-- ═══════════ ISSUE 3 ═══════════ -->
+  <div class="iss">
+    <div class="iss-head">
+      <span class="num">3</span><h2>Deleting an artifact removes its card — atomically</h2>
+      <span class="chip c-agree">decided — option A</span>
+    </div>
+    <p class="story"><b>You picked A.</b> And you're right that the deeper fix is reaching this state at all: a Library <b>Delete</b> should remove the artifact and every chat card that names it <b>in the same operation</b> — no tombstone, no zombie, nothing to clean up later. The only "module missing" left should be the build-time drift from issue 1, which that fix eliminates separately.</p>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now — delete leaves a tombstone</div>
+        <div class="mock" style="min-height:200px">
+          <div class="m-feed">
+            <div class="m-bub me">make me a rate pad for xau/btc/php</div>
+            <div class="m-tomb" style="outline:1.5px dashed #ff5f57;border-radius:8px">app · R6 — module missing <span class="x">✕</span></div>
+            <div class="m-bub ai">The Rate Pad is mounted above…</div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label">After — delete removes the turn(s)</div>
+        <div class="mock" style="min-height:200px">
+          <div class="m-feed">
+            <div class="m-bub me">make me a rate pad for xau/btc/php</div>
+            <div class="m-bub ai">The Rate Pad is mounted above… <span style="color:var(--dim)">(the card row is gone — the transcript flows on)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes"><h3>What the delete does now (atomic)</h3>
+      <li><code>/app/delete</code> removes the artifact's files <b>and</b> scrubs every turn naming it — the card <i>and</i> the prompt that generated it (same behavior as the card's own ✕ "name:" delete, now from the Library side too).</li>
+      <li>The Library row, the Mini Apps tile, kv state and meta row go with it.</li>
+      <li>Tombstone table stays as belt-and-braces for anything deleted before this, but a fresh delete should never produce a "module missing" row again.</li>
+      <li><b>With versioning:</b> delete removes the whole artifact — all versions, all branches, all cards. Version-level delete (drop just v3) isn't in v1 — flagging it now.</li>
+    </div>
+  </div>
+
+  <!-- ═══════════ ISSUE 4 ═══════════ -->
+  <div class="iss">
+    <div class="iss-head">
+      <span class="num">4</span><h2>Versioned artifacts — cards show v1, v2… the Library launches current</h2>
+      <span class="chip c-agree">decided — your model</span>
+    </div>
+    <p class="story"><b>Your model:</b> iterating on an app versions it. One artifact, many versions — the transcript keeps the <b>v1 card</b> and the <b>v2 card</b> side by side so history is honest; the Library holds <b>one</b> entry pointing at the <b>current version</b> (latest by default, revertable). Clicking it launches <i>current</i>. Revert to v4, iterate again → it <b>branches off v4</b>: v5 and v7 become siblings. And you want to <b>see</b> the branch.</p>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now — retry clones a new artifact</div>
+        <div class="mock">
+          <div class="m-feed">
+            <div class="m-card" style="max-width:58%">
+              <div class="m-card-h"><span class="m-tag">generated · R5.tsx</span></div>
+              <div class="bars"><i style="height:38%"></i><i style="height:62%"></i><i style="height:30%"></i><i style="height:78%"></i><i style="height:55%"></i><i style="height:20%"></i><i style="height:66%"></i></div>
+              <div class="xl"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+            </div>
+            <div class="m-tomb" style="outline:1.5px dashed #ff5f57;border-radius:8px;max-width:58%">app · R6 — module missing <span class="x">✕</span></div>
+            <div class="m-bub ai" style="max-width:58%">"Both retries completed, so you may see two copies."</div>
+          </div>
+          <div class="m-lib">
+            <div class="m-lib-tabs"><span>Details</span><span class="on">Library</span></div>
+            <div class="m-lib-grp">Today</div>
+            <div class="m-lib-row"><div class="m-lib-ic o">&lt;/&gt;</div><div><div class="t">Rate Pad</div><div class="f">rate-pad.tsx</div></div><span class="age">45m</span></div>
+            <div class="m-lib-row" style="opacity:.45"><div class="m-lib-ic o">&lt;/&gt;</div><div><div class="t">Rate Pad <i>(clone)</i></div><div class="f">rate-pad.tsx</div></div><span class="age">33m</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label">After — one artifact, versioned cards</div>
+        <div class="mock">
+          <div class="m-feed">
+            <div class="m-card" style="max-width:58%">
+              <div class="m-card-h"><span class="m-tag">generated · R6.tsx · <span class="vchip">v1</span></span><span style="color:var(--faint);font-size:10px">⤴ ✕</span></div>
+              <div class="bars"><i style="height:38%"></i><i style="height:62%"></i><i style="height:30%"></i><i style="height:78%"></i><i style="height:55%"></i><i style="height:20%"></i><i style="height:66%"></i></div>
+              <div class="xl"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+            </div>
+            <div class="m-bub me">iterate: switch to a pair list, quote fields</div>
+            <div class="m-card" style="max-width:58%;outline:1.5px solid #32bb78">
+              <div class="m-card-h"><span class="m-tag">generated · R6.tsx · <span class="vchip cur">v2 · current</span></span><span style="color:var(--faint);font-size:10px">⤴ ✕</span></div>
+              <div class="mw"><h4>Market watch <em>3 pairs</em></h4>
+                <div class="rowq"><div><b>XAU/USD</b></div><div class="q"><s>–</s></div></div>
+                <div class="rowq"><div><b>BTC/USD</b></div><div class="q"><s>–</s></div></div>
+                <div class="rowq"><div><b>PHP/USD</b></div><div class="q"><s>–</s></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="m-lib">
+            <div class="m-lib-tabs"><span>Details</span><span class="on">Library</span></div>
+            <div class="m-lib-grp">Today</div>
+            <div class="m-lib-row"><div class="m-lib-ic o">&lt;/&gt;</div><div><div class="t">Rate Pad <span class="vchip cur">v2</span></div><div class="f">rate-pad.tsx</div></div><span class="age">1h</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes"><h3>The model</h3>
+      <li><b>Artifact</b> (<code>R6</code>, title <i>Rate Pad</i>) owns a <b>version tree</b>: <code>v1 → v2 → v3 …</code>, each with a <b>parent pointer</b>. Files live as <code>generated/R6/v3.tsx</code>; <code>R6.tsx</code> is whatever <i>current</i> points at.</li>
+      <li><b>Cards record their version:</b> <code>generated · R6.tsx · v2</code> — the v1 card keeps rendering v1, the v2 card renders v2. Transcript stays honest; no more "which Rate Pad is this".</li>
+      <li><b>Current pointer</b> per artifact: latest by default. Library shows it (<span class="vchip cur">v2</span>); the row's click and pop-out launch <i>current</i>, whatever it points at.</li>
+      <li><b>Revert</b> = move the pointer back (v4), not rewrite. Iterating from a non-tip version <b>branches</b> — next section.</li>
+    </div>
+  </div>
+
+  <!-- ═══════════ ISSUE 5 (branching detail) ═══════════ -->
+  <div class="iss">
+    <div class="iss-head">
+      <span class="num">4b</span><h2>Branching — revert + iterate forks the tree, and you can see it</h2>
+      <span class="chip c-agree">decided — your model</span>
+    </div>
+    <p class="story">Your example: versions v1–v6 linear, revert to <b>v4</b>, iterate → the new version <b>v7 branches off v4</b>. Now v4 has two children — <b>v5</b> (the abandoned line) and <b>v7</b> (your new line). The Library's version graph shows it.</p>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Version graph — the sidebar History view</div>
+        <div class="mock" style="min-height:0">
+          <div class="m-feed">
+            <div class="m-lib-row" style="margin-bottom:8px"><div class="m-lib-ic o">&lt;/&gt;</div><div><div class="t"><b>Rate Pad</b> <span class="vchip cur">v7</span></div><div class="f">rate-pad.tsx</div></div><span class="age">1h</span></div>
+            <div class="vgraph">
+              <div class="vg-title"><span>version history</span><span>R6</span></div>
+              <div class="vg-row"><div class="vg-line"></div><div class="vg-dot"></div><span class="vg-lab"><b>v7</b> · pair list, faster refresh <span class="brtag">branch</span> <span class="who">· current · 2m</span></span></div>
+              <div class="vg-row"><div class="vg-line"></div><div class="vg-dot" style="border-color:var(--purple)"></div><span class="vg-lab">v6 · pair list tweaks <span class="who">· 40m</span></span></div>
+              <div class="vg-row"><div class="vg-line"></div><div class="vg-dot" style="border-color:var(--purple)"></div><span class="vg-lab">v5 · theming pass <span class="who">· 44m</span></span></div>
+              <div class="vg-row"><div class="vg-line" style="left:20px;background:var(--purple)"></div><div class="vg-line"></div><div class="vg-dot cur"></div><span class="vg-lab"><b>v4</b> · fork point <span class="who">· reverted here</span></span></div>
+              <div class="vg-row"><div class="vg-line"></div><div class="vg-dot"></div><span class="vg-lab">v3 <span class="who">· 1h</span></span></div>
+              <div class="vg-row"><div class="vg-line"></div><div class="vg-dot"></div><span class="vg-lab">v2 <span class="who">· 1h</span></span></div>
+              <div class="vg-row"><div class="vg-dot"></div><span class="vg-lab">v1 · bar chart <span class="who">· 2h</span></span></div>
+            </div>
+            <div style="color:var(--faint);font-size:10.5px;margin-top:6px">v4 → v7 is a sibling of v4 → v5 — purple lane, git-style.</div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label">Semantics</div>
+        <div class="mock" style="min-height:0;flex-direction:column;justify-content:center">
+          <div class="m-feed">
+            <div class="m-bub ai" style="max-width:100%">
+              <b>pointer rules</b><br><br>
+              <b>iterate</b> on current → new version, parent = current<br>
+              <b>revert to v4</b> → current = v4 (no rewrite, v5/v6 kept)<br>
+              <b>iterate on v4</b> → v7, parent = v4 → <b>v5 and v7 are siblings</b><br>
+              <b>Library click / pop-out</b> → always launches <i>current</i><br>
+              <b>a card's ↗</b> → pops out <i>that card's</i> version (v1 card → v1 window)<br><br>
+              <span style="color:var(--dim)">the graph is a tree, not a merge DAG — one parent per version, git-log shaped.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <div class="q"><b>Check me:</b> when you pop out a <b>v1 card</b> from the transcript — should it open v1 (what you see) or current v7? I drew it as <b>its own version</b>; the Library is what always gives you current.</div>
+      <div class="q"><b>Check me:</b> branch labels — auto-named like git (<i>v5 line</i> / <i>v7 line</i>) or do you want to name them ("the fast one")?</div>
+    </div>
+  </div>
+
+  <!-- ═══════════ ISSUE 5 done ═══════════ -->
+  <div class="iss">
+    <div class="iss-head">
+      <span class="num">5</span><h2>Card action row → hover ☺ · ↩ · ⋯</h2>
+      <span class="chip c-done">done — verify</span>
+    </div>
+    <p class="story">The 8-button row is gone — shipped in <code>d5cbe92</code>. Hover the card below: react · reply · ⋯, same pattern as bubbles. The ⋯ menu carries the app ops.</p>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Before</div>
+        <div class="mock" style="min-height:170px">
+          <div class="m-feed">
+            <div class="m-card">
+              <div class="m-card-h"><span class="m-tag">generated · R6.tsx · gpt-6-luna</span><span style="color:var(--faint);font-size:10px">⤴ ✕</span></div>
+              <div class="mw"><h4>Market watch <em>3 pairs</em></h4>
+                <div class="rowq"><div><b>XAU/USD</b></div><div class="q"><s>–</s></div></div>
+              </div>
+              <div class="arow">
+                <span class="ab">👍</span><span class="ab">👎</span><span class="ab">↻</span><span class="ab">&lt;/&gt;</span><span class="ab">⧉</span><span class="ab">save</span><span class="ab">★</span><span class="ab">↗</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label">After — hover the card</div>
+        <div class="mock" style="min-height:170px">
+          <div class="m-feed">
+            <div class="m-card card-live">
+              <div class="m-card-h"><span class="m-tag">generated · R6.tsx · v2 · gpt-6-luna</span><span style="color:var(--faint);font-size:10px">⤴ ✕</span></div>
+              <div class="mw"><h4>Market watch <em>3 pairs</em></h4>
+                <div class="rowq"><div><b>XAU/USD</b></div><div class="q"><s>–</s></div></div>
+              </div>
+              <div style="height:24px"></div>
+              <div class="live-bar">
+                <span class="ab2">☺</span><span class="ab2">↩</span><span class="ab2">⋯</span>
+              </div>
+              <div class="menu-mock">
+                <div><span>View Code</span><span class="k">&lt;/&gt;</span></div>
+                <div><span>Copy Source</span><span class="k">⧉</span></div>
+                <div class="sep"></div>
+                <div><span>Save to Mini Apps</span></div>
+                <div><span>Open in Window</span><span class="k">↗</span></div>
+                <div><span>Add to Desktop Widget</span><span class="k">★</span></div>
+                <div class="sep"></div>
+                <div><span>Iterate…</span><span class="k">↩</span></div>
+                <div><span>Version History</span><span class="k">⑂</span></div>
+                <div class="sep"></div>
+                <div><span>Reveal in Finder</span><span class="k">⤴</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ ISSUE 6 ═══════════ -->
+  <div class="iss">
+    <div class="iss-head">
+      <span class="num">6</span><h2>Iterate: @ mentions + app tool calls, on the version model</h2>
+      <span class="chip c-plan">planned</span>
+    </div>
+    <p class="story">Reply-on-card attaching is shipped (<code>module://R6</code> inlines the source). What's left is everything on top: the <b>@ picker</b> and the <b>tool calls</b> — now shaped by your version model, so <code>revise</code> writes a <b>new version on the same artifact</b> and a revert+revise branches.</p>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">@ picker + reply-attach (mock)</div>
+        <div class="mock" style="min-height:270px;flex-direction:column">
+          <div class="m-feed" style="flex:1">
+            <div class="m-card card-live" style="max-width:75%">
+              <div class="m-card-h"><span class="m-tag">generated · R6.tsx · <span class="vchip">v2</span></span></div>
+              <div class="mw"><h4>Market watch <em>3 pairs</em></h4>
+                <div class="rowq"><div><b>XAU/USD</b></div><div class="q"><s>–</s></div></div>
+              </div>
+              <div class="live-bar"><span class="ab2">☺</span><span class="ab2" style="outline:1.5px solid #32bb78;border-radius:6px">↩</span><span class="ab2">⋯</span></div>
+              <div style="height:24px"></div>
+            </div>
+          </div>
+          <div class="m-feed" style="padding-top:0">
+            <div class="composer">
+              <div class="q"><span class="qchip">💬︎ <b>app · R6.tsx</b></span><span class="qchip">📎 R6.tsx · v2</span></div>
+              <div class="inp">revise <span class="hl">@rate-pad</span> to refresh the pairs faster<span style="color:var(--acc)">▏</span></div>
+              <div class="mention">
+                <div class="mh">Mini Apps — this bot</div>
+                <div class="mi sel"><div class="ic">&lt;/&gt;</div><span>Rate Pad</span><small>R6 · v2 current</small></div>
+                <div class="mi"><div class="ic">&lt;/&gt;</div><span>Brick Breaker</span><small>R9 · v1</small></div>
+                <div class="mh">All apps & files</div>
+                <div class="mi"><div class="ic" style="background:#f9670e">&lt;/&gt;</div><span>Rate Tracker</span><small>R21 · Grok</small></div>
+                <div class="mi"><div class="ic" style="background:#32bb78">📄</div><span>rates.csv</span><small>attachment</small></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label">Tool calls on the version model</div>
+        <div class="mock" style="min-height:270px;flex-direction:column;justify-content:center">
+          <div class="m-feed">
+            <div class="m-bub ai" style="max-width:100%">
+              <b>tool calls the model gets</b><br><br>
+              <code>revise(name, prompt, base_v?)</code> — new version on the artifact; <code>base_v</code> = the branch point (defaults to current)<br>
+              <code>launch_app(name)</code> — pop open current<br>
+              <code>close_app(name)</code> — close its pop-out<br>
+              <code>set_version(name, v)</code> — move current (revert/restore)<br>
+              <code>promote_app</code> / <code>demote_app</code> — Mini Apps ↔ desktop widget<br>
+              <code>view_code(name, v?)</code> — read a version's source<br>
+              <code>delete_app(name)</code> — remove the artifact (all versions)<br><br>
+              <span style="color:var(--dim)">names resolve bot-scope first, then global — same ordering as the @ picker.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes"><h3>How I'd build it</h3>
+      <li><b>Version store:</b> <code>generated/R6/v1.tsx</code>, <code>v2.tsx</code>… + a <code>versions(name, v, parent_v, prompt, created_at)</code> table and a <code>current_v</code> pointer per artifact. <code>R6.tsx</code> stays the "current" file on disk so every existing path (pop-out build, /module, imports) just works.</li>
+      <li><b>@ picker:</b> composer watches for <code>@</code>, queries a new <code>/artifacts?q=&amp;thread=</code> — bot-thread apps first, then global/widgets, then attachments; match on title/file/name only.</li>
+      <li><b>Mention → context:</b> a picked mention becomes a <code>module://R6</code> attachment (already shipped path) — the model sees the current source + a <code>revise</code> tool to write back.</li>
+      <li><b>revise:</b> the tool copies <i>base_v</i> → new version file, the model edits it, normal <code>nsh check</code> gate applies, then <code>current_v</code> moves to the new version and the turn card records <code>v3</code>.</li>
+      <li><b>Depends on issue 1:</b> in-chat live module loading — versioned modules make it more urgent, since the registry keys become <code>R6/v3</code>.</li>
+    </div>
+  </div>
+
+  <div class="notes" style="border-color:#f9670e44">
+    <h3 style="color:var(--acc)">Sign-off checklist</h3>
+    <li>☐ <b>Issue 1</b> — live module loading for chat; I'll confirm the upstream chunk-loading path and report before writing code.</li>
+    <li>☐ <b>Issue 2</b> — empty code panel → "deleted/unavailable" state. Small fix, doing it regardless.</li>
+    <li>☑ <b>Issue 3</b> — <b>A:</b> Library Delete removes the artifact <i>and</i> its cards/prompt turns atomically; tombstones should never form.</li>
+    <li>☑ <b>Issue 4</b> — <b>versioned artifacts:</b> cards labeled per-version, Library launches <i>current</i>, revert moves the pointer, revise branches off whatever it points at — with a visible git-style graph.</li>
+    <li>☐ <b>Issue 5</b> — verify the hover bar in the running app (shipped).</li>
+    <li>☐ <b>Issue 6</b> — @ picker + tool calls (<code>revise</code> = new version on the same artifact). Open: card pop-out launches <i>its own version</i> vs current — I drew "its own version"; branch names auto or manual?</li>
+  </div>
+</div>
+</body>
+</html>

@@ -361,23 +361,22 @@ export function CardShell(props: Props) {
       onSelect: () => react(e),
     })));
 
+  const srcErr = signal(false);
+  const fetchSource = async () => {
+    const d = await fetch(`${GEN}/module?name=${props.name}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    if (d?.source) source.set(d.source);
+    else srcErr.set(true);
+  };
+
   const toggleCode = async () => {
-    if (!codeOpen() && !source()) {
-      const d = await fetch(`${GEN}/module?name=${props.name}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-      if (d?.source) source.set(d.source);
-    }
+    if (!codeOpen() && !source() && !srcErr()) await fetchSource();
     codeOpen.update((v) => !v);
   };
 
   const copySource = async () => {
-    if (!source()) {
-      const d = await fetch(`${GEN}/module?name=${props.name}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null);
-      if (d?.source) source.set(d.source);
-    }
+    if (!source() && !srcErr()) await fetchSource();
     const s = source();
     if (!s) return;
     post("/copy", { text: s });
@@ -539,16 +538,23 @@ export function CardShell(props: Props) {
             </View>
           </View>
           <View style={{ paddingHorizontal: 10, paddingVertical: 8 }}>
-            <Text
-              style={{
-                fontFamily: "Menlo",
-                fontSize: 11.5,
-                color: tc("#f5f5f5a8"),
-                lineHeight: 17,
-              }}
-            >
-              {source() || "…"}
-            </Text>
+            <If when={srcErr()}>
+              <Text style={{ color: tc("#f5f5f566"), fontSize: 11.5 }}>
+                source unavailable — artifact was deleted
+              </Text>
+            </If>
+            <If when={!srcErr()}>
+              <Text
+                style={{
+                  fontFamily: "Menlo",
+                  fontSize: 11.5,
+                  color: tc("#f5f5f5a8"),
+                  lineHeight: 17,
+                }}
+              >
+                {source() || "…"}
+              </Text>
+            </If>
           </View>
         </View>
       </If>
