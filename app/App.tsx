@@ -882,6 +882,13 @@ function App() {
       <View style={{ width: sz * 0.4, height: sz * 0.4, borderRadius: 1.5, backgroundColor: dim() }} />
     </View>
   );
+  // Puzzle piece: square with a knob on top (the marketplace glyph).
+  const pluginGlyph = (sz: number) => (
+    <View style={{ width: sz, height: sz }}>
+      <View style={{ position: "absolute", left: sz * 0.28, top: 0, width: sz * 0.44, height: sz * 0.44, borderRadius: sz * 0.22, backgroundColor: dim() }} />
+      <View style={{ position: "absolute", left: 0, bottom: 0, width: sz, height: sz * 0.74, borderRadius: sz * 0.18, backgroundColor: dim() }} />
+    </View>
+  );
   const secHeader = (key: string, title: string, count?: () => number) => (
     <View
       onPress={() => toggleSec(key)}
@@ -1188,6 +1195,71 @@ function App() {
     const next = d?.servers || [];
     if (JSON.stringify(next) !== JSON.stringify(mcpServers())) mcpServers.set(next);
   };
+  // Plugin marketplace modal (Grok Bot's "Connect apps" → ours: plugins).
+  const pluginsOpen = signal(false);
+  const plugins = signal<{ name: string; description: string; category: string; homepage: string | null; domains: string[]; keywords: string[]; installed: boolean }[]>([]);
+  const pluginBusy = signal("");
+  const pluginCat = signal("All");
+  const pluginQuery = signal("");
+  const fetchPlugins = async () => {
+    const d = await fetch(`${GEN}/plugins/catalog`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (d?.plugins) plugins.set(d.plugins);
+  };
+  effect(() => {
+    if (!pluginsOpen()) return;
+    fetchPlugins();
+    fetchMcp();
+    const t = setInterval(fetchPlugins, 5000);
+    cleanup(() => clearInterval(t));
+  });
+  const installPlugin = async (name: string) => {
+    if (pluginBusy()) return;
+    pluginBusy.set(name);
+    try {
+      await post("/plugins/install", { name });
+      await fetchPlugins();
+    } finally {
+      pluginBusy.set("");
+    }
+  };
+  const pluginCats = () => ["All", ...[...new Set(plugins().map((p) => p.category))].map((c) => c[0].toUpperCase() + c.slice(1))];
+  const pluginList = () => {
+    const q = pluginQuery().trim().toLowerCase();
+    let list = plugins();
+    if (pluginCat() !== "All") list = list.filter((p) => p.category.toLowerCase() === pluginCat().toLowerCase());
+    if (q) list = list.filter((p) => `${p.name} ${p.description} ${(p.keywords || []).join(" ")}`.toLowerCase().includes(q));
+    return list;
+  };
+  const pluginTitle = (n: string) => n.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  // pairs for the 2-column marketplace grid
+  const pluginPairs = <T,>(list: T[]) => {
+    const out: T[][] = [];
+    for (let i = 0; i < list.length; i += 2) out.push(list.slice(i, i + 2));
+    return out;
+  };
+  // Marketplace row: 40px letter tile + name + subtitle … Add / ✓ Added.
+  const pluginRow = (p: { name: string; description: string; installed: boolean }) => (
+    <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 56, paddingHorizontal: 8 }}>
+      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: hue(p.name), alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{p.name[0].toUpperCase()}</Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{pluginTitle(p.name)}</Text>
+        <Text numberOfLines={1} style={{ color: dim(), fontSize: 11, lineHeight: 14 }}>{p.description}</Text>
+      </View>
+      {p.installed ? (
+        <Text style={{ color: "#f5f5f566", fontSize: 12, paddingHorizontal: 8 }}>✓ Added</Text>
+      ) : (
+        <View
+          onPress={() => installPlugin(p.name)}
+          activeOpacity={0.7}
+          style={{ height: 28, paddingHorizontal: 14, borderRadius: 9999, backgroundColor: tc("#f5f5f512"), alignItems: "center", justifyContent: "center" }}
+        >
+          <Text style={{ color: tc("#f5f5f5"), fontSize: 12, fontWeight: "500" }}>{pluginBusy() === p.name ? "Adding…" : "Add"}</Text>
+        </View>
+      )}
+    </View>
+  );
   // Poll while the tab is open — the agent can also change servers from
   // chat (mcp_install/disable), which only the server knows about.
   effect(() => {
@@ -1504,6 +1576,9 @@ function App() {
         <View onPress={() => tab.set(tab() === "work" ? "chat" : "work")} {...railHov("apps")} activeOpacity={0.7} accessibilityLabel="Mini Apps" style={railPlate("apps", 36, tab() === "work")}>
           {gridGlyph(14)}
         </View>
+        <View onPress={() => pluginsOpen.set(true)} {...railHov("plugins")} activeOpacity={0.7} accessibilityLabel="Plugins" style={railPlate("plugins", 36)}>
+          {pluginGlyph(13)}
+        </View>
         <View {...railHov("account")} style={railPlate("account")}>
           <View style={{ ...circleBtn(), backgroundColor: tc("#1f1f1f") }}>
             <Text style={{ color: dim(), fontSize: 14, fontWeight: "500" }}>UI</Text>
@@ -1612,6 +1687,26 @@ function App() {
                 Mini Apps
               </Text>
               {gridGlyph(14)}
+            </View>
+            <View
+              onPress={() => pluginsOpen.set(true)}
+              activeOpacity={0.7}
+              accessibilityLabel="Plugins"
+              style={{
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: tc("#1f1f1f"),
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 7,
+                paddingLeft: 14,
+                paddingRight: 14,
+              }}
+            >
+              {pluginGlyph(11)}
+              <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 14, lineHeight: 20, fontWeight: "500" }}>
+                Plugins
+              </Text>
             </View>
           </View>
         </View>
@@ -2956,6 +3051,136 @@ function App() {
         </If>
 
         {/* ————— Library rename: title / display file name ————— */}
+        {/* ————— Plugins marketplace (Grok Bot's "Connect apps" dialog: 800×702,
+              radius 14, #1f1f1f on rgba(0,0,0,.7) scrim, search + category
+              pills + 2-col sections) ————— */}
+        <If when={pluginsOpen()}>
+          <View style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: 30, alignItems: "center", justifyContent: "center" }}>
+            <View onPress={() => pluginsOpen.set(false)} style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "#000000b3" }} />
+            <View
+              style={{
+                width: Math.min(800, winW() - 60),
+                height: Math.min(702, windowSize().height - 60),
+                borderRadius: 14,
+                backgroundColor: "#1f1f1f",
+                borderWidth: 1,
+                borderColor: "#f5f5f51a",
+                overflow: "hidden",
+              }}
+            >
+              {/* close */}
+              <View
+                onPress={() => pluginsOpen.set(false)}
+                activeOpacity={0.7}
+                accessibilityLabel="Close plugins"
+                style={{ position: "absolute", top: 12, right: 14, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2 }}
+              >
+                <Text style={{ color: dim(), fontSize: 13 }}>✕</Text>
+              </View>
+              {/* header: connected chip → search + templates → category pills */}
+              <View style={{ paddingTop: 12, paddingHorizontal: 20, gap: 10, paddingBottom: 4 }}>
+                <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", paddingRight: 22 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8 }}>
+                    <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>{mcpServers().length + plugins().filter((p) => p.installed).length} connected ›</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <View style={{ flex: 1, height: 36, borderRadius: 10, backgroundColor: "#161616", borderWidth: 1, borderColor: "#f5f5f514", flexDirection: "row", alignItems: "center", paddingHorizontal: 10, gap: 8 }}>
+                    <Text style={{ color: dim(), fontSize: 13 }}>⌕</Text>
+                    <Input
+                      value={pluginQuery()}
+                      onChangeText={(t) => pluginQuery.set(t)}
+                      placeholder="Search across apps and skills"
+                      placeholderTextColor={tc("#f5f5f54d")}
+                      autoFocus
+                      style={{ flex: 1, fontSize: 14, color: tc("#f5f5f5") }}
+                    />
+                  </View>
+                  <View style={{ height: 36, borderRadius: 10, borderWidth: 1, borderColor: "#f5f5f514", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>◐</Text>
+                    <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates ↗</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                  <Each of={pluginCats()}>
+                    {(c) => (
+                      <View
+                        onPress={() => pluginCat.set(c())}
+                        activeOpacity={0.7}
+                        style={{ height: 28, borderRadius: 9999, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", backgroundColor: pluginCat() === c() ? tc("#f5f5f5") : tc("#f5f5f50a") }}
+                      >
+                        <Text style={{ color: pluginCat() === c() ? "#1f1f1f" : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
+                      </View>
+                    )}
+                  </Each>
+                </View>
+              </View>
+              {/* sections: Recommended → per-category (Grok's ordering) → Connected */}
+              <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 6, paddingHorizontal: 20, paddingBottom: 24 }}>
+                <If when={pluginList().length === 0}>
+                  <Text style={{ color: dim(), fontSize: 13, paddingVertical: 24, textAlign: "center" }}>No plugins match</Text>
+                </If>
+                {/* recommended = first 6 of the filtered list */}
+                <If when={pluginQuery() === "" && pluginCat() === "All" && pluginList().length > 0}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
+                    <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>Recommended for you</Text>
+                    <Text style={{ color: dim(), fontSize: 12 }}>View all</Text>
+                  </View>
+                  <Each of={pluginPairs(pluginList().slice(0, 6))}>
+                    {(pair) => (
+                      <View style={{ flexDirection: "row" }}>
+                        <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                      </View>
+                    )}
+                  </Each>
+                </If>
+                <Each of={pluginCats().filter((c) => c !== "All" && (pluginCat() === "All" || pluginCat() === c))}>
+                  {(cat) => {
+                    const items = pluginList().filter((p) => p.category.toLowerCase() === cat().toLowerCase() && !(pluginQuery() === "" && pluginCat() === "All" && pluginList().slice(0, 6).includes(p)));
+                    return (
+                      <If when={items.length > 0}>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 20, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>{cat()}</Text>
+                          <Text onPress={() => pluginCat.set(cat())} style={{ color: dim(), fontSize: 12 }}>View all</Text>
+                        </View>
+                        <Each of={pluginPairs(items)}>
+                          {(pair) => (
+                            <View style={{ flexDirection: "row" }}>
+                              <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                            </View>
+                          )}
+                        </Each>
+                      </If>
+                    );
+                  }}
+                </Each>
+                {/* Connected: the live MCP registry (our "Team plugins" slot) */}
+                <If when={mcpServers().length > 0}>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 20, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
+                    <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>Connected</Text>
+                  </View>
+                  <Each of={mcpServers()}>
+                    {(s) => (
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, height: 56, paddingHorizontal: 8 }}>
+                        <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: hue(s().id), alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{(s().name || s().id)[0].toUpperCase()}</Text>
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{s().name || s().id}</Text>
+                          <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>
+                            {s().status === "connected" ? `${s().tools} tools` : s().status === "error" ? `error — ${s().err || "failed"}` : s().enabled ? "idle" : "disabled"}
+                          </Text>
+                        </View>
+                        <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: s().status === "connected" ? "#32bb78" : s().status === "error" ? "#ff5f57" : s().enabled ? "#febc2e" : "#f5f5f533" }} />
+                      </View>
+                    )}
+                  </Each>
+                </If>
+              </Scroll>
+            </View>
+          </View>
+        </If>
+
         <If when={!!appRename()}>
           <View
             onPress={() => appRename.set(null)}

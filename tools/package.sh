@@ -26,6 +26,7 @@ cp "$(node -p 'process.execPath')" "$R/server/node"
 bun build "$ROOT/server/app-server.mjs" --target=node --format=esm \
   --outfile "$R/server/app-server.mjs"
 cp -R "$ROOT/widgets" "$R/server/widgets" 2>/dev/null || true
+cp -R "$ROOT/server/plugins" "$R/server/plugins" 2>/dev/null || true
 
 # nsh + host binaries: pop-outs do `nsh build` → `nsh-macos-host --bundle`.
 cp "$NSH_BIN" "$R/server/nsh"
