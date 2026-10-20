@@ -1,5 +1,5 @@
 import { Canvas } from "nsh/canvas";
-import { Animated, createNativeValue, Easing } from "nsh/animated";
+import { Animated, createAnimatedValue, Easing } from "nsh/animated";
 import { Image } from "nsh/image";
 import { cleanup, effect, signal, Text, View } from "nsh";
 import { appearance } from "./theme";
@@ -16,17 +16,27 @@ import { REST, REST_EN, REST_LAYERS, REST_N } from "./mark/rest.data";
 // script budget. set() is a no-op: nothing needs caching.
 const atlasByBody = new Map(Object.entries(ATLAS).map(([shape, entry]) => [YN(shape), entry]));
 const atlases = new Map<string, Atlas | null>();
-Wn.get = (key: string) => {
-  const [body, n, yaw, pitch, roll] = key.split(" ");
-  let atlas = atlases.get(body);
-  if (atlas === undefined) {
-    const entry = atlasByBody.get(body);
-    atlas = entry ? decodeAtlas(entry, ATLAS_STEP, ATLAS_K) : null;
-    atlases.set(body, atlas);
-  }
-  return atlas ? [atlasOutline(atlas, +n, +yaw, +pitch, +roll)] : undefined;
-};
-Wn.set = () => Wn;
+// Strict-mode bundles see Map.prototype.get as read-only (plain assignment
+// throws); defineProperty writes an own property regardless.
+Object.defineProperty(Wn, "get", {
+  value: (key: string) => {
+    const [body, n, yaw, pitch, roll] = key.split(" ");
+    let atlas = atlases.get(body);
+    if (atlas === undefined) {
+      const entry = atlasByBody.get(body);
+      atlas = entry ? decodeAtlas(entry, ATLAS_STEP, ATLAS_K) : null;
+      atlases.set(body, atlas);
+    }
+    return atlas ? [atlasOutline(atlas, +n, +yaw, +pitch, +roll)] : undefined;
+  },
+  writable: true,
+  configurable: true,
+});
+Object.defineProperty(Wn, "set", {
+  value: () => Wn,
+  writable: true,
+  configurable: true,
+});
 
 // Picker lists as extracted: `ol` (13 shapes) and `Wf` minus black (10 colors).
 export const BOT_SHAPES = [
@@ -187,8 +197,8 @@ export function blobGaze() {
   };
   return {
     v,
-    follow: (event: { x: number; y: number }, cx: number, cy: number, reach = 60) => {
-      change([clamp((event.x - cx) / reach), clamp(-(event.y - cy) / reach)]);
+    follow: (event: { locationX: number; locationY: number }, cx: number, cy: number, reach = 60) => {
+      change([clamp((event.locationX - cx) / reach), clamp(-(event.locationY - cy) / reach)]);
     },
     rest: () => change(null),
     get target() { return target; },
@@ -389,8 +399,8 @@ export function BotBlob(props: BotBlobProps) {
 export function SleepingBlob(props: { shape: string; size?: number; ink?: string }) {
   const size = props.size ?? 33;
   const ink = props.ink ?? "rgba(245,245,245,0.54)";
-  const breath = createNativeValue(0);
-  const zs = [createNativeValue(0), createNativeValue(0), createNativeValue(0)];
+  const breath = createAnimatedValue(0);
+  const zs = [createAnimatedValue(0), createAnimatedValue(0), createAnimatedValue(0)];
   effect(() => {
     const ease = Easing.bezier(0.42, 0, 0.58, 1);
     const breathing = Animated.loop(Animated.sequence([

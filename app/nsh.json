@@ -1,6 +1,6 @@
 {
   "name": "Grok Shell",
-  "id": "com.example.grok-shell",
+  "id": "dev.goldcoders.grokshell",
   "version": "1.0.0",
   "build": 1,
   "capabilities": {
