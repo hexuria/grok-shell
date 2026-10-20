@@ -1255,7 +1255,8 @@ function App() {
     }).catch(() => {});
   const plugins = signal<{ name: string; description: string; category: string; homepage: string | null; domains: string[]; keywords: string[]; installed: boolean }[]>([]);
   const pluginBusy = signal("");
-  const hdrCollapsed = signal(false); // market page: search row pins to the ✕ line on scroll
+  const hdrT = signal(0); // market header collapse progress 0..1, scrubbed by onScroll
+  const hdrCollapsed = () => hdrT() >= 1;
   const hoverTpl = signal(false); // Bot templates pill
   const hoverChip = signal(false); // "N connected" chip
   const hoverX = signal(false); // modal close
@@ -3234,9 +3235,9 @@ function App() {
                 onHoverOut={() => hoverX.set(false)}
                 activeOpacity={1}
                 accessibilityLabel="Close plugins"
-                style={{ position: "absolute", top: 12, right: 14, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? "#f5f5f50a" : "transparent" }}
+                style={{ position: "absolute", top: 18, right: 16, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? "#f5f5f50a" : "transparent" }}
               >
-                <Text style={{ color: dim(), fontSize: 15 }}>✕</Text>
+                <Text style={{ color: "#f5f5f5a8", fontSize: 16 }}>✕</Text>
               </View>
 
               {/* ═══ MARKET page ═══
@@ -3273,7 +3274,7 @@ function App() {
                   const searchAndTpl = (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                       <View style={{ flex: 1, height: 28, borderRadius: 9999, borderWidth: 0.5, borderColor: "#f5f5f50f", flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}>
-                        <Text style={{ color: "#f5f5f58a", fontSize: 13 }}>⌕</Text>
+                        <Text style={{ color: "#f5f5f58a", fontSize: 16, marginTop: -1 }}>⌕</Text>
                         <Input
                           value={pluginQuery()}
                           onChangeText={(t) => pluginQuery.set(t)}
@@ -3291,34 +3292,34 @@ function App() {
                         activeOpacity={1}
                         style={{ height: 32, borderRadius: 9999, borderWidth: 0.5, borderColor: "#f5f5f50f", backgroundColor: hoverTpl() ? "#f5f5f50a" : "transparent", paddingLeft: 6, paddingRight: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
                       >
-                        <BotBlob shape="blob" color="#f97316" size={18} paused />
-                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates ↗</Text>
+                        <BotBlob shape="blob" color="#f5f5f5" size={18} paused />
+                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates</Text>
+                        <Text style={{ color: "#f5f5f5a8", fontSize: 13, marginLeft: 4 }}>↗</Text>
                       </View>
                     </View>
                   );
                   return (
-                    <View style={{ paddingTop: 12, paddingHorizontal: 16, paddingBottom: 4 }}>
-                      <If when={!hdrCollapsed()}>
-                        <View style={{ flexDirection: "row", alignItems: "center", height: 40, paddingHorizontal: 4, paddingRight: 26 }}>
+                    <View style={{ paddingTop: 14, paddingHorizontal: 20, paddingBottom: 4 }}>
+                      {/* title row scrubs away (height+opacity follow scroll),
+                          leaving search pinned under ✕ */}
+                      <View style={{ height: 44 * (1 - hdrT()), opacity: 1 - hdrT(), overflow: "hidden" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", height: 44, paddingRight: 30 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "500", letterSpacing: -0.14 }}>Connect Apps</Text>
                           <View style={{ flex: 1 }} />
                           {connChip}
                         </View>
-                        <View style={{ paddingBottom: 10 }}>{searchAndTpl}</View>
-                      </If>
-                      <If when={hdrCollapsed()}>
-                        <View style={{ flexDirection: "row", alignItems: "center", height: 40, paddingRight: 30 }}>
-                          <View style={{ flex: 1 }}>{searchAndTpl}</View>
-                        </View>
-                      </If>
+                      </View>
+                      <View style={{ paddingBottom: 10, paddingRight: hdrT() > 0 ? 30 * hdrT() : 0 }}>
+                        {searchAndTpl}
+                      </View>
                     </View>
                   );
                 })()}
                 <Scroll
                   style={{ flex: 1 }}
-                  onScroll={(e) => hdrCollapsed.set(e.y > 24)}
+                  onScroll={(e) => hdrT.set(Math.min(1, Math.max(0, e.y / 44)))}
                   scrollEventThrottle={16}
-                  contentContainerStyle={{ paddingTop: 2, paddingHorizontal: 16, paddingBottom: 24 }}
+                  contentContainerStyle={{ paddingTop: 2, paddingHorizontal: 20, paddingBottom: 24 }}
                 >
                   <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", paddingBottom: 6 }}>
                     <Each of={pluginCats()}>
@@ -3373,7 +3374,7 @@ function App() {
                 </Scroll>
                 {/* search dropdown — Grok shows matched rows over the grid */}
                 <If when={pluginQuery() !== "" && pluginList().length > 0}>
-                  <View style={{ position: "absolute", left: 20, top: hdrCollapsed() ? 52 : 96, right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: "#262626", borderWidth: 1, borderColor: "#f5f5f51f", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
+                  <View style={{ position: "absolute", left: 20, top: 56 + 44 * (1 - hdrT()), right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: "#262626", borderWidth: 1, borderColor: "#f5f5f51f", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
                     <Text style={{ color: dim(), fontSize: 12, paddingLeft: 14, paddingTop: 10, paddingBottom: 4 }}>Plugins</Text>
                     <Each of={pluginList().slice(0, 10)}>
                       {(p) => (
