@@ -74,7 +74,15 @@ export function fontsPkgDir() {
 }
 // /office/vendor/<key>/… serves the installed packages — dist/ bundles and the
 // fonts' assets/ — so the viewer page's ESM imports and wasm self-loads work.
-const VENDOR_PKGS = { docx: "@betteroffice/docx", xlsx: "@betteroffice/xlsx", pptx: "@betteroffice/pptx", fonts: "@betteroffice/fonts" };
+const VENDOR_PKGS = {
+  docx: "@betteroffice/docx",
+  xlsx: "@betteroffice/xlsx",
+  pptx: "@betteroffice/pptx",
+  fonts: "@betteroffice/fonts",
+  "docx-react": "@betteroffice/docx-react",
+  "xlsx-react": "@betteroffice/xlsx-react",
+  "pptx-react": "@betteroffice/pptx-react",
+};
 export function officePkgRoot(key) {
   const name = VENDOR_PKGS[key];
   return name ? pkgRootDir(name) : null;

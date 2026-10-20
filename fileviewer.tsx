@@ -710,12 +710,16 @@ export function FileViewer() {
           desktop={{ windowDrag: true }}
           style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 52, paddingLeft: 84, paddingRight: 12, borderBottomWidth: 0.5, borderBottomColor: tc("#f5f5f51a") }}
         >
-          <View style={{ flex: 1, minWidth: 0 }}>
+          {/* the artifact name centers against the window, not the space left
+              of the controls — an overlay so the traffic lights and the
+              trailing buttons don't skew it */}
+          <View pointerEvents="none" style={{ position: "absolute", left: 84, right: 84, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
             <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>{viewing()!.name}</Text>
             <If when={viewing()!.kind === "table" && !!curSheet()}>
               <Text style={{ color: tc("#f5f5f58f"), fontSize: 11, lineHeight: 14 }}>{`${Math.max(0, (curSheet()?.rows.length ?? 1) - 1)} rows`}</Text>
             </If>
           </View>
+          <View style={{ flex: 1, minWidth: 0 }} />
           {/* spreadsheet: sheet tabs in the header (Grok) — the office view has its own */}
           <If when={viewing()!.kind === "table" && !rendered()?.office && (rendered()?.sheets?.length ?? 0) > 1}>
             <View style={{ flexDirection: "row", gap: 4, marginRight: 4 }}>

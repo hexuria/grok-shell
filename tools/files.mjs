@@ -8,7 +8,8 @@
 // media are served over http and shown in a web view / video player.
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHighlighter } from "shiki";
 import mammoth from "mammoth";
 import ExcelJS from "exceljs";
@@ -228,17 +229,25 @@ function htmlToMd(html) {
 }
 
 const MAX_TEXT = 400_000;
-// Kinds with a BetterOffice engine view: the app opens /office/… in a WebView
-// and keeps the classic render as the fallback when the engines are absent
-// (pptx has no other renderer — without it the card shows "unavailable").
+// Kinds with a BetterOffice engine view: the app opens the bundled editor
+// (real editing chrome) when tools/office/editor/dist was built, else the
+// read-only display-list page, else the classic render when the engines are
+// absent (pptx has no other renderer — without them the card shows
+// "unavailable").
 const OFFICE_VIEW = { pptx: "pptx", xlsx: "xlsx", xlsm: "xlsx", docx: "docx" };
+const EDITOR_BUNDLE = join(dirname(fileURLToPath(import.meta.url)), "office", "editor", "dist", "editor.js");
 const officeUrl = async (path, rel, ext) => {
   const kind = OFFICE_VIEW[ext];
   if (!kind || !rel) return undefined;
   try {
     const { officeCaps } = await import("./office.mjs");
     if (!officeCaps()[kind]) return undefined;
-    return `/office/?path=${rel.split("/").map(encodeURIComponent).join("/")}&kind=${kind}`;
+    const editing = existsSync(EDITOR_BUNDLE);
+    const page = editing ? "/office/editor/" : "/office/";
+    // WKWebView caches the page URL hard — bake the bundle's mtime into the
+    // query so a rebuilt editor always lands on an uncached URL.
+    const v = editing ? `&v=${Math.floor(statSync(EDITOR_BUNDLE).mtimeMs)}` : "";
+    return `${page}?path=${rel.split("/").map(encodeURIComponent).join("/")}&kind=${kind}${v}`;
   } catch {
     return undefined;
   }

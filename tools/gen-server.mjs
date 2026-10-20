@@ -1325,7 +1325,7 @@ async function classifyIntent(prompt) {
 }
 
 // Plain conversational reply (no module) — with the recent turns as context.
-async function chatReply(prompt, thread) {
+async function chatReply(prompt, thread, job) {
   const sys =
     "You are the assistant inside a generative-UI chat app: when the user asks for an interface, a tool builds and renders it natively. This message is conversation — answer in GitHub-flavored markdown, concise. If a UI would obviously help, offer to build it in one line.";
   const messages = [
@@ -1337,9 +1337,15 @@ async function chatReply(prompt, thread) {
             content: t.name ? `[built widget ${t.name}]` : t.text || "",
           },
     ),
-    { role: "user", content: prompt },
+    { role: "user", content: await userContent(prompt, job?.extra, job?.ctx) },
   ];
   if (MOCK) return "_(mock reply — no model configured)_";
+  // userContent speaks Anthropic's block shapes; chat/completions wants
+  // image_url parts instead of base64 image sources
+  const oaiContent = (c) =>
+    typeof c === "string"
+      ? c
+      : c.map((b) => (b.type === "image" ? { type: "image_url", image_url: { url: `data:${b.source.media_type};base64,${b.source.data}` } } : b));
   try {
     if (PROVIDER === "anthropic") {
       const m = await anthropic.messages.create({
@@ -1360,7 +1366,7 @@ async function chatReply(prompt, thread) {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: MODEL, messages, max_tokens: 1024 }),
+      body: JSON.stringify({ model: MODEL, messages: messages.map((m) => ({ ...m, content: oaiContent(m.content) })), max_tokens: 1024 }),
     });
     return (
       (await r.json()).choices?.[0]?.message?.content || "(empty reply)"
@@ -1853,7 +1859,7 @@ async function agentTurn(job, prompt, thread) {
             content: t.name ? `[mounted card ${t.name}]` : t.text || "",
           },
     ),
-    { role: "user", content: userContent(prompt, job.extra, job.ctx) },
+    { role: "user", content: await userContent(prompt, job.extra, job.ctx) },
   ];
   let reply = "";
   for (let i = 0; i < 8; i++) {
@@ -1912,6 +1918,13 @@ async function agentTurn(job, prompt, thread) {
 // blocks, text/code/json/html/csv verbatim, xlsx as tab-separated sheets,
 // docx as its text; anything else (audio, video, pdf…) is described.
 const IMG_TYPE = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+async function fileBody(p, m) {
+  if (["markdown", "text", "json", "html"].includes(m.kind) || m.ext === "svg") return readFileSync(p, "utf8");
+  if (m.kind === "table") return ((await renderFile(p)).sheets || []).map((s) => `# sheet: ${s.name}\n` + s.rows.map((r) => r.join("\t")).join("\n")).join("\n\n");
+  if (m.kind === "docx") return (await renderFile(p)).text || "";
+  if (m.kind === "pptx") return await officeMarkdown(p);
+  return null;
+}
 async function artifactBlocks(rels) {
   const blocks = [];
   for (const rel of (rels || []).slice(0, 8)) {
@@ -1924,11 +1937,7 @@ async function artifactBlocks(rels) {
         blocks.push({ type: "text", text: `(the image above is ${m.name}, ${m.width}×${m.height})` });
         continue;
       }
-      let body;
-      if (["markdown", "text", "json", "html"].includes(m.kind) || m.ext === "svg") body = readFileSync(p, "utf8");
-      else if (m.kind === "table") body = ((await renderFile(p)).sheets || []).map((s) => `# sheet: ${s.name}\n` + s.rows.map((r) => r.join("\t")).join("\n")).join("\n\n");
-      else if (m.kind === "docx") body = (await renderFile(p)).text || "";
-      else if (m.kind === "pptx") body = await officeMarkdown(p);
+      const body = await fileBody(p, m);
       if (body != null) blocks.push({ type: "text", text: `<file name="${m.name}">\n${body.slice(0, 60000)}\n</file>` });
       else blocks.push({ type: "text", text: `<file name="${m.name}" kind="${m.kind}" size="${m.size}">(binary ${m.kind} file; its contents can't be shown as text)</file>` });
     } catch {}
@@ -1938,7 +1947,7 @@ async function artifactBlocks(rels) {
 
 // The model's view of a user turn: the quoted message it replies to, then
 // the text, with attached images as image blocks and documents inlined.
-function userContent(prompt, extra, ctx = []) {
+async function userContent(prompt, extra, ctx = []) {
   const quote = extra?.reply?.text ? `> ${extra.reply.text.replace(/\n/g, "\n> ")}\n\n` : "";
   const text = quote + (prompt || "(see the attachments)");
   const files = (extra?.attachments || []).filter((a) => a.uri?.startsWith("file://"));
@@ -1950,7 +1959,10 @@ function userContent(prompt, extra, ctx = []) {
       if (a.kind === "image") {
         blocks.push({ type: "image", source: { type: "base64", media_type: "image/png", data: readFileSync(path).toString("base64") } });
       } else {
-        blocks.push({ type: "text", text: `<file name="${a.name}">\n${readFileSync(path, "utf8").slice(0, 60000)}\n</file>` });
+        const m = fileMeta(path, a.name);
+        const body = await fileBody(path, m);
+        if (body != null) blocks.push({ type: "text", text: `<file name="${a.name}">\n${body.slice(0, 60000)}\n</file>` });
+        else blocks.push({ type: "text", text: `<file name="${a.name}" kind="${m.kind}" size="${m.size}">(binary ${m.kind} file; its contents can't be shown as text)</file>` });
       }
     } catch {}
   }
@@ -1969,11 +1981,29 @@ async function generate(job, prompt) {
     const rel = `m${Date.now().toString(36)}`;
     const dir = join(OUT_DIR, rel);
     const paths = mockFiles(dir);
-    paths.push(await mockXlsx(dir), await mockDocx(dir));
-    // the deck depends on the optional BetterOffice engine — absent, /mock
-    // still works and the card simply isn't produced
-    const pptx = await mockPptx(dir).catch((e) => (console.error(`  mock pptx: ${String(e?.message || e).slice(0, 120)}`), null));
-    if (pptx) paths.push(pptx);
+    // the office samples are the real BetterOffice demo docs (tools/office/
+    // seeds/ — betteroffice-demo.docx, showcase.xlsx, presentation.pptx), so
+    // the cards exercise the editor on real-world content; when a seed is
+    // absent we still emit the generated fallback file
+    const SEEDS = join(dirname(fileURLToPath(import.meta.url)), "office", "seeds");
+    // The pptx fallback depends on the optional BetterOffice engine — absent,
+    // /mock still works and the card simply isn't produced.
+    const fallback = {
+      docx: () => mockDocx(dir),
+      xlsx: () => mockXlsx(dir),
+      pptx: () => mockPptx(dir).catch((e) => (console.error(`  mock pptx: ${String(e?.message || e).slice(0, 120)}`), null)),
+    };
+    for (const [ext, file] of [["docx", "betteroffice-demo.docx"], ["xlsx", "showcase.xlsx"], ["pptx", "presentation.pptx"]]) {
+      const s = join(SEEDS, file);
+      if (existsSync(s)) {
+        const p = join(dir, file);
+        copyFileSync(s, p);
+        paths.push(p);
+      } else {
+        const p = await fallback[ext]();
+        if (p) paths.push(p);
+      }
+    }
     // a screen recording as the video sample, twice (gallery of two)
     const movs = readdirSync(ATTACH_DIR).filter((f) => f.endsWith(".mov"));
     if (movs.length) {
@@ -2023,11 +2053,14 @@ async function generate(job, prompt) {
   }
   if (!job.retry) {
     // Conversation ≠ generation — "hi" gets a text reply, not a greeting card.
-    const intent = await classifyIntent(prompt);
+    // a turn carrying files is a question about them: the widget generator
+    // never sees file contents, so it always answers in chat
+    const hasFiles = !!(job.ctx?.length || job.extra?.attachments?.length);
+    const intent = hasFiles ? "chat" : await classifyIntent(prompt);
     if (intent === "chat") {
       setJob(job, "thinking", `${labelOf(modelCtx.getStore())} is replying`);
       if (thread.turns.length === 0) thread.title = prompt.slice(0, 42);
-      const text = await chatReply(prompt, thread);
+      const text = await chatReply(prompt, thread, job);
       thread.turns.push({ role: "user", text: prompt, ...(job.extra || {}) });
       thread.turns.push({ role: "ai", text, label: labelOf(modelCtx.getStore()) });
       writeIndex();
@@ -2477,10 +2510,38 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
   // BetterOffice viewer: a WebView page that paints the engines' display
   // lists. /office/vendor/<pkg>/… statically serves the installed packages
   // (dist bundles, wasm, font assets) so the page's imports resolve.
-  if (req.method === "GET" && (req.url === "/office/" || req.url.startsWith("/office/?"))) {
-    const page = join(dirname(fileURLToPath(import.meta.url)), "office", "viewer.html");
+  if (req.method === "GET" && (req.url === "/office/" || req.url.startsWith("/office/?") || req.url.startsWith("/office/editor/"))) {
+    const editing = req.url.startsWith("/office/editor/");
+    const page = join(dirname(fileURLToPath(import.meta.url)), "office", editing ? "editor" : "", editing ? "editor.html" : "viewer.html");
     res.setHeader("content-type", "text/html; charset=utf-8");
-    return res.end(readFileSync(page));
+    res.setHeader("cache-control", "no-cache");
+    let html = readFileSync(page, "utf8");
+    if (editing) {
+      // WebViews cache /office/dist/editor.js hard; a ?v=mtime makes every
+      // bundle rebuild a fresh URL so stale chrome can never come back.
+      const dist = join(dirname(fileURLToPath(import.meta.url)), "office", "editor", "dist", "editor.js");
+      const v = existsSync(dist) ? Math.floor(statSync(dist).mtimeMs) : 0;
+      html = html.replaceAll("/office/dist/editor.js", `/office/dist/editor.js?v=${v}`);
+    }
+    return res.end(html);
+  }
+  // The bundled BetterOffice editor app + its esbuild chunks and wasm —
+  // resolved relative to the bundle URL, so dist/generated/ holds the wasms.
+  if (req.method === "GET" && req.url.startsWith("/office/dist/")) {
+    const rest = decodeURIComponent(req.url.slice("/office/dist/".length).split("?")[0]);
+    const dir = join(dirname(fileURLToPath(import.meta.url)), "office", "editor", "dist");
+    const p = join(dir, rest);
+    if (!p.startsWith(dir + "/") || !existsSync(p) || !statSync(p).isFile()) {
+      res.statusCode = 404;
+      return res.end();
+    }
+    const ext = (p.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
+    const type = { js: "text/javascript", mjs: "text/javascript", wasm: "application/wasm", css: "text/css", ttf: "font/ttf", otf: "font/otf", map: "application/json" }[ext] || "application/octet-stream";
+    res.setHeader("content-type", type);
+    // no-cache: a stale editor.js against a new editor.html leaves half-dead
+    // chrome behind; the bundle is local so revalidation is cheap
+    res.setHeader("cache-control", "no-cache");
+    return res.end(readFileSync(p));
   }
   if (req.method === "GET" && req.url === "/office/caps") {
     res.setHeader("content-type", "application/json");
@@ -2496,9 +2557,11 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
       return res.end();
     }
     const ext = (p.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
-    const type = { js: "text/javascript", mjs: "text/javascript", wasm: "application/wasm", ttf: "font/ttf", otf: "font/otf", json: "application/json", map: "application/json" }[ext] || "application/octet-stream";
+    // css must go out as text/css: browsers silently refuse stylesheets
+    // served as octet-stream, which leaves the editor chrome unstyled.
+    const type = { js: "text/javascript", mjs: "text/javascript", css: "text/css", wasm: "application/wasm", ttf: "font/ttf", otf: "font/otf", woff: "font/woff", woff2: "font/woff2", json: "application/json", map: "application/json" }[ext] || "application/octet-stream";
     res.setHeader("content-type", type);
-    res.setHeader("cache-control", "max-age=86400");
+    res.setHeader("cache-control", "no-cache");
     return res.end(readFileSync(p));
   }
   if (req.method === "GET" && req.url.startsWith("/file/raw/")) {
@@ -2512,6 +2575,25 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
     return sendRanged(req, res, p, type);
   }
   // Download: the native save panel, then a copy
+  // The BetterOffice editor saves edits in place — same outFile containment
+  // as every other file route; base64 body, no picker.
+  if (req.method === "POST" && req.url === "/file/write") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      try {
+        const { path, data } = JSON.parse(body || "{}");
+        const p = outFile(path || "");
+        if (!p || !existsSync(dirname(p))) return res.end(JSON.stringify({ ok: false, error: "bad path" }));
+        writeFileSync(p, Buffer.from(String(data || ""), "base64"));
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e).slice(0, 200) }));
+      }
+    });
+    return;
+  }
   if (req.method === "POST" && req.url === "/file/save") {
     let body = "";
     req.on("data", (c) => (body += c));
@@ -3986,6 +4068,28 @@ writeShelf(); // sync widgets/index.tsx with the DB
 // BetterOffice MCP child (office_* tools) — connected in the background; a
 // failed spawn just leaves the surface out of toolList().
 ensureOfficeMcp(OUT_DIR).catch(() => {});
+// The editor bundle is gitignored (dist/) — build it once when the engines
+// are installed and dist/editor.js is missing; until then renderFile hands
+// out the read-only /office/ viewer URL instead.
+{
+  const editorJs = join(dirname(fileURLToPath(import.meta.url)), "office", "editor", "dist", "editor.js");
+  if (!existsSync(editorJs) && officeCaps().docx) {
+    execFile("npx", ["esbuild", "editor.jsx", "--bundle", "--format=esm", "--splitting", "--outdir=dist",
+      "--loader:.wasm=file", "--loader:.ttf=file", "--loader:.otf=file", "--external:*.png", "--minify"],
+      { cwd: join(dirname(fileURLToPath(import.meta.url)), "office", "editor") }, (e) => {
+      if (e) console.error(`  office editor build: ${String(e.message || e).slice(0, 160)}`);
+      else {
+        const ed = join(dirname(fileURLToPath(import.meta.url)), "office", "editor");
+        execFile("node", [join(ed, "patch-dist.mjs")], () => {});
+        const g = join(ed, "dist", "generated");
+        for (const pkg of ["docx", "xlsx", "pptx"]) {
+          const src = officePkgRoot(pkg);
+          if (src) execFile("cp", ["-R", join(src, "dist", "generated") + "/", g + "/"], () => {});
+        }
+      }
+    });
+  }
+}
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`gen-server on http://127.0.0.1:${PORT}`);
