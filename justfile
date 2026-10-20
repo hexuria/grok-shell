@@ -1,7 +1,7 @@
 # Grok Shell — everyday commands. Run `just` (no args) to list them.
 #
 # Two processes make the app work:
-#   gen-server (Node, :8787) — agent backend: chats, bots, generated apps, state
+#   app-server (Node, :8787) — agent backend: chats, bots, generated apps, state
 #   nsh run — the Native Shell window (dev server + hot reload; Cmd+R reloads)
 # `just status` shows who is serving what — vital when several worktrees run.
 
@@ -22,19 +22,19 @@ server:
     #!/usr/bin/env bash
     set -euo pipefail
     if curl -sf -o /dev/null http://127.0.0.1:8787/widget-feed; then
-      echo "gen-server already up on :8787"
+      echo "app-server already up on :8787"
       exit 0
     fi
     [ -d node_modules ] || npm install
     ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(secret get ANTHROPIC_API_KEY 2>/dev/null || true)}"
     [ -n "$ANTHROPIC_API_KEY" ] || echo "warning: no ANTHROPIC_API_KEY — bots list but generations will fail"
     export ANTHROPIC_API_KEY NSH={{nsh}}
-    nohup node tools/gen-server.mjs > /tmp/gen-server.log 2>&1 &
+    nohup node server/app-server.mjs > /tmp/app-server.log 2>&1 &
     for _ in $(seq 1 20); do
       curl -sf -o /dev/null http://127.0.0.1:8787/widget-feed && break
       sleep 0.5
     done
-    echo "gen-server up on :8787 (log: /tmp/gen-server.log)"
+    echo "app-server up on :8787 (log: /tmp/app-server.log)"
 
 # Offline backend — canned widgets, no API key. Restarts :8787 in mock mode.
 server-mock:
@@ -42,8 +42,8 @@ server-mock:
     set -euo pipefail
     lsof -ti :8787 | xargs kill 2>/dev/null || true
     [ -d node_modules ] || npm install
-    MOCK=1 nohup node tools/gen-server.mjs > /tmp/gen-server.log 2>&1 &
-    echo "mock gen-server starting on :8787"
+    MOCK=1 nohup node server/app-server.mjs > /tmp/app-server.log 2>&1 &
+    echo "mock app-server starting on :8787"
 
 # ── build ────────────────────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ stop:
 
 # Remove regenerable build artifacts. Never touches generated/ — your data.
 clean:
-    rm -rf out windows .nsh tools/.stage tools/office/editor/dist
+    rm -rf out windows .nsh server/.stage server/office/editor/dist
 
 # Lint with oxlint + the vendored anti-slop plugin
 lint:

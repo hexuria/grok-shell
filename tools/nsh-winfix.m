@@ -4,7 +4,7 @@
 // in-process — no Accessibility grant needed — and resizes any window
 // titled "widget · …" to NSH_WIN_W × NSH_WIN_H once it appears.
 //
-// Spawn contract (set by gen-server /popout):
+// Spawn contract (set by app-server /popout):
 //   DYLD_INSERT_LIBRARIES=<this dylib> NSH_WIN_W=420 NSH_WIN_H=500 nsh run …
 #import <AppKit/AppKit.h>
 

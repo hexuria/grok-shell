@@ -1,8 +1,8 @@
-// tools/office.mjs — BetterOffice (openooxml/betteroffice, Apache-2.0) glue.
+// server/office.mjs — BetterOffice (openooxml/betteroffice, Apache-2.0) glue.
 //
 //   Generation: real .docx/.xlsx/.pptx bytes straight from the wasm cores —
 //   the same payload contract the bundled MCP server's office_create uses.
-//   Edits/browse/render go through the MCP child (tools/office/mcp-main.ts,
+//   Edits/browse/render go through the MCP child (server/office/mcp-main.ts,
 //   vendored packages/agents), which the model reaches as office_* tools.
 //   Viewing: the app opens GET /office/?path=… in a WebView; the page paints
 //   slides/sheets with the engines' own display lists (Canvas2D), so a deck
@@ -120,7 +120,7 @@ export async function officeMarkdown(path) {
 
 // ————— creation (mjs port of the vendored create.ts — the MCP server's
 // office_create accepts the same payloads) —————
-// Mirrors plainText() in tools/office/agents/prototype.ts: reject unpaired
+// Mirrors plainText() in server/office/agents/prototype.ts: reject unpaired
 // surrogates and XML control characters before the engines see them.
 function plainText(value, label) {
   if (typeof value !== "string" || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(value))

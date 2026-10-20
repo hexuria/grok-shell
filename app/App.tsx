@@ -510,7 +510,7 @@ function App() {
       agent.set(null);
       settle(bot, /^(failed|generator error)/.test(detail) ? "failed" : "finished");
     } catch (e) {
-      agent.set({ state: "failed", label: `no generator — run  node tools/gen-server.mjs` });
+      agent.set({ state: "failed", label: `no generator — run  node server/app-server.mjs` });
       settle(bot, "failed");
       const stuck = agent();
       setTimeout(() => { if (agent() === stuck) agent.set(null); }, 5000);

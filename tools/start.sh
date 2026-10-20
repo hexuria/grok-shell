@@ -19,7 +19,7 @@ NSH="${NSH:-$NSH_REPO/target/release/nsh}"
 if ! curl -sf -o /dev/null "http://127.0.0.1:8787/widget-feed"; then
   ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(secret get ANTHROPIC_API_KEY)}"
   export ANTHROPIC_API_KEY NSH
-  nohup node "$ROOT/tools/gen-server.mjs" >/tmp/gen-server.log 2>&1 &
+  nohup node "$ROOT/server/app-server.mjs" >/tmp/app-server.log 2>&1 &
   for _ in $(seq 1 20); do
     curl -sf -o /dev/null "http://127.0.0.1:8787/widget-feed" && break
     sleep 0.5

@@ -17,7 +17,7 @@ own native renderer.
   `NSView` per node, CoreText, Core Animation). Signals/memos/effects reactive
   graph, Taffy layout, canvas, native animations. We run our fork of
   longbridge/nsh (PR #61: `Window.setFrame` / `setLevel`).
-- **`tools/gen-server.mjs`** — the agent loop (Node.js). Per message it runs a
+- **`server/app-server.mjs`** — the agent loop (Node.js). Per message it runs a
   tool loop (`generate_app`, `generate_image`, `web_search`, `fetch_url`,
   `query_source`, `office_*`…), typechecks each generated widget into
   `generated/R<N>.tsx`, and the dev server hot-patches it into the running
@@ -66,12 +66,12 @@ already-running server instead of starting a second one.
 To run the pieces by hand:
 
 ```sh
-node tools/gen-server.mjs            # agent loop on :8787
+node server/app-server.mjs            # agent loop on :8787
 nsh run app --target macos       # dev server + host window, hot reload
 nsh dev app --port 8791          # dev server only (see worktrees below)
 nsh check app                    # typecheck
 nsh build app                    # typecheck + bundle into out/
-MOCK=1 node tools/gen-server.mjs     # offline: canned widgets, no API key
+MOCK=1 node server/app-server.mjs     # offline: canned widgets, no API key
 ```
 
 Server environment variables: `PORT` (default `8787`), `GEN_PROVIDER`,
@@ -84,7 +84,7 @@ typechecks and pop-outs), `POP_W`/`POP_H` (pop-out sizing), `MOCK`.
 - **Slash commands** — `/status:<state>` drives the avatar through any agent
   state without a model call; `/status:demo` cycles the whole table,
   `/status:off` clears. `/mock files` emits sample file cards (the office
-  samples come from `tools/office/seeds/`).
+  samples come from `server/office/seeds/`).
 - **Mini Apps** — `save` under a generated app publishes it to the shelf.
   Right-click a Library row to rename its display title or filename, or to
   open it in a pop-out window. Deleting a bot deletes its threads and
@@ -121,7 +121,7 @@ widget fetch URL, and every already-generated `R*.tsx`. So:
 - A second worktree gets chat-only on another port:
 
   ```sh
-  PORT=8789 node tools/gen-server.mjs
+  PORT=8789 node server/app-server.mjs
   # then point the GEN consts in app/App.tsx/app/fileviewer.tsx at :8789 —
   # keep that as a local, uncommitted change
   ```
@@ -162,7 +162,7 @@ Office files are real, editable documents — not previews.
   WebView that paints the engines' display lists (slides and sheets render
   properly). With the editor bundle built, it opens the bundled BetterOffice
   editor instead of the read-only viewer.
-- **Follow-up edits** — the bundled MCP server (`tools/office/mcp-main.ts`)
+- **Follow-up edits** — the bundled MCP server (`server/office/mcp-main.ts`)
   is spawned lazily on the first `office_*` tool call; the model edits
   existing documents through it.
 - **Attach** — dropping a `.docx`/`.xlsx`/`.pptx` on the composer lets the
@@ -172,7 +172,7 @@ Setup:
 
 ```sh
 npm install                  # pulls @betteroffice/* engines + MCP SDK
-npm run build:office-editor  # editing chrome → tools/office/editor/dist
+npm run build:office-editor  # editing chrome → server/office/editor/dist
 ```
 
 The editor bundle is optional — if it's missing when the server starts, the
@@ -188,7 +188,7 @@ app/          the nsh app — App.tsx entry + nsh.json + tsconfig.json
   mark/       the Grok mark engine: motion.mjs, markatlas, markpaint, atlas/rest data
 generated/    runtime output — model-written mini apps + registry + app.db (gitignored)
 widgets/      Mini Apps shelf (index.tsx is source; R*.tsx artifacts are gitignored)
-tools/        gen-server + office + bake/stow scripts (Node — not typechecked by nsh)
+tools/        app-server + office + bake/stow scripts (Node — not typechecked by nsh)
 native-widget/ WidgetKit extension
 legacy/       superseded code kept for reference — candidates for deletion
 .stow/        grok-shell-stow checkout (gitignored) — plans/notes live there via

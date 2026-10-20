@@ -20,7 +20,7 @@ struct GrokShellHostApp: App {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Text("Data source: http://127.0.0.1:8787/data/…\n(the gen-server must be running)")
+                Text("Data source: http://127.0.0.1:8787/data/…\n(the app-server must be running)")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)

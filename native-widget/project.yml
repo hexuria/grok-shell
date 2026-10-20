@@ -27,7 +27,7 @@ targets:
         embed: true
 
   # The actual WidgetKit extension — a sandboxed appex whose UI is SwiftUI.
-  # It polls the gen-server's /data API; generated TSX never runs here.
+  # It polls the app-server's /data API; generated TSX never runs here.
   GrokShellWidget:
     type: app-extension
     platform: macOS

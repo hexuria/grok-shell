@@ -1,7 +1,7 @@
 .nsh/
 .stow/
 out/
-tools/.stage/
+server/.stage/
 node_modules/
 .DS_Store
 

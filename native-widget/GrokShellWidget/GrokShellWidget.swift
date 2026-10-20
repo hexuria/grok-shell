@@ -2,7 +2,7 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-// MARK: - Data model — mirrors GET /widget-feed on the gen-server.
+// MARK: - Data model — mirrors GET /widget-feed on the app-server.
 // The feed is the generic channel: every generated/published widget's
 // persisted state + first-party sources (linear, timeclock) as card rows.
 // Widget UI is always SwiftUI (WidgetKit can't run TSX) — but tapping a
@@ -79,7 +79,7 @@ struct RefreshIntent: AppIntent {
     }
 }
 
-// Tapping a widget row asks the gen-server to pop that module out into its
+// Tapping a widget row asks the app-server to pop that module out into its
 // own Native Shell window — the desktop widget becomes a launcher for the
 // real generated UIs.
 struct OpenWidgetIntent: AppIntent {
@@ -101,7 +101,7 @@ struct OpenWidgetIntent: AppIntent {
 
 // MARK: - Configuration — "nominate" a mini-app per widget slot.
 // Long-press widget → Edit Widget → Mini App picker lists every feed item
-// (generated widgets + sources) live from the gen-server.
+// (generated widgets + sources) live from the app-server.
 
 struct MiniAppEntity: AppEntity {
     let id: String
@@ -177,7 +177,7 @@ struct Provider: AppIntentTimelineProvider {
             }
             return FeedEntry(date: .now, items: feed.items, selected: selected, image: image, error: nil)
         } catch {
-            return FeedEntry(date: .now, items: [], selected: selected, image: nil, error: "gen-server offline")
+            return FeedEntry(date: .now, items: [], selected: selected, image: nil, error: "app-server offline")
         }
     }
 
