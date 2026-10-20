@@ -1203,7 +1203,11 @@ function App() {
   const pluginPage = () => pluginNav()[pluginNav().length - 1]?.page || "market";
   const pushNav = (p: { page: string; name?: string; id?: string }) => {
     pluginNav.set([...pluginNav(), p]);
-    if (p.page === "plugin" && p.name) fetchPluginDetail(p.name);
+    if (p.page === "plugin" && p.name)
+      fetchPluginDetail(p.name).then(() => {
+        for (const m of pluginDetails()[p.name!]?.mcp || []) if (m.id) fetchMcpTools(m.id);
+      });
+    if (p.page === "mcp" && p.id) fetchMcpTools(p.id);
     if (p.page === "skill" && p.name && p.id) fetchSkillBody(p.name, p.id);
     if (p.page === "skill" && !p.name) {
       // private skill editor — seed the fields (blank = new skill)
@@ -1288,6 +1292,20 @@ function App() {
       pluginBusy.set("");
     }
   };
+  // Per-server discovered tools with enabled switches (plugin/mcp pages).
+  const mcpToolsMap = signal<Record<string, { name: string; description: string; enabled: boolean }[]>>({});
+  const toolsOpenIds = signal<Record<string, boolean>>({});
+  const fetchMcpTools = (id: string) =>
+    fetch(`${GEN}/mcp/tools?id=${encodeURIComponent(id)}`).then((r) => (r.ok ? r.json() : null)).then((d: any) => {
+      if (d?.tools) mcpToolsMap.set({ ...mcpToolsMap(), [id]: d.tools });
+    }).catch(() => {});
+  const toggleMcpTool = (id: string, tool: string, enabled: boolean) =>
+    post("/mcp/tools/state", { id, tool, enabled }).then(() => fetchMcpTools(id));
+  const retryServer = (id: string, plugin?: string) =>
+    post("/mcp/servers", { id }).then(() => { fetchMcp(); if (plugin) fetchPluginDetail(plugin); });
+  // Grok's status semantics: 401/403/auth-ish errors → "Needs auth" + Retry;
+  // other failures → "Error" + Retry; not-yet-registered → "Connect".
+  const needsAuth = (err?: string | null) => !!err && /401|403|unauthor|forbidden|auth/i.test(err);
   const pluginCats = () => ["All", ...[...new Set(plugins().map((p) => p.category))].map((c) => c[0].toUpperCase() + c.slice(1))];
   const pluginList = () => {
     const q = pluginQuery().trim().toLowerCase();
@@ -1331,6 +1349,48 @@ function App() {
       )}
     </View>
   );
+  // Tools — "N of M enabled" collapsible with per-tool switches (Grok's
+  // blue pill toggles). Used on plugin and connector detail pages.
+  const toolSwitch = (on: boolean, onToggle: () => void) => (
+    <View
+      onPress={onToggle}
+      activeOpacity={0.8}
+      style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: on ? "#0a84ff" : "#f5f5f51f", justifyContent: "center", paddingHorizontal: 2 }}
+    >
+      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff", alignSelf: on ? "flex-end" : "flex-start" }} />
+    </View>
+  );
+  const mcpToolsSection = (serverId: string) => {
+    const tools = mcpToolsMap()[serverId] || [];
+    if (!tools.length) return <View />;
+    const on = tools.filter((t) => t.enabled).length;
+    const open = !!toolsOpenIds()[serverId];
+    return (
+      <View>
+        <View
+          onPress={() => toolsOpenIds.set({ ...toolsOpenIds(), [serverId]: !open })}
+          activeOpacity={0.7}
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 16, paddingBottom: 8 }}
+        >
+          <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2 }}>Tools</Text>
+          <Text style={{ color: dim(), fontSize: 12 }}>{on} of {tools.length} enabled {open ? "⌃" : "⌄"}</Text>
+        </View>
+        <If when={open}>
+          <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+            <Each of={tools}>
+              {(t) => (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
+                  <Text style={{ color: dim(), fontSize: 13 }}>⚒</Text>
+                  <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{t().name}</Text>
+                  {toolSwitch(t().enabled, () => toggleMcpTool(serverId, t().name, !t().enabled))}
+                </View>
+              )}
+            </Each>
+          </View>
+        </If>
+      </View>
+    );
+  };
   // Poll while the tab is open — the agent can also change servers from
   // chat (mcp_install/disable), which only the server knows about.
   effect(() => {
@@ -3147,7 +3207,7 @@ function App() {
                 accessibilityLabel="Close plugins"
                 style={{ position: "absolute", top: 12, right: 14, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2 }}
               >
-                <Text style={{ color: dim(), fontSize: 13 }}>✕</Text>
+                <Text style={{ color: dim(), fontSize: 15 }}>✕</Text>
               </View>
 
               {/* ═══ MARKET page ═══ */}
@@ -3364,7 +3424,7 @@ function App() {
               <If when={pluginPage() === "plugin"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Text style={{ color: dim(), fontSize: 17 }}>‹</Text>
+                    <Text style={{ color: dim(), fontSize: 22, marginTop: -2 }}>‹</Text>
                   </View>
                 </View>
                 {(() => {
@@ -3374,10 +3434,9 @@ function App() {
                   const cmdL: any[] = d.commands || [];
                   const skillList: any[] = d.skills || [];
                   const shownSkills = skillsExpanded() ? skillList : skillList.slice(0, 5);
-                  const connected = d.mcp?.some((m: any) => m.status === "connected");
                   return (
                     <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
-                      {/* header: icon + name + View Source ↗  ···  Share + Add/Uninstall */}
+                      {/* header: icon + name + View Source ↗  ···  Add/Uninstall */}
                       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14, paddingBottom: 14 }}>
                         <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: hue(name), alignItems: "center", justifyContent: "center" }}>
                           <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>{name[0].toUpperCase()}</Text>
@@ -3387,33 +3446,52 @@ function App() {
                           <Text style={{ color: "#f5f5f58f", fontSize: 12, paddingTop: 2 }}>View Source ↗</Text>
                         </View>
                         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
-                          <View style={{ height: 34, borderRadius: 9999, borderWidth: 1, borderColor: "#f5f5f51f", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                            <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>🔗</Text>
-                            <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Share</Text>
-                          </View>
                           {d.installed ? (
-                            <View onPress={() => uninstallPlugin(name)} activeOpacity={0.7} style={{ height: 34, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}>
+                            <View onPress={() => uninstallPlugin(name)} activeOpacity={0.7} style={{ height: 32, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 14, alignItems: "center", justifyContent: "center" }}>
                               <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{pluginBusy() === name ? "…" : "Uninstall"}</Text>
                             </View>
                           ) : (
-                            <View onPress={() => installPlugin(name)} activeOpacity={0.7} style={{ height: 34, borderRadius: 9999, backgroundColor: "#f5f5f5", paddingHorizontal: 18, alignItems: "center", justifyContent: "center" }}>
+                            <View onPress={() => installPlugin(name)} activeOpacity={0.7} style={{ height: 32, borderRadius: 9999, backgroundColor: "#f5f5f5", paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}>
                               <Text style={{ color: "#1f1f1f", fontSize: 13, fontWeight: "600" }}>{pluginBusy() === name ? "Adding…" : "Add"}</Text>
                             </View>
                           )}
                         </View>
                       </View>
                       <Text style={{ color: "#f5f5f5cc", fontSize: 13, lineHeight: 20, paddingBottom: 16 }}>{d.description || plugins().find((p) => p.name === name)?.description || ""}</Text>
-                      {/* Accounts — only when the plugin ships MCP connectors */}
+                      {/* Accounts — one row per connector, Grok-style statuses */}
                       <If when={(d.mcp || []).length > 0}>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 8 }}>Accounts</Text>
                         <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12 }}>
-                            <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>default ⌘</Text>
-                            <View style={{ flex: 1 }} />
-                            <Text style={{ color: connected ? "#32bb78" : d.mcp?.some((m: any) => m.status === "error") ? "#ff5f57" : dim(), fontSize: 12 }}>
-                              {connected ? "Connected" : d.mcp?.some((m: any) => m.status === "error") ? "Error" : "Idle"}
-                            </Text>
-                          </View>
+                          <Each of={mcpL}>
+                            {(m) => (
+                              <View style={{ borderTopWidth: mcpL.indexOf(m()) > 0 ? 0.5 : 0, borderTopColor: "#f5f5f512", paddingVertical: 12 }}>
+                                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                  <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>default ⌘</Text>
+                                  <If when={m().status === "connected"}>
+                                    <Text style={{ color: "#32bb78", fontSize: 12 }}>Connected</Text>
+                                  </If>
+                                  <If when={m().status === "error" && needsAuth(m().err)}>
+                                    <Text style={{ color: "#ffb224", fontSize: 12, paddingRight: 12 }}>Needs auth</Text>
+                                    <View onPress={() => m().id && retryServer(m().id, name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                                      <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
+                                    </View>
+                                  </If>
+                                  <If when={m().status === "error" && !needsAuth(m().err)}>
+                                    <Text style={{ color: "#ff5f57", fontSize: 12, paddingRight: 12 }}>Error</Text>
+                                    <View onPress={() => m().id && retryServer(m().id, name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                                      <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
+                                    </View>
+                                  </If>
+                                  <If when={m().status !== "connected" && m().status !== "error"}>
+                                    <Text style={{ color: dim(), fontSize: 12 }}>{m().status || "Idle"}</Text>
+                                  </If>
+                                </View>
+                                <If when={!!m().err && m().status === "error" && !needsAuth(m().err)}>
+                                  <Text numberOfLines={3} style={{ color: dim(), fontSize: 11, lineHeight: 15, paddingTop: 4 }}>Failed to load connector. Details: {m().err}</Text>
+                                </If>
+                              </View>
+                            )}
+                          </Each>
                           <View style={{ borderTopWidth: 0.5, borderTopColor: "#f5f5f512", paddingVertical: 12 }}>
                             <Text style={{ color: dim(), fontSize: 13 }}>＋ Add Another Account</Text>
                           </View>
@@ -3426,7 +3504,7 @@ function App() {
                           <Each of={mcpL}>
                             {(m) => (
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
-                                <Text style={{ color: dim(), fontSize: 13 }}>⚡</Text>
+                                <Text style={{ color: dim(), fontSize: 13 }}>⌁</Text>
                                 <View style={{ flex: 1, minWidth: 0 }}>
                                   <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{m().name}</Text>
                                   <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>Connector{m().transport === "remote" ? " · remote" : ""}</Text>
@@ -3436,6 +3514,8 @@ function App() {
                           </Each>
                         </View>
                       </If>
+                      {/* Tools — "N of M enabled" collapsible per connector */}
+                      <Each of={mcpL}>{(mm) => (mm().id ? mcpToolsSection(mm().id) : <View />)}</Each>
                       {/* Skills */}
                       <If when={skillList.length > 0}>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Skills  {skillList.length}</Text>
@@ -3443,7 +3523,7 @@ function App() {
                           <Each of={shownSkills}>
                             {(s) => (
                               <View onPress={() => pushNav({ page: "skill", name, id: s().name })} activeOpacity={0.6} style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 11, alignItems: "flex-start" }}>
-                                <Text style={{ color: dim(), fontSize: 14, paddingTop: 1 }}>▤</Text>
+                                <Text style={{ color: dim(), fontSize: 14, paddingTop: 1 }}>▣</Text>
                                 <View style={{ flex: 1, minWidth: 0 }}>
                                   <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{s().name}</Text>
                                   <Text numberOfLines={2} style={{ color: dim(), fontSize: 11, lineHeight: 15 }}>{s().description}</Text>
@@ -3465,7 +3545,7 @@ function App() {
                           <Each of={cmdL}>
                             {(c) => (
                               <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
-                                <Text style={{ color: dim(), fontSize: 13 }}>/</Text>
+                                <Text style={{ color: dim(), fontSize: 13 }}>⌘</Text>
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{c().name}</Text>
                               </View>
                             )}
@@ -3505,7 +3585,7 @@ function App() {
               <If when={pluginPage() === "mcp"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Text style={{ color: dim(), fontSize: 17 }}>‹</Text>
+                    <Text style={{ color: dim(), fontSize: 22, marginTop: -2 }}>‹</Text>
                   </View>
                   <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
                     {mcpServers().find((s) => s.id === pluginNav()[pluginNav().length - 1]?.id)?.name || ""}
@@ -3524,7 +3604,7 @@ function App() {
                         <View
                           onPress={() => { post("/mcp/server/delete", { id: s.id }).then(() => { fetchMcp(); popNav(); }); }}
                           activeOpacity={0.7}
-                          style={{ height: 34, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}
+                          style={{ height: 32, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 14, alignItems: "center", justifyContent: "center" }}
                         >
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>Uninstall</Text>
                         </View>
@@ -3534,11 +3614,26 @@ function App() {
                         <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>default</Text>
                           <View style={{ flex: 1 }} />
-                          <Text style={{ color: s.status === "connected" ? "#32bb78" : s.status === "error" ? "#ff5f57" : dim(), fontSize: 12 }}>
-                            {s.status === "connected" ? "Connected" : s.status === "error" ? "Error" : s.enabled ? "Idle" : "Off"}
-                          </Text>
+                          <If when={s.status === "connected"}>
+                            <Text style={{ color: "#32bb78", fontSize: 12 }}>Connected</Text>
+                          </If>
+                          <If when={s.status === "error"}>
+                            <Text style={{ color: needsAuth(s.err) ? "#ffb224" : "#ff5f57", fontSize: 12, paddingRight: 12 }}>
+                              {needsAuth(s.err) ? "Needs auth" : "Error"}
+                            </Text>
+                            <View onPress={() => retryServer(s.id)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
+                            </View>
+                          </If>
+                          <If when={s.status !== "connected" && s.status !== "error"}>
+                            <Text style={{ color: dim(), fontSize: 12 }}>{s.enabled ? "Idle" : "Off"}</Text>
+                          </If>
                         </View>
+                        <If when={!!s.err && s.status === "error" && !needsAuth(s.err)}>
+                          <Text numberOfLines={3} style={{ color: dim(), fontSize: 11, lineHeight: 15, paddingBottom: 10 }}>Failed to load connector. Details: {s.err}</Text>
+                        </If>
                       </View>
+                      {mcpToolsSection(s.id)}
                       <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Details</Text>
                       <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
                         <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 }}>
@@ -3568,7 +3663,7 @@ function App() {
               <If when={pluginPage() === "skill"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Text style={{ color: dim(), fontSize: 17 }}>‹</Text>
+                    <Text style={{ color: dim(), fontSize: 22, marginTop: -2 }}>‹</Text>
                   </View>
                   <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
                     {pluginNav()[pluginNav().length - 1]?.id || "New Skill"}
