@@ -44,8 +44,23 @@ own native renderer.
 ## Running the app
 
 Requirements: macOS, Node ≥ 22.6 (the office MCP child runs TypeScript via
-`--experimental-transform-types`), and the nsh toolchain (our patched
-checkout, or the `nsh` CLI on `PATH`).
+`--experimental-transform-types`), Rust (for building nsh), and the nsh
+toolchain.
+
+**Get nsh.** The app needs our fork of longbridge/nsh — stock upstream
+launches but silently loses pointer gaze (`onMouseMove`), right-click menus
+(`onContextMenu`), and pop-out window control (`Window.setFrame`/`setLevel`):
+
+```sh
+git clone https://github.com/hexuria/native-shell.git nsh
+cd nsh && git checkout app-base          # the full patch stack
+cargo build --release -p nsh-cli -p nsh-macos-host
+ln -sf "$PWD/target/release/nsh" ~/.local/bin/nsh
+ln -sf "$PWD/target/release/nsh-macos-host" ~/.local/bin/nsh-macos-host
+```
+
+Or keep it off `PATH` and export `NSH=<checkout>/target/release/nsh`
+(+ `NSH_HOST` for the host binary) when running the app.
 
 ```sh
 npm install          # server deps + BetterOffice engines
@@ -58,12 +73,9 @@ The `justfile` wraps the everyday commands: `just run` (full app),
 (installable `.app`), `just status` (which worktree owns :8787 — see
 below), `just stop`, `just clean`.
 
-`tools/start.sh` resolves the nsh binary as `$NSH`, else `nsh` on `PATH`,
-and reuses an already-running server instead of starting a second one. The
-app needs the patched fork (`Window.setFrame`/`setLevel`, `onContextMenu`,
-`onMouseMove` — see Stow'd `NSH-FEATURE-REQUEST.md`): build
-`<nsh checkout>/target/release/nsh` and put it on `PATH` (alongside
-`nsh-macos-host`) or export `NSH=<path>`/`NSH_HOST=<path>`.
+`tools/start.sh` resolves the nsh binary as `$NSH`, else `nsh` on `PATH`
+(see **Get nsh** above), and reuses an already-running server instead of
+starting a second one.
 
 To run the pieces by hand:
 
