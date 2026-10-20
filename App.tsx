@@ -25,22 +25,34 @@ import { FileTile, type Attachment } from "./filetile";
 import { FileViewer, viewing } from "./fileviewer";
 import { Lightbox } from "./lightbox";
 import { WidgetShelf } from "./widgets/index";
-import { AGENT_STATUS, FxOverlay, ShimmerText, StatusAvatar } from "./statusfx";
+import { FxOverlay, morphKind, ShimmerText, StatusAvatar, STATES, statusLabel } from "./statusfx";
 
 const GEN = "http://127.0.0.1:8787";
 
-// generation phases → Grok's agent states (the vx/yl table, see statusfx.tsx)
+// generation phases → Grok's agent states
 const PHASE_STATE: Record<string, string> = {
-  queued: "loading",
   thinking: "thinking",
-  tool: "working",
+  searching: "searching",
+  browsing: "reading",
+  reading: "reading",
+  connecting: "orbit",
   writing: "writing",
-  checking: "searching",
-  retrying: "alerting",
-  generating: "working",
-  fallback: "alerting",
+  coding: "coding",
+  generating: "progress",
+  "running-commands": "running",
+  "on-its-computer": "computing",
+  "on-your-computer": "controlling",
+  working: "working",
+  messaging: "sending",
+  sending: "sending",
+  waiting: "waiting",
+  queued: "working",
+  tool: "working",
+  streaming: "streaming",
+  checking: "running",
+  retrying: "writing",
+  fallback: "working",
   publishing: "uploading",
-  done: "finished",
 };
 
 const SUGGESTIONS = [
@@ -93,19 +105,36 @@ function App() {
   // effect plus the shimmering label. Set by the generator's phases while a
   // run is in flight, or by /status:<state> to preview one without a call.
   const agent = signal<{ state: string; label: string } | null>(null);
+  const agentBot = signal<string | null>(null);
+  const settled = signal<{ id: string; state: string } | null>(null);
+  const emphBot = signal("");
+  let settledTimer: ReturnType<typeof setTimeout> | null = null;
+  const settle = (id: string, state: string) => {
+    settled.set({ id, state });
+    if (settledTimer) clearTimeout(settledTimer);
+    settledTimer = setTimeout(() => {
+      settled.set(null);
+      settledTimer = null;
+    }, 8000);
+  };
+  effect(() => {
+    if (!agent()) emphBot.set("");
+  });
   let mockTimer: ReturnType<typeof setInterval> | null = null;
   const mockStatus = (arg: string) => {
     if (mockTimer) { clearInterval(mockTimer); mockTimer = null; }
+    agentBot.set(activeBot()?.id ?? null);
+    settled.set(null);
     if (!arg || arg === "off" || arg === "idle" || arg === "clear") {
       agent.set(null);
       return;
     }
     const put = (name: string, demo = false) => {
-      const st = AGENT_STATUS[name];
-      agent.set({ state: name, label: demo ? `${name} — ${st.label || name}` : st.label || name });
+      const label = statusLabel(name) || name;
+      agent.set({ state: name, label: demo ? `${name} — ${label}` : label });
     };
     if (arg === "demo") {
-      const names = Object.keys(AGENT_STATUS).filter((n) => n !== "idle");
+      const names = STATES.filter((name) => name !== "idle");
       let i = 0;
       put(names[0], true);
       mockTimer = setInterval(() => {
@@ -119,7 +148,7 @@ function App() {
       }, 1700);
       return;
     }
-    if (AGENT_STATUS[arg]) {
+    if (STATES.includes(arg)) {
       put(arg);
     } else {
       agent.set({ state: "idle", label: `unknown status "${arg}" — try /status:demo` });
@@ -140,8 +169,6 @@ function App() {
   const botColor = signal("#1084FE");
   // Grok `isFollowingPointer`: one gaze tracker per mark placement (the same
   // bot can show on rail, row and pin tiles at once — each tracks alone).
-  const previewGaze = blobGaze(); // modal's big preview
-  const cellGaze = blobGaze(); // shape-picker mini blobs
   const railGazes = new Map<string, BlobGaze>();
   const railGaze = (id: string) => {
     let g = railGazes.get(id);
@@ -157,7 +184,7 @@ function App() {
 
   const panelGaze = blobGaze(); // right-panel editor blob
   const panelEditK = createNativeValue(0); // avatar hover → image avatars darken
-  const panelEdit = blobEdit();            // avatar hover → blob straightens + darkens
+  const panelEdit = blobEdit();            // avatar hover → blob darkens
   const avatarHover = signal(false);       // shows the "Edit Avatar" tooltip
   const avatarEditing = signal(false);     // click avatar → avatar editor pane
   const avatarEditTab = signal("bot");     // bot | generate | upload
@@ -193,12 +220,15 @@ function App() {
     return tb ? (bots().find((b) => b.id === tb.id) ?? ({ ...tb, threadId: activeId() } as BotMeta)) : null;
   };
   effect(() => bubbleColor.set(activeBot() ? normColor(activeBot()!.color) : ""));
-  // the live agent state plays on the working bot's avatar wherever it shows
-  // (rail, rows, pinned tiles — Grok animates the mark while it works)
-  const botSt = (id: string) => {
-    const s = activeBot()?.id === id ? agent()?.state : null;
-    return s ? AGENT_STATUS[s] : undefined;
-  };
+  // a bot's mark state (Grok's ng()): its run's activity while it runs, the
+  // outcome for 8s after it settles, else idle — played by its sidebar mark
+  // and the status row (Grok animates only those; header and pane are static)
+  const botSt = (id: string) =>
+    agentBot() === id && agent()
+      ? agent()!.state
+      : settled()?.id === id
+        ? settled()!.state
+        : "idle";
   // send: the bot's color; the white/black ink bot sends with the text color
   const neutralSend = () => !bubbleColor() || ["#FFFFFF", "#777777"].includes(bubbleColor().toUpperCase());
   const sendFill = () => (neutralSend() ? tc("#f5f5f5") : bubbleFill());
@@ -437,8 +467,11 @@ function App() {
     </View>
   );
   const run = async (prompt: string, extra: { reply?: { i: number; text: string } | null; attachments?: Attach[] } = {}) => {
+    const bot = activeBot()?.id ?? "";
     inflight.update((n) => n + 1);
-    agent.set({ state: "sending", label: "sending to the generator…" });
+    agentBot.set(bot);
+    settled.set(null);
+    agent.set({ state: "working", label: statusLabel("working") });
     try {
       const r = await fetch(`${GEN}/chat`, {
         method: "POST",
@@ -448,6 +481,7 @@ function App() {
       if (!r.ok) throw new Error(`generator answered ${r.status}`);
       const { id } = await r.json();
       // poll this job until the pipeline finishes (think→write→check→publish)
+      let detail = "";
       for (let fails = 0; ; ) {
         await new Promise((res) => setTimeout(res, 400));
         const s = await fetch(`${GEN}/status?id=${id}`)
@@ -460,16 +494,19 @@ function App() {
         fails = 0;
         const extra =
           inflight() > 1 ? ` · ${inflight()} generations running` : "";
+        detail = s.detail || s.phase;
         agent.set({
           state: PHASE_STATE[s.phase] ?? "working",
-          label: `${s.detail || s.phase}${extra}`,
+          label: `${detail}${extra}`,
         });
         if (s.done) break;
       }
       refreshThreads();
       agent.set(null);
+      settle(bot, /^(failed|generator error)/.test(detail) ? "failed" : "finished");
     } catch (e) {
-      agent.set({ state: "alerting", label: `no generator — run  node tools/gen-server.mjs` });
+      agent.set({ state: "failed", label: `no generator — run  node tools/gen-server.mjs` });
+      settle(bot, "failed");
       const stuck = agent();
       setTimeout(() => { if (agent() === stuck) agent.set(null); }, 5000);
     }
@@ -847,9 +884,20 @@ function App() {
       style={rowBase(b().threadId === activeId())}
     >
       <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":row")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} fx={botSt(b().id)?.fx} />
-        <If when={b().image && botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
-          <FxOverlay fx={botSt(b().id)!.fx} size={36} />
+        <BotAvatar
+          shape={b().shape}
+          color={b().color}
+          image={b().image}
+          crop={b().crop}
+          size={44}
+          box={36}
+          gaze={railGaze(b().id + ":row")}
+          state={botSt(b().id)}
+          emphasized={emphBot() === b().id}
+          seed={b().id}
+        />
+        <If when={!!b().image && morphKind(botSt(b().id)) !== "none"}>
+          <FxOverlay fx={morphKind(botSt(b().id))} size={36} />
         </If>
       </View>
       {rowText(b().name, b().preview || "No messages yet")}
@@ -913,9 +961,20 @@ function App() {
       }}
     >
       <View style={{ width: 60, height: 60, alignItems: "center", justifyContent: "center" }}>
-        <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={72} box={60} gaze={railGaze(b().id + ":pin")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} fx={botSt(b().id)?.fx} />
-        <If when={b().image && botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
-          <FxOverlay fx={botSt(b().id)!.fx} size={60} />
+        <BotAvatar
+          shape={b().shape}
+          color={b().color}
+          image={b().image}
+          crop={b().crop}
+          size={72}
+          box={60}
+          gaze={railGaze(b().id + ":pin")}
+          state={botSt(b().id)}
+          emphasized={emphBot() === b().id}
+          seed={b().id}
+        />
+        <If when={!!b().image && morphKind(botSt(b().id)) !== "none"}>
+          <FxOverlay fx={morphKind(botSt(b().id))} size={60} />
         </If>
       </View>
       <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 16, maxWidth: 79 }}>
@@ -970,9 +1029,20 @@ function App() {
         style={railPlate("bot:" + b().id, 54, b().threadId === activeId())}
       >
         <View style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
-          <BotAvatar shape={b().shape} color={b().color} image={b().image} crop={b().crop} size={44} box={36} gaze={railGaze(b().id + ":rail")} breathe={botSt(b().id)?.breathe ?? false} lid={botSt(b().id)?.lid} clip={botSt(b().id)?.clip} fx={botSt(b().id)?.fx} />
-          <If when={b().image && botSt(b().id)?.fx && botSt(b().id)!.fx !== "none"}>
-            <FxOverlay fx={botSt(b().id)!.fx} size={36} />
+          <BotAvatar
+            shape={b().shape}
+            color={b().color}
+            image={b().image}
+            crop={b().crop}
+            size={44}
+            box={36}
+            gaze={railGaze(b().id + ":rail")}
+            state={botSt(b().id)}
+            emphasized={emphBot() === b().id}
+            seed={b().id}
+          />
+          <If when={!!b().image && morphKind(botSt(b().id)) !== "none"}>
+            <FxOverlay fx={morphKind(botSt(b().id))} size={36} />
           </If>
         </View>
       </View>
@@ -1499,12 +1569,18 @@ function App() {
           {/* agent status row: the mark playing the ambient effect + the
               shimmering label — Grok's status line */}
           <If when={!!agent()}>
-            <View pointerEvents="none" style={{ alignSelf: "center", width: "100%", maxWidth: 960 + 32, paddingHorizontal: 16 + 4, paddingBottom: 4, flexDirection: "row", alignItems: "center", gap: 7 }}>
+            <View
+              onHoverIn={() => emphBot.set(agentBot() ?? activeBot()?.id ?? "")}
+              onHoverOut={() => emphBot.set("")}
+              style={{ alignSelf: "center", width: "100%", maxWidth: 960 + 32, paddingHorizontal: 16 + 4, paddingBottom: 4, flexDirection: "row", alignItems: "center", gap: 7 }}
+            >
               <StatusAvatar
                 shape={activeBot()?.shape ?? "blob"}
                 color={activeBot()?.color ?? "#FFFFFF"}
                 state={agent()!.state}
                 size={20}
+                emphasized={emphBot() !== ""}
+                seed={agentBot() ?? activeBot()?.id ?? "status"}
               />
               <ShimmerText
                 text={agent()!.label}
@@ -1723,7 +1799,16 @@ function App() {
                 }}
               >
                 <If when={!!activeBot()}>
-                  <BotAvatar shape={activeBot()!.shape} color={activeBot()!.color} image={activeBot()!.image} crop={activeBot()!.crop} size={24} box={22} breathe={botSt(activeBot()!.id)?.breathe ?? false} lid={botSt(activeBot()!.id)?.lid} clip={botSt(activeBot()!.id)?.clip} fx={botSt(activeBot()!.id)?.fx} />
+                  {/* static, like Grok's chat-header avatar (isStatic) */}
+                  <BotAvatar
+                    shape={activeBot()!.shape}
+                    color={activeBot()!.color}
+                    image={activeBot()!.image}
+                    crop={activeBot()!.crop}
+                    size={24}
+                    box={22}
+                    paused
+                  />
                 </If>
                 <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>
                   {activeBot()?.name ?? "Gen UI Chat"}
@@ -1803,7 +1888,7 @@ function App() {
           {/* ————— bot profile (Grok's info pane, measured over CDP) ————— */}
           <If when={!!activeBot()}>
             <View
-              onMouseMove={(e) => panelGaze.follow(e, 160, 40, 150)}
+              onMouseMove={(e) => panelGaze.follow(e, 160, 40, 32)}
               onHoverOut={() => panelGaze.rest()}
               style={{ alignSelf: "stretch", alignItems: "center", paddingTop: 8 }}
             >
@@ -1833,7 +1918,8 @@ function App() {
                   gaze={panelGaze}
                   edit={panelEdit}
                   editK={panelEditK}
-                  breathe={false}
+                  morphShape
+                  seed={activeBot()!.id}
                 />
                 <View
                   style={{
@@ -2177,7 +2263,15 @@ function App() {
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4, height: 18 }}>
               <View style={{ width: 16, height: 16, alignItems: "center", justifyContent: "center" }}>
-                <BotAvatar shape={railPop()!.bot.shape} color={railPop()!.bot.color} image={railPop()!.bot.image} crop={railPop()!.bot.crop} size={20} box={16} breathe={false} />
+                <BotAvatar
+                  shape={railPop()!.bot.shape}
+                  color={railPop()!.bot.color}
+                  image={railPop()!.bot.image}
+                  crop={railPop()!.bot.crop}
+                  size={20}
+                  box={16}
+                  paused
+                />
               </View>
               <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13, lineHeight: 18, fontWeight: "500" }}>
                 {railPop()!.bot.name}
@@ -2301,7 +2395,7 @@ function App() {
                             }}
                           />
                         </If>
-                        <BotBlob shape={sh()} color={inkOf("#FFFFFF")} size={44} pose="rest" gaze={cellGaze} />
+                        <BotBlob shape={sh()} color={inkOf("#FFFFFF")} size={44} paused />
                       </View>
                     )}
                   </Each>
@@ -2565,14 +2659,6 @@ function App() {
             {/* Grok's dialog (CDP): 440 wide, radius 14, 0.5pt border at 12%,
                 elevated surface; header 55; body 16 padding; footer rule */}
             <View
-              onMouseMove={(e) => {
-                previewGaze.follow(e, 220, 126, 140);
-                cellGaze.follow(e, 220, 330, 200);
-              }}
-              onHoverOut={() => {
-                previewGaze.rest();
-                cellGaze.rest();
-              }}
               style={{
                 width: 440,
                 borderRadius: 14,
@@ -2601,7 +2687,7 @@ function App() {
               <View style={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, alignItems: "center" }}>
                 {/* 96pt live preview */}
                 <View style={{ width: 96, height: 96, alignItems: "center", justifyContent: "center" }}>
-                  <BotBlob shape={botShape()} color={inkOf(botColor())} size={96} gaze={previewGaze} />
+                  <BotBlob shape={botShape()} color={inkOf(botColor())} size={96} paused={false} />
                 </View>
 
                 {/* name: 35 tall, radius 8, hairline, centered 13pt */}
@@ -2640,7 +2726,7 @@ function App() {
                             }}
                           />
                         </If>
-                        <BotBlob shape={sh()} color={inkOf(botColor())} size={44} pose="rest" gaze={cellGaze} />
+                        <BotBlob shape={sh()} color={inkOf(botColor())} size={44} paused />
                       </View>
                     )}
                   </Each>

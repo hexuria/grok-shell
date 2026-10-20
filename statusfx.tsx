@@ -1,25 +1,8 @@
 import { Canvas } from "nsh/canvas";
 import { signal, View } from "nsh";
-import { BotBlob } from "./blob";
+import { blobPokes, BotBlob } from "./blob";
+import { UN, vx, yl, Zx } from "./motion.mjs";
 import { tc } from "./theme";
-
-// ————————————————————————————————————————————————————————————————
-// Agent status, ported from Sand's bundle (index.eager-platform/app).
-// ————————————————————————————————————————————————————————————————
-// `vx` maps a status key to an ambient effect on the mark; `yl` maps the
-// richer agent states to clips/faces. The clips themselves are 3D keyframes
-// we don't bake, so clip-driven states fall back to the mark's idle loop
-// (breathe) plus the matching overlay. The state table below is the union:
-//   vx:  thinking→dots orbit radar progress spawning→gather dictating→wave
-//        sending→send receiving→receive uploading→dock bouncing→ball
-//        writing→pencil alerting→bang powering-down→standby
-//   yl:  idle listening thinking streaming searching reading working coding
-//        running computing controlling waiting blocked finished failed
-//        sleeping waking happy excited laughing proud curious playful shy
-//        surprised suspicious angry confused sad drowsy bored scared
-//        celebrate approving orbit radar progress spawning loading
-//        dictating sending receiving uploading writing alerting bouncing
-//        powering-down humming notifying dragging logo showcase turntable
 
 const TAU = Math.PI * 2;
 
@@ -35,76 +18,67 @@ const startFx = () => {
   requestAnimationFrame(tick);
 };
 
-export type AgentFx =
-  | "none" | "dots" | "orbit" | "radar" | "progress" | "gather" | "wave"
-  | "send" | "receive" | "dock" | "ball" | "pencil" | "bang" | "standby";
+export type AgentFx = "none" | import("./motion.mjs").MarkMorph;
 
-export type AgentState = {
-  fx: AgentFx;
-  label: string;
-  /** play the idle loop (fallback when no clip is named) */
-  breathe?: boolean;
-  /** lid amount for face states (squinted, sleepy…) */
-  lid?: number;
-  /** Grok clip(s) from `yl` — real keyframes played through clips.ts */
-  clip?: string | string[];
+export const STATES = Zx.flatMap((group) => group.states);
+
+const STATUS_LABEL: Record<string, string> = {
+  idle: "",
+  listening: "Listening…",
+  thinking: "Thinking…",
+  streaming: "Streaming…",
+  searching: "Searching…",
+  reading: "Reading…",
+  working: "Working…",
+  coding: "Coding…",
+  running: "Running…",
+  computing: "Computing…",
+  controlling: "Controlling…",
+  waiting: "Waiting…",
+  blocked: "Blocked",
+  finished: "Done",
+  failed: "Failed",
+  sleeping: "Sleeping",
+  waking: "Waking…",
+  happy: "Happy",
+  excited: "Excited",
+  laughing: "Laughing",
+  proud: "Proud",
+  curious: "Curious…",
+  playful: "Playful",
+  shy: "Shy",
+  surprised: "Surprised",
+  suspicious: "Suspicious",
+  angry: "Angry",
+  confused: "Confused",
+  sad: "Sad",
+  drowsy: "Drowsy",
+  bored: "Bored",
+  scared: "Scared",
+  celebrate: "Celebrate",
+  approving: "Approving",
+  orbit: "Orbit",
+  radar: "Radar",
+  progress: "Progress",
+  spawning: "Spawning…",
+  loading: "Loading…",
+  dictating: "Dictating…",
+  sending: "Sending…",
+  receiving: "Receiving…",
+  uploading: "Uploading…",
+  writing: "Writing…",
+  alerting: "Alert",
+  bouncing: "Bouncing",
+  "powering-down": "Powering down…",
+  humming: "Humming",
+  notifying: "Notification",
+  dragging: "Dragging",
 };
 
-const WORKING = ["Working_A", "Working_B", "Working_C", "Working_D", "Working_E", "Working_F"];
-const IDLE_B = "Idle_B";
+export const statusLabel = (state: string) =>
+  STATUS_LABEL[state] ?? state.replace(/-/g, " ").replace(/(^| )\S/g, (c) => c.toUpperCase());
 
-export const AGENT_STATUS: Record<string, AgentState> = {
-  idle: { fx: "none", label: "" },
-  listening: { fx: "none", label: "Listening…", clip: "Idle_D" },
-  thinking: { fx: "dots", label: "Thinking…", clip: IDLE_B },
-  streaming: { fx: "wave", label: "Streaming…", clip: ["Streaming_A", "Streaming_B", "Streaming_C"] },
-  searching: { fx: "radar", label: "Searching…", clip: IDLE_B },
-  reading: { fx: "radar", label: "Reading…", clip: WORKING },
-  working: { fx: "orbit", label: "Working…", clip: WORKING },
-  coding: { fx: "orbit", label: "Coding…", clip: WORKING },
-  running: { fx: "orbit", label: "Running…", clip: WORKING },
-  computing: { fx: "orbit", label: "Computing…", clip: WORKING },
-  controlling: { fx: "orbit", label: "Controlling…", clip: WORKING },
-  waiting: { fx: "orbit", label: "Waiting…", clip: IDLE_B },
-  blocked: { fx: "bang", label: "Blocked", clip: "Blocked_A" },
-  finished: { fx: "none", label: "Done", clip: ["Done_B", "Done_A"] },
-  failed: { fx: "bang", label: "Failed", clip: "Blocked_B" },
-  sleeping: { fx: "none", label: "Sleeping", lid: 0.15, clip: IDLE_B },
-  waking: { fx: "none", label: "Waking…", clip: IDLE_B },
-  happy: { fx: "none", label: "Happy", clip: "Done_A" },
-  excited: { fx: "none", label: "Excited", clip: "Done_C" },
-  laughing: { fx: "none", label: "Laughing", clip: "Done_B" },
-  proud: { fx: "none", label: "Proud", clip: "Marketing_B" },
-  curious: { fx: "none", label: "Curious…", clip: "Working_B" },
-  playful: { fx: "none", label: "Playful", clip: "Bodymoves_A" },
-  shy: { fx: "none", label: "Shy", clip: "Idle_D" },
-  surprised: { fx: "none", label: "Surprised", clip: IDLE_B },
-  suspicious: { fx: "none", label: "Suspicious", clip: "Idle_D" },
-  angry: { fx: "none", label: "Angry", clip: "Blocked_A" },
-  confused: { fx: "bang", label: "Confused", clip: "Blocked_A" },
-  sad: { fx: "none", label: "Sad", clip: "Blocked_B" },
-  drowsy: { fx: "none", label: "Drowsy", clip: "Blocked_C" },
-  bored: { fx: "none", label: "Bored", clip: IDLE_B },
-  scared: { fx: "none", label: "Scared", clip: "Idle_D" },
-  celebrate: { fx: "none", label: "Celebrate", clip: "Rotation_A" },
-  approving: { fx: "none", label: "Approving", clip: "Rotation_C" },
-  orbit: { fx: "orbit", label: "Orbit", clip: IDLE_B },
-  radar: { fx: "radar", label: "Radar", clip: IDLE_B },
-  progress: { fx: "progress", label: "Progress", clip: IDLE_B },
-  spawning: { fx: "gather", label: "Spawning…", clip: IDLE_B },
-  loading: { fx: "progress", label: "Loading…", clip: IDLE_B },
-  dictating: { fx: "wave", label: "Dictating…", clip: IDLE_B },
-  sending: { fx: "send", label: "Sending…", clip: IDLE_B },
-  receiving: { fx: "receive", label: "Receiving…", clip: IDLE_B },
-  uploading: { fx: "dock", label: "Uploading…", clip: IDLE_B },
-  writing: { fx: "pencil", label: "Writing…", clip: IDLE_B },
-  alerting: { fx: "bang", label: "Alert", clip: IDLE_B },
-  bouncing: { fx: "ball", label: "Bouncing", clip: IDLE_B },
-  "powering-down": { fx: "standby", label: "Powering down…", clip: IDLE_B },
-  humming: { fx: "none", label: "Humming", clip: IDLE_B },
-  notifying: { fx: "bang", label: "Notification", clip: "Done_B" },
-  dragging: { fx: "none", label: "Dragging", clip: IDLE_B },
-};
+export const morphKind = (state: string): AgentFx => vx[yl[state]?.morph ?? ""] ?? "none";
 
 // ————— ambient overlay: the vx effect drawn around the mark —————
 const drawFx = (fx: AgentFx, ctx: any, w: number, h: number, t: number, ink: string) => {
@@ -295,23 +269,35 @@ export function FxOverlay(props: { fx: AgentFx; size: number; ink?: string }) {
   );
 }
 
-// The status row's mark: the bot's avatar at 22pt with the ambient effect
-// drawn over it; clip-states stand in with the idle loop, face states with
-// the lid amount.
-export function StatusAvatar(props: { shape: string; color: string; state: string; size?: number }) {
+// The status row's mark — Grok's activity mark: it always plays the state,
+// and a click pokes it through UN (spin → bounce → nod), like Grok's tU().
+export function StatusAvatar(props: {
+  shape: string;
+  color: string;
+  state: string;
+  size?: number;
+  emphasized?: boolean;
+  seed?: string;
+}) {
   const s = props.size ?? 22;
-  const st = () => AGENT_STATUS[props.state] ?? { fx: "none", label: props.state };
+  const pokes = blobPokes();
+  let index = 0;
   return (
-    <View style={{ width: s, height: s }}>
+    <View
+      onPress={() => pokes.fire(UN[index++ % UN.length])}
+      activeOpacity={0.7}
+      accessibilityLabel="Agent activity mark"
+      style={{ width: s, height: s }}
+    >
       <BotBlob
         shape={props.shape}
         color={props.color}
         size={s}
-        breathe={st().breathe}
-        lid={st().lid}
-        clip={st().clip}
-        fx={st().fx}
-        pose={st().breathe == null && st().lid == null && st().clip == null ? "rest" : undefined}
+        state={props.state}
+        paused={false}
+        emphasized={props.emphasized}
+        pokes={pokes}
+        seed={props.seed}
       />
     </View>
   );

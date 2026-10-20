@@ -1748,6 +1748,26 @@ async function execTool(job, thread, block) {
 // The Anthropic server-side web_search tool gets one shot — if this build of
 // the API/model rejects it we drop it and use the client-side version.
 let serverSearch = true;
+let agentStream = true;
+const TOOL_ACTIVITY = {
+  web_search: ["searching", "Searching the web"],
+  fetch_url: ["browsing", "Reading the web"],
+  generate_app: ["writing", "Drafting the file"],
+  generate_image: ["generating", "Generating a photo"],
+  query_source: ["connecting", "Connecting to a third party app"],
+};
+
+function toolActivity(name, input = {}) {
+  if (name === "query_source" && typeof input?.source === "string" && input.source.trim()) {
+    const source = input.source
+      .trim()
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return ["connecting", `Connecting to ${source}`];
+  }
+  return TOOL_ACTIVITY[name] || ["working", "Working"];
+}
+
 function toolList() {
   return serverSearch
     ? [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }, ...TOOLS]
@@ -1768,22 +1788,45 @@ async function agentTurn(job, prompt, thread) {
   ];
   let reply = "";
   for (let i = 0; i < 8; i++) {
-    setJob(job, "thinking", i === 0 ? `${labelOf(modelCtx.getStore())} is thinking` : "continuing…");
+    const thinkingDetail = i === 0 ? `${labelOf(modelCtx.getStore())} is thinking` : "continuing…";
+    setJob(job, "thinking", thinkingDetail);
     let msg;
     const t0 = Date.now();
+    let events = 0;
     try {
-      msg = await anthropic.messages.create({
+      const params = {
         model: MODEL,
         max_tokens: MAX_TOKENS,
         system: agentSystem(),
         tools: toolList(),
         messages,
-      });
+      };
+      if (agentStream) {
+        const stream = anthropic.messages.stream(params);
+        stream.on("streamEvent", (event) => {
+          events++;
+          if (event.type !== "content_block_start") return;
+          const block = event.content_block;
+          if (block.type === "tool_use") setJob(job, ...toolActivity(block.name, block.input));
+          else if (block.type === "server_tool_use") setJob(job, "searching", "Searching the web");
+          else if (block.type === "text") setJob(job, "streaming", "Replying");
+          else if (block.type === "thinking" || block.type === "redacted_thinking")
+            setJob(job, "thinking", thinkingDetail);
+        });
+        msg = await stream.finalMessage();
+      } else {
+        msg = await anthropic.messages.create(params);
+      }
     } catch (e) {
       const m = String(e?.message || "");
       if (serverSearch && /web_search|server_tool|tool_use/i.test(m)) {
         console.error(`  server web_search rejected (${m.slice(0, 120)}) — using client search`);
         serverSearch = false;
+        continue;
+      }
+      if (agentStream && events === 0) {
+        console.error(`  Messages streaming unavailable (${m.slice(0, 160)}) — using create`);
+        agentStream = false;
         continue;
       }
       throw new Error(`llm-api ${e.status ?? ""}: ${m}`);
@@ -1806,7 +1849,7 @@ async function agentTurn(job, prompt, thread) {
     }
     const results = [];
     for (const u of uses) {
-      setJob(job, "tool", `${u.name}…`);
+      setJob(job, ...toolActivity(u.name, u.input));
       results.push({
         type: "tool_result",
         tool_use_id: u.id,

@@ -6,9 +6,9 @@ renders as real native UI inside the conversation. No web views, no DOM: every
 surface is an actual AppKit view.
 
 Built for **UI/UX parity with Grok Bot** (the "Sand" desktop agent) — not a
-lookalike, but measured parity: its design tokens, animation clips and ambient
-behaviors were extracted from the production bundle and re-implemented on our
-own renderer.
+lookalike, but measured parity: its design tokens were extracted from the
+production bundle, and its avatar motion system runs verbatim, painted by our
+own native renderer.
 
 ## Tech stack
 
@@ -35,19 +35,25 @@ own renderer.
 The mark: `design/grok-bot.md` + `design/grok-tokens.json` hold the extracted
 token set (type ramp, spacing grid, radii, neutral ramps for both themes).
 
-Beyond static tokens, the avatar system runs Grok Bot's actual decoded data:
+Beyond static tokens, the avatar runs Grok Bot's own motion code:
 
-- **`clips.data.ts`** — the real 28-clip keyframe registry (Working, Streaming,
-  Blocked, Done, Idle…): rotation/position/squash/zoom/lids/expression tracks
-  with authored bezier eases, decoded from the bundle and played back live by
-  `clips.ts` + `markeng.mjs` (a port of its own solid-geometry renderer).
-- **`ambient.ts`** — the real ambient morph controller (`vx`/`Ix`/`DE`/`FE`):
-  the mark's head physically transforms per agent state — dots, orbit, radar,
-  progress, wave, pencil, bang, standby — including silhouette morphing toward
-  ring/stadium targets and the swap crossfade.
-- **`statusfx.tsx` + `blob.tsx`** — every bot surface (sidebar, pinned tiles,
-  rail, header, status row) plays the live agent state; `/status:<state>` mock
-  commands exercise the whole state table without a generation.
+- **`motion.mjs`** — Grok Bot's mark motion system extracted verbatim from its
+  renderer bundle (acorn dependency closure): the engine (28 keyframe clips with
+  bridging, pointer gaze, pokes, shape crossfades, face morphs, ambient morphs
+  like the writing stylus), the state director and state table, and the frame
+  renderer. `markpaint.ts` paints each frame's SVG tree onto an nsh canvas.
+- **`blob.tsx`** — one engine per avatar placement, ticked at Grok's 30fps:
+  idle marks rest and turn toward the pointer the way Grok's do; active marks
+  play their state. Grok's silhouette solver is too heavy for QuickJS (10–40ms
+  a frame, seconds on some poses), so outlines come pre-solved by the same
+  engine: `atlas.data.ts` (every pose, via `markatlas.mjs` answering the
+  engine's own outline cache; `tools/grok-mark/bake-atlas.mjs`) and, for
+  resting/hovered marks, `rest.data.ts` (`tools/grok-mark/bake-rest.mjs`).
+- **Agent states** — tool calls map to Grok's activity verbs (`generate_app` →
+  writing, `web_search` → searching, …) and on to its mark states; the bot's
+  sidebar mark (row, pinned tile, rail) and the status row play them — like
+  Grok, the header and info-pane avatars stay at rest — and `/status:<state>`
+  mock commands exercise the whole table without a generation.
 - Light/dark themes both supported via `theme.ts` (`tc()` maps dark neutrals to
   Sand's light ramp).
 
