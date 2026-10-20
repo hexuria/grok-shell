@@ -384,7 +384,7 @@
     </div>
 
     <div class="notes"><h3>The model</h3>
-      <li><b>Artifact</b> (<code>R6</code>, title <i>Rate Pad</i>) owns a <b>version tree</b>: <code>v1 → v2 → v3 …</code>, each with a <b>parent pointer</b>. Files live as <code>generated/R6/v3.tsx</code>; <code>R6.tsx</code> is whatever <i>current</i> points at.</li>
+      <li><b>Artifact</b> (<code>R6</code>, title <i>Rate Pad</i>) owns a <b>version tree</b>: <code>v1 → v2 → v3 …</code>, each with a <b>parent pointer</b>. Files live as <code>generated/R6/rate-pad.v3.tsx</code> (&lt;slug&gt;.v&lt;n&gt;.tsx — a rename moves the whole batch); <code>R6.tsx</code> is whatever <i>current</i> points at.</li>
       <li><b>Cards record their version:</b> <code>generated · R6.tsx · v2</code> — the v1 card keeps rendering v1, the v2 card renders v2. Transcript stays honest; no more "which Rate Pad is this".</li>
       <li><b>Current pointer</b> per artifact: latest by default. Library shows it (<span class="vchip cur">v2</span>); the row's click and pop-out launch <i>current</i>, whatever it points at.</li>
       <li><b>Revert</b> = move the pointer back (v4), not rewrite. Iterating from a non-tip version <b>branches</b> — next section.</li>
@@ -438,7 +438,7 @@
     </div>
 
     <div class="ask">
-      <div class="q"><b>Resolved:</b> a card's ↗ pops out <b>its own version</b> (<code>/popout {name, v}</code> mounts <code>generated/R6/v3.tsx</code> — title <i>widget · R6@3</i>); the Library's click launches <i>current</i>.</div>
+      <div class="q"><b>Resolved:</b> a card's ↗ pops out <b>its own version</b> (<code>/popout {name, v}</code> mounts the pinned version file — title <i>widget · R6@3</i>); the Library's click launches <i>current</i>.</div>
       <div class="q"><b>Resolved:</b> branch labels are <b>auto</b> for v1 — the history shows <code>⎇ from v4</code> on the diverging child. Named branches can layer on later without changing the store.</div>
     </div>
   </div>
@@ -560,7 +560,7 @@
     </div>
 
     <div class="notes"><h3>How I'd build it</h3>
-      <li><b>Version store:</b> <code>generated/R6/v1.tsx</code>, <code>v2.tsx</code>… + a <code>versions(name, v, parent_v, prompt, created_at)</code> table and a <code>current_v</code> pointer per artifact. <code>R6.tsx</code> stays the "current" file on disk so every existing path (pop-out build, /module, imports) just works.</li>
+      <li><b>Version store:</b> <code>generated/R6/rate-pad.v1.tsx</code>, <code>rate-pad.v2.tsx</code>… + a <code>versions(name, v, parent_v, prompt, created_at)</code> table and a <code>heads(name, v)</code> current pointer per artifact. <code>R6.tsx</code> stays the "current" file on disk so every existing path (pop-out build, /module, imports) just works. Renaming the artifact (file name or title) batch-renames every version's file; chunk ids stay flat <code>R6v2.js</code>.</li>
       <li><b>@ picker:</b> composer watches for <code>@</code>, queries a new <code>/artifacts?q=&amp;thread=</code> — bot-thread apps first, then global/widgets, then attachments; match on title/file/name only.</li>
       <li><b>Mention → context:</b> a picked mention becomes a <code>module://R6</code> attachment (already shipped path) — the model sees the current source + a <code>revise</code> tool to write back.</li>
       <li><b>revise:</b> the tool copies <i>base_v</i> → new version file, the model edits it, normal <code>nsh check</code> gate applies, then <code>current_v</code> moves to the new version and the turn card records <code>v3</code>.</li>
