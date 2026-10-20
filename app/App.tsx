@@ -1266,7 +1266,17 @@ function App() {
     fetchPlugins();
     fetchMcp();
     fetchSkills();
-    const t = setInterval(() => { fetchPlugins(); fetchMcp(); fetchSkills(); }, 5000);
+    const t = setInterval(() => {
+      fetchPlugins(); fetchMcp(); fetchSkills();
+      // detail pages poll too — a browser-side OAuth completion lands here.
+      const top = pluginNav()[pluginNav().length - 1];
+      if (top?.page === "plugin" && top.name) {
+        fetchPluginDetail(top.name).then(() => {
+          for (const m of pluginDetails()[top.name!]?.mcp || []) if (m.id) fetchMcpTools(m.id);
+        });
+      }
+      if (top?.page === "mcp" && top.id) fetchMcpTools(top.id);
+    }, 3000);
     cleanup(() => clearInterval(t));
   });
   const installPlugin = async (name: string) => {
@@ -1303,6 +1313,12 @@ function App() {
     post("/mcp/tools/state", { id, tool, enabled }).then(() => fetchMcpTools(id));
   const retryServer = (id: string, plugin?: string) =>
     post("/mcp/servers", { id }).then(() => { fetchMcp(); if (plugin) fetchPluginDetail(plugin); });
+  // "Needs auth" on a remote connector → browser OAuth; anything else re-probes.
+  const authOrRetry = (m: { id?: string | null; transport?: string; err?: string | null }, plugin?: string) => {
+    if (!m.id) return Promise.resolve();
+    if (m.transport === "remote" && needsAuth(m.err)) return post("/mcp/auth", { id: m.id }).then(() => undefined);
+    return retryServer(m.id, plugin);
+  };
   // Grok's status semantics: 401/403/auth-ish errors → "Needs auth" + Retry;
   // other failures → "Error" + Retry; not-yet-registered → "Connect".
   const needsAuth = (err?: string | null) => !!err && /401|403|unauthor|forbidden|auth/i.test(err);
@@ -1337,7 +1353,10 @@ function App() {
         <Text numberOfLines={1} style={{ color: dim(), fontSize: 11, lineHeight: 14 }}>{p.description}</Text>
       </View>
       {p.installed ? (
-        <Text style={{ color: "#f5f5f566", fontSize: 12, paddingHorizontal: 8 }}>✓ Added</Text>
+        <Text style={{ fontSize: 12, paddingHorizontal: 8 }}>
+          <Text style={{ color: "#32bb78" }}>✓</Text>
+          <Text style={{ color: "#f5f5f566" }}> Added</Text>
+        </Text>
       ) : (
         <View
           onPress={() => installPlugin(p.name)}
@@ -3405,7 +3424,7 @@ function App() {
                         style={{ flexDirection: "row", gap: 12, paddingVertical: 10, alignItems: "flex-start" }}
                       >
                         <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
-                          <Text style={{ color: dim(), fontSize: 15 }}>▤</Text>
+                          <Text style={{ color: dim(), fontSize: 15 }}>📦</Text>
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text numberOfLines={1} style={{ color: s().enabled ? tc("#f5f5f5") : "#f5f5f566", fontSize: 13, fontWeight: "500" }}>{s().name}</Text>
@@ -3472,13 +3491,13 @@ function App() {
                                   </If>
                                   <If when={m().status === "error" && needsAuth(m().err)}>
                                     <Text style={{ color: "#ffb224", fontSize: 12, paddingRight: 12 }}>Needs auth</Text>
-                                    <View onPress={() => m().id && retryServer(m().id, name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                                    <View onPress={() => authOrRetry(m(), name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
                                       <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
                                     </View>
                                   </If>
                                   <If when={m().status === "error" && !needsAuth(m().err)}>
                                     <Text style={{ color: "#ff5f57", fontSize: 12, paddingRight: 12 }}>Error</Text>
-                                    <View onPress={() => m().id && retryServer(m().id, name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                                    <View onPress={() => authOrRetry(m(), name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
                                       <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
                                     </View>
                                   </If>
@@ -3504,7 +3523,7 @@ function App() {
                           <Each of={mcpL}>
                             {(m) => (
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
-                                <Text style={{ color: dim(), fontSize: 13 }}>⌁</Text>
+                                <Text style={{ color: dim(), fontSize: 13 }}>🔌</Text>
                                 <View style={{ flex: 1, minWidth: 0 }}>
                                   <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{m().name}</Text>
                                   <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>Connector{m().transport === "remote" ? " · remote" : ""}</Text>
@@ -3523,7 +3542,7 @@ function App() {
                           <Each of={shownSkills}>
                             {(s) => (
                               <View onPress={() => pushNav({ page: "skill", name, id: s().name })} activeOpacity={0.6} style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 11, alignItems: "flex-start" }}>
-                                <Text style={{ color: dim(), fontSize: 14, paddingTop: 1 }}>▣</Text>
+                                <Text style={{ color: dim(), fontSize: 14, paddingTop: 1 }}>📦</Text>
                                 <View style={{ flex: 1, minWidth: 0 }}>
                                   <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{s().name}</Text>
                                   <Text numberOfLines={2} style={{ color: dim(), fontSize: 11, lineHeight: 15 }}>{s().description}</Text>
@@ -3621,7 +3640,7 @@ function App() {
                             <Text style={{ color: needsAuth(s.err) ? "#ffb224" : "#ff5f57", fontSize: 12, paddingRight: 12 }}>
                               {needsAuth(s.err) ? "Needs auth" : "Error"}
                             </Text>
-                            <View onPress={() => retryServer(s.id)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                            <View onPress={() => authOrRetry({ id: s.id, transport: s.url ? "remote" : "command", err: s.err })} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
                               <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
                             </View>
                           </If>
@@ -3678,7 +3697,7 @@ function App() {
                       <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
                           <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
-                            <Text style={{ color: dim(), fontSize: 18 }}>▤</Text>
+                            <Text style={{ color: dim(), fontSize: 18 }}>📦</Text>
                           </View>
                           <View>
                             <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>{nav.id}</Text>
@@ -3708,7 +3727,7 @@ function App() {
                       <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
                           <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
-                            <Text style={{ color: dim(), fontSize: 18 }}>▤</Text>
+                            <Text style={{ color: dim(), fontSize: 18 }}>📦</Text>
                           </View>
                           <View style={{ flex: 1 }}>
                             <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>{psName() || "New Skill"}</Text>
