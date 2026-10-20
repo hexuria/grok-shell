@@ -103,3 +103,7 @@ stop:
 # Remove regenerable build artifacts. Never touches generated/ — your data.
 clean:
     rm -rf out windows .nsh tools/.stage tools/office/editor/dist
+
+# Lint with oxlint + the vendored anti-slop plugin
+lint:
+    npx oxlint
