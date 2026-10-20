@@ -16,7 +16,7 @@ import { keymap } from "nsh/keymap";
 import { Image } from "nsh/image";
 import { PanResponder } from "nsh/gesture";
 import { KeyboardAvoidingView, SafeAreaView } from "nsh/ui/mobile";
-import { Animated, createNativeValue, Easing } from "nsh/animated";
+import { Animated, createAnimatedValue, Easing } from "nsh/animated";
 import { BotAvatar, BotBlob, BOT_COLORS, BOT_SHAPES, blobEdit, blobGaze, CroppedImage, inkOf, normColor, SleepingBlob, type AvatarCrop, type BlobGaze } from "./blob";
 import { Conversation } from "./shell";
 import { loadModels, ModelPill, ModelPopover, type Choice } from "./modelpicker";
@@ -183,11 +183,11 @@ function App() {
   // the bot's container — row, tile or rail button — and computes gaze from
   // the mark's rect inside it: center of the avatar box, reach half its
   // width, each axis clamped ±1, y up positive. pointerleave resets to the
-  // resting pose. onMouseMove gives container-local coords, so each site
+  // resting pose. onHoverMove gives container-local coords, so each site
   // passes its mark's own center + half-width as the reach.
 
   const panelGaze = blobGaze(); // right-panel editor blob
-  const panelEditK = createNativeValue(0); // avatar hover → image avatars darken
+  const panelEditK = createAnimatedValue(0); // avatar hover → image avatars darken
   const panelEdit = blobEdit();            // avatar hover → blob darkens
   const avatarHover = signal(false);       // shows the "Edit Avatar" tooltip
   const avatarEditing = signal(false);     // click avatar → avatar editor pane
@@ -889,7 +889,7 @@ function App() {
     <View
       onPress={() => selectThread(b().threadId)}
       onContextMenu={() => botMenu(b())}
-      onMouseMove={(e) => railGaze(b().id + ":row").follow(e, 26, 27, 18)}
+      onHoverMove={(e) => railGaze(b().id + ":row").follow(e, 26, 27, 18)}
       onHoverOut={() => railGaze(b().id + ":row").rest()}
       activeOpacity={0.7}
       accessibilityLabel={b().name}
@@ -946,7 +946,7 @@ function App() {
       ref={node}
       onPress={() => selectThread(b().threadId)}
       onContextMenu={() => botMenu(b())}
-      onMouseMove={(e) => railGaze(b().id + ":pin").follow(e, 47.5, 36, 30)}
+      onHoverMove={(e) => railGaze(b().id + ":pin").follow(e, 47.5, 36, 30)}
       onHoverIn={async () => {
         const seq = ++popSeq;
         const m = await node?.measure();
@@ -1035,7 +1035,7 @@ function App() {
           if (railHover() === "bot:" + b().id) railHover.set("");
           railGaze(b().id + ":rail").rest();
         }}
-        onMouseMove={(e) => railGaze(b().id + ":rail").follow(e, 27, 27, 18)}
+        onHoverMove={(e) => railGaze(b().id + ":rail").follow(e, 27, 27, 18)}
         activeOpacity={0.7}
         accessibilityLabel={b().name}
         style={railPlate("bot:" + b().id, 54, b().threadId === activeId())}
@@ -1155,7 +1155,7 @@ function App() {
   };
   // older stored palette values → the swatches Grok renders
   const sameColor = (a: string, b: string) => normColor(a) === normColor(b);
-  const genPulse = createNativeValue(0);
+  const genPulse = createAnimatedValue(0);
   effect(() => {
     if (!avatarGenBusy()) return;
     const ease = Easing.bezier(0.42, 0, 0.58, 1);
@@ -1917,7 +1917,7 @@ function App() {
           {/* ————— bot profile (Grok's info pane, measured over CDP) ————— */}
           <If when={!!activeBot()}>
             <View
-              onMouseMove={(e) => panelGaze.follow(e, 160, 40, 32)}
+              onHoverMove={(e) => panelGaze.follow(e, 160, 40, 32)}
               onHoverOut={() => panelGaze.rest()}
               style={{ alignSelf: "stretch", alignItems: "center", paddingTop: 8 }}
             >

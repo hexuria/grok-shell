@@ -7,7 +7,7 @@ import { PanResponder } from "nsh/gesture";
 import { windowSize } from "nsh/device";
 import { keymap } from "nsh/keymap";
 import { effect, cleanup } from "nsh";
-import { Animated, createNativeValue, Easing } from "nsh/animated";
+import { Animated, createAnimatedValue, Easing } from "nsh/animated";
 import { tc } from "./theme";
 
 const GEN = "http://127.0.0.1:8787";
@@ -104,8 +104,8 @@ const SPARKS: [number, number, number][] = [
 export function ModelPopover(props: { choice: () => Choice; setChoice: (c: Choice) => void }) {
   const hover = signal("");
   // top-effort effects: a 2.4s shimmer sweep, sparkles twinkling out of phase
-  const shimmer = createNativeValue(0);
-  const twinkle = [0, 1, 2, 3].map(() => createNativeValue(0.2));
+  const shimmer = createAnimatedValue(0);
+  const twinkle = [0, 1, 2, 3].map(() => createAnimatedValue(0.2));
   effect(() => {
     if (!open() || !isTop(props.choice())) return;
     const sweep = Animated.loop(Animated.sequence([
