@@ -1205,12 +1205,40 @@ function App() {
     pluginNav.set([...pluginNav(), p]);
     if (p.page === "plugin" && p.name) fetchPluginDetail(p.name);
     if (p.page === "skill" && p.name && p.id) fetchSkillBody(p.name, p.id);
-    if (p.page === "connected")
+    if (p.page === "skill" && !p.name) {
+      // private skill editor — seed the fields (blank = new skill)
+      const sk = privateSkills().find((s) => s.id === p.id);
+      psId.set(sk?.id || null);
+      psName.set(sk?.name || "");
+      psDesc.set(sk?.description || "");
+      psBody.set(sk?.body || "");
+    }
+    if (p.page === "connected") {
+      fetchSkills();
       for (const pl of plugins().filter((x) => x.installed)) fetchPluginDetail(pl.name);
+    }
   };
   const popNav = () => pluginNav.set(pluginNav().slice(0, -1));
   const pluginDetails = signal<Record<string, any>>({});
   const skillBodies = signal<Record<string, { description: string; body: string }>>({});
+  // Private skills — the user's own (skill_* agent tools / this modal), NOT
+  // skills shipped inside plugins (those show only on the plugin's page).
+  const privateSkills = signal<{ id: string; name: string; description: string; body: string; enabled: boolean }[]>([]);
+  const fetchSkills = async () => {
+    const d = await fetch(`${GEN}/skills`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (d?.skills) privateSkills.set(d.skills);
+  };
+  // editor fields for the private-skill page (seeded on nav)
+  const psName = signal("");
+  const psDesc = signal("");
+  const psBody = signal("");
+  const psId = signal<string | null>(null);
+  const savePrivateSkill = async () => {
+    if (!psBody().trim() || !psName().trim()) return;
+    await post("/skills", { id: psId() || undefined, name: psName().trim(), description: psDesc().trim(), instructions: psBody() });
+    await fetchSkills();
+    popNav();
+  };
   const showAllInstalled = signal(false);
   const skillsExpanded = signal(false);
   const fetchPluginDetail = (name: string) =>
@@ -1233,7 +1261,8 @@ function App() {
     if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); return; }
     fetchPlugins();
     fetchMcp();
-    const t = setInterval(() => { fetchPlugins(); fetchMcp(); }, 5000);
+    fetchSkills();
+    const t = setInterval(() => { fetchPlugins(); fetchMcp(); fetchSkills(); }, 5000);
     cleanup(() => clearInterval(t));
   });
   const installPlugin = async (name: string) => {
@@ -3297,29 +3326,37 @@ function App() {
                       {showAllInstalled() ? "Show less" : `Show all ${plugins().filter((p) => p.installed).length} plugins`}
                     </Text>
                   </If>
-                  {/* Plugin skills — our "Private skills" section */}
-                  {(() => { const allSkills = plugins().filter((p) => p.installed).flatMap((p) => (pluginDetails()[p.name]?.skills || []).map((s: any) => ({ ...s, plugin: p.name }))); return (
-                    <If when={allSkills.length > 0}>
-                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 18, paddingBottom: 8 }}>Plugin skills</Text>
-                      <Each of={allSkills}>
-                        {(s) => (
-                          <View
-                            onPress={() => pushNav({ page: "skill", name: s().plugin, id: s().name })}
-                            activeOpacity={0.6}
-                            style={{ flexDirection: "row", gap: 12, paddingVertical: 10, alignItems: "flex-start" }}
-                          >
-                            <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
-                              <Text style={{ color: dim(), fontSize: 15 }}>▤</Text>
-                            </View>
-                            <View style={{ flex: 1, minWidth: 0 }}>
-                              <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{s().name}</Text>
-                              <Text numberOfLines={1} style={{ color: dim(), fontSize: 12 }}>{s().plugin} · {s().description}</Text>
-                            </View>
-                          </View>
-                        )}
-                      </Each>
-                    </If>
-                  ); })()}
+                  {/* Private skills — skills the user wrote (agent skill_*
+                      tools or this editor), never plugin-shipped ones */}
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 18, paddingBottom: 8, paddingRight: 4 }}>
+                    <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2 }}>Private skills</Text>
+                    <Text onPress={() => pushNav({ page: "skill" })} style={{ color: dim(), fontSize: 15, paddingHorizontal: 6 }}>＋</Text>
+                  </View>
+                  <If when={privateSkills().length === 0}>
+                    <Text style={{ color: "#f5f5f54d", fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>
+                      {'None yet — ask the agent to save one ("remember to always…") or tap ＋.'}
+                    </Text>
+                  </If>
+                  <Each of={privateSkills()}>
+                    {(s) => (
+                      <View
+                        onPress={() => pushNav({ page: "skill", id: s().id })}
+                        activeOpacity={0.6}
+                        style={{ flexDirection: "row", gap: 12, paddingVertical: 10, alignItems: "flex-start" }}
+                      >
+                        <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: dim(), fontSize: 15 }}>▤</Text>
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text numberOfLines={1} style={{ color: s().enabled ? tc("#f5f5f5") : "#f5f5f566", fontSize: 13, fontWeight: "500" }}>{s().name}</Text>
+                          <Text numberOfLines={1} style={{ color: dim(), fontSize: 12 }}>Created locally · {s().description}</Text>
+                        </View>
+                        <If when={!s().enabled}>
+                          <Text style={{ color: dim(), fontSize: 11, paddingTop: 3 }}>off</Text>
+                        </If>
+                      </View>
+                    )}
+                  </Each>
                 </Scroll>
               </If>
 
@@ -3526,44 +3563,95 @@ function App() {
                 })()}
               </If>
 
-              {/* ═══ SKILL detail page ═══ */}
+              {/* ═══ SKILL page — plugin skill (read-only) or private skill
+                    editor (name / description / instructions + Save + Delete) ═══ */}
               <If when={pluginPage() === "skill"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
                     <Text style={{ color: dim(), fontSize: 17 }}>‹</Text>
                   </View>
                   <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
-                    {pluginNav()[pluginNav().length - 1]?.id || ""}
+                    {pluginNav()[pluginNav().length - 1]?.id || "New Skill"}
                   </Text>
                 </View>
                 {(() => {
                   const nav = pluginNav()[pluginNav().length - 1] || {};
-                  const sk = skillBodies()[`${nav.name}/${nav.id}`] || null;
+                  // Plugin skill — read-only viewer.
+                  if (nav.name) {
+                    const sk = skillBodies()[`${nav.name}/${nav.id}`] || null;
+                    return (
+                      <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
+                          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                            <Text style={{ color: dim(), fontSize: 18 }}>▤</Text>
+                          </View>
+                          <View>
+                            <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>{nav.id}</Text>
+                            <Text style={{ color: dim(), fontSize: 12, paddingTop: 2 }}>Plugin skill · {nav.name}</Text>
+                          </View>
+                        </View>
+                        <Text style={{ color: "#f5f5f5cc", fontSize: 13, lineHeight: 20, paddingBottom: 14 }}>{sk?.description || ""}</Text>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>Name</Text>
+                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{nav.id}</Text>
+                        </View>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Description</Text>
+                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{sk?.description || "—"}</Text>
+                        </View>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Instructions</Text>
+                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10, minHeight: 140 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 18 }}>{sk ? sk.body : "Loading…"}</Text>
+                        </View>
+                      </Scroll>
+                    );
+                  }
+                  // Private skill — editable (Grok's editor: icon, name,
+                  // Delete Skill, Name/Description/Instructions, Save).
                   return (
-                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
-                        <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
-                          <Text style={{ color: dim(), fontSize: 18 }}>▤</Text>
+                    <View style={{ flex: 1 }}>
+                      <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
+                          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                            <Text style={{ color: dim(), fontSize: 18 }}>▤</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>{psName() || "New Skill"}</Text>
+                            <Text style={{ color: dim(), fontSize: 12, paddingTop: 2 }}>Private skill</Text>
+                          </View>
+                          <If when={!!psId()}>
+                            <View
+                              onPress={() => { post("/skills/delete", { id: psId() }).then(() => { fetchSkills(); popNav(); }); }}
+                              activeOpacity={0.7}
+                              style={{ height: 34, borderRadius: 9999, borderWidth: 1, borderColor: "#ff5f5740", paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}
+                            >
+                              <Text style={{ color: "#ff5f57", fontSize: 13, fontWeight: "500" }}>Delete Skill</Text>
+                            </View>
+                          </If>
                         </View>
-                        <View>
-                          <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>{nav.id}</Text>
-                          <Text style={{ color: dim(), fontSize: 12, paddingTop: 2 }}>Plugin skill · {nav.name}</Text>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>Name</Text>
+                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12 }}>
+                          <Input value={psName()} onChangeText={(t) => psName.set(t)} placeholder="skill-name" placeholderTextColor={tc("#f5f5f54d")} style={{ color: tc("#f5f5f5"), fontSize: 13, paddingVertical: 10 }} />
                         </View>
-                      </View>
-                      <Text style={{ color: "#f5f5f5cc", fontSize: 13, lineHeight: 20, paddingBottom: 14 }}>{sk?.description || ""}</Text>
-                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>Name</Text>
-                      <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
-                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{nav.id}</Text>
-                      </View>
-                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Description</Text>
-                      <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
-                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{sk?.description || "—"}</Text>
-                      </View>
-                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Instructions</Text>
-                      <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10, minHeight: 140 }}>
-                        <Text style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 18 }}>{sk ? sk.body : "Loading…"}</Text>
-                      </View>
-                    </Scroll>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Description</Text>
+                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12 }}>
+                          <Input value={psDesc()} onChangeText={(t) => psDesc.set(t)} placeholder="When to use this skill" placeholderTextColor={tc("#f5f5f54d")} style={{ color: tc("#f5f5f5"), fontSize: 13, paddingVertical: 10 }} />
+                        </View>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Instructions</Text>
+                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, minHeight: 160 }}>
+                          <Input value={psBody()} onChangeText={(t) => psBody.set(t)} placeholder="What the agent should do, in markdown" placeholderTextColor={tc("#f5f5f54d")} multiline style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 18, paddingVertical: 10, height: 160 }} />
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingTop: 14 }}>
+                          <View
+                            onPress={savePrivateSkill}
+                            activeOpacity={0.7}
+                            style={{ height: 34, borderRadius: 9999, paddingHorizontal: 20, alignItems: "center", justifyContent: "center", backgroundColor: psName().trim() && psBody().trim() ? tc("#f5f5f5") : "#f5f5f51f" }}
+                          >
+                            <Text style={{ color: psName().trim() && psBody().trim() ? "#1f1f1f" : dim(), fontSize: 13, fontWeight: "600" }}>Save</Text>
+                          </View>
+                        </View>
+                      </Scroll>
+                    </View>
                   );
                 })()}
               </If>
