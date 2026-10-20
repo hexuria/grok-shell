@@ -1185,7 +1185,7 @@ function App() {
     if (rightEff()) fetchThreadApps();
   });
   // Connected MCP servers (Connect tab): live status from the server.
-  const mcpServers = signal<{ id: string; name: string; command: string; args: string[]; enabled: boolean; bot: string | null; status: string; tools: number; err: string | null }[]>([]);
+  const mcpServers = signal<{ id: string; name: string; command: string; url: string | null; args: string[]; enabled: boolean; bot: string | null; status: string; tools: number; err: string | null }[]>([]);
   const mcpFormOpen = signal(false);
   const mcpForm = signal({ name: "", command: "", args: "", env: "", scope: "all" as "all" | "bot" });
   const mcpErr = signal("");
@@ -1197,6 +1197,30 @@ function App() {
   };
   // Plugin marketplace modal (Grok Bot's "Connect apps" → ours: plugins).
   const pluginsOpen = signal(false);
+  // Marketplace modal is a navigation stack, like Grok Bot's Connect-apps:
+  // market grid → "N connected" manager → plugin / skill / mcp detail pages.
+  const pluginNav = signal<{ page: string; name?: string; id?: string }[]>([{ page: "market" }]);
+  const pluginPage = () => pluginNav()[pluginNav().length - 1]?.page || "market";
+  const pushNav = (p: { page: string; name?: string; id?: string }) => {
+    pluginNav.set([...pluginNav(), p]);
+    if (p.page === "plugin" && p.name) fetchPluginDetail(p.name);
+    if (p.page === "skill" && p.name && p.id) fetchSkillBody(p.name, p.id);
+    if (p.page === "connected")
+      for (const pl of plugins().filter((x) => x.installed)) fetchPluginDetail(pl.name);
+  };
+  const popNav = () => pluginNav.set(pluginNav().slice(0, -1));
+  const pluginDetails = signal<Record<string, any>>({});
+  const skillBodies = signal<Record<string, { description: string; body: string }>>({});
+  const showAllInstalled = signal(false);
+  const skillsExpanded = signal(false);
+  const fetchPluginDetail = (name: string) =>
+    fetch(`${GEN}/plugins/detail?name=${encodeURIComponent(name)}`).then((r) => (r.ok ? r.json() : null)).then((d: any) => {
+      if (d && !d.error) pluginDetails.set({ ...pluginDetails(), [name]: d });
+    }).catch(() => {});
+  const fetchSkillBody = (plugin: string, skill: string) =>
+    fetch(`${GEN}/plugins/skill?plugin=${encodeURIComponent(plugin)}&skill=${encodeURIComponent(skill)}`).then((r) => (r.ok ? r.json() : null)).then((d: any) => {
+      if (d && !d.error) skillBodies.set({ ...skillBodies(), [`${plugin}/${skill}`]: d });
+    }).catch(() => {});
   const plugins = signal<{ name: string; description: string; category: string; homepage: string | null; domains: string[]; keywords: string[]; installed: boolean }[]>([]);
   const pluginBusy = signal("");
   const pluginCat = signal("All");
@@ -1206,10 +1230,10 @@ function App() {
     if (d?.plugins) plugins.set(d.plugins);
   };
   effect(() => {
-    if (!pluginsOpen()) return;
+    if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); return; }
     fetchPlugins();
     fetchMcp();
-    const t = setInterval(fetchPlugins, 5000);
+    const t = setInterval(() => { fetchPlugins(); fetchMcp(); }, 5000);
     cleanup(() => clearInterval(t));
   });
   const installPlugin = async (name: string) => {
@@ -1218,6 +1242,19 @@ function App() {
     try {
       await post("/plugins/install", { name });
       await fetchPlugins();
+      await fetchMcp();
+      fetchPluginDetail(name);
+    } finally {
+      pluginBusy.set("");
+    }
+  };
+  const uninstallPlugin = async (name: string) => {
+    pluginBusy.set(name);
+    try {
+      await post("/plugins/uninstall", { name });
+      await fetchPlugins();
+      fetchPluginDetail(name);
+      popNav();
     } finally {
       pluginBusy.set("");
     }
@@ -1237,9 +1274,14 @@ function App() {
     for (let i = 0; i < list.length; i += 2) out.push(list.slice(i, i + 2));
     return out;
   };
-  // Marketplace row: 40px letter tile + name + subtitle … Add / ✓ Added.
+  // Marketplace row: whole row navigates to the plugin page; the Add
+  // button inside installs without navigating (inner press wins).
   const pluginRow = (p: { name: string; description: string; installed: boolean }) => (
-    <View style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 56, paddingHorizontal: 8 }}>
+    <View
+      onPress={() => pushNav({ page: "plugin", name: p.name })}
+      activeOpacity={0.6}
+      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 56, paddingHorizontal: 8 }}
+    >
       <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: hue(p.name), alignItems: "center", justifyContent: "center" }}>
         <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{p.name[0].toUpperCase()}</Text>
       </View>
@@ -3051,9 +3093,10 @@ function App() {
         </If>
 
         {/* ————— Library rename: title / display file name ————— */}
-        {/* ————— Plugins marketplace (Grok Bot's "Connect apps" dialog: 800×702,
-              radius 14, #1f1f1f on rgba(0,0,0,.7) scrim, search + category
-              pills + 2-col sections) ————— */}
+        {/* ————— Plugins marketplace — full port of Grok Bot's Connect-apps
+              dialog: nav-stack modal (market → "N connected" manager →
+              plugin / skill / mcp detail pages). 800×702, radius 14,
+              #1f1f1f on 70% scrim. ————— */}
         <If when={pluginsOpen()}>
           <View style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: 30, alignItems: "center", justifyContent: "center" }}>
             <View onPress={() => pluginsOpen.set(false)} style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "#000000b3" }} />
@@ -3077,106 +3120,453 @@ function App() {
               >
                 <Text style={{ color: dim(), fontSize: 13 }}>✕</Text>
               </View>
-              {/* header: connected chip → search + templates → category pills */}
-              <View style={{ paddingTop: 12, paddingHorizontal: 20, gap: 10, paddingBottom: 4 }}>
-                <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", paddingRight: 22 }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8 }}>
-                    <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>{mcpServers().length + plugins().filter((p) => p.installed).length} connected ›</Text>
+
+              {/* ═══ MARKET page ═══ */}
+              <If when={pluginPage() === "market"}>
+                <View style={{ paddingTop: 12, paddingHorizontal: 20, gap: 10, paddingBottom: 4 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", paddingRight: 22 }}>
+                    <View
+                      onPress={() => pushNav({ page: "connected" })}
+                      activeOpacity={0.7}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 4, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8 }}
+                    >
+                      <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>{mcpServers().length + plugins().filter((p) => p.installed).length} connected ›</Text>
+                    </View>
                   </View>
-                </View>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <View style={{ flex: 1, height: 36, borderRadius: 10, backgroundColor: "#161616", borderWidth: 1, borderColor: "#f5f5f514", flexDirection: "row", alignItems: "center", paddingHorizontal: 10, gap: 8 }}>
-                    <Text style={{ color: dim(), fontSize: 13 }}>⌕</Text>
-                    <Input
-                      value={pluginQuery()}
-                      onChangeText={(t) => pluginQuery.set(t)}
-                      placeholder="Search across apps and skills"
-                      placeholderTextColor={tc("#f5f5f54d")}
-                      autoFocus
-                      style={{ flex: 1, fontSize: 14, color: tc("#f5f5f5") }}
-                    />
-                  </View>
-                  <View style={{ height: 36, borderRadius: 10, borderWidth: 1, borderColor: "#f5f5f514", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>◐</Text>
-                    <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates ↗</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
-                  <Each of={pluginCats()}>
-                    {(c) => (
-                      <View
-                        onPress={() => pluginCat.set(c())}
-                        activeOpacity={0.7}
-                        style={{ height: 28, borderRadius: 9999, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", backgroundColor: pluginCat() === c() ? tc("#f5f5f5") : tc("#f5f5f50a") }}
-                      >
-                        <Text style={{ color: pluginCat() === c() ? "#1f1f1f" : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
-                      </View>
-                    )}
-                  </Each>
-                </View>
-              </View>
-              {/* sections: Recommended → per-category (Grok's ordering) → Connected */}
-              <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 6, paddingHorizontal: 20, paddingBottom: 24 }}>
-                <If when={pluginList().length === 0}>
-                  <Text style={{ color: dim(), fontSize: 13, paddingVertical: 24, textAlign: "center" }}>No plugins match</Text>
-                </If>
-                {/* recommended = first 6 of the filtered list */}
-                <If when={pluginQuery() === "" && pluginCat() === "All" && pluginList().length > 0}>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
-                    <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>Recommended for you</Text>
-                    <Text style={{ color: dim(), fontSize: 12 }}>View all</Text>
-                  </View>
-                  <Each of={pluginPairs(pluginList().slice(0, 6))}>
-                    {(pair) => (
-                      <View style={{ flexDirection: "row" }}>
-                        <Each of={pair()}>{(p) => pluginRow(p())}</Each>
-                      </View>
-                    )}
-                  </Each>
-                </If>
-                <Each of={pluginCats().filter((c) => c !== "All" && (pluginCat() === "All" || pluginCat() === c))}>
-                  {(cat) => {
-                    const items = pluginList().filter((p) => p.category.toLowerCase() === cat().toLowerCase() && !(pluginQuery() === "" && pluginCat() === "All" && pluginList().slice(0, 6).includes(p)));
-                    return (
-                      <If when={items.length > 0}>
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 20, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
-                          <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>{cat()}</Text>
-                          <Text onPress={() => pluginCat.set(cat())} style={{ color: dim(), fontSize: 12 }}>View all</Text>
-                        </View>
-                        <Each of={pluginPairs(items)}>
-                          {(pair) => (
-                            <View style={{ flexDirection: "row" }}>
-                              <Each of={pair()}>{(p) => pluginRow(p())}</Each>
-                            </View>
-                          )}
-                        </Each>
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <View style={{ flex: 1, height: 36, borderRadius: 10, backgroundColor: "#161616", borderWidth: 1, borderColor: "#f5f5f514", flexDirection: "row", alignItems: "center", paddingHorizontal: 10, gap: 8 }}>
+                      <Text style={{ color: dim(), fontSize: 13 }}>⌕</Text>
+                      <Input
+                        value={pluginQuery()}
+                        onChangeText={(t) => pluginQuery.set(t)}
+                        placeholder="Search across apps and skills"
+                        placeholderTextColor={tc("#f5f5f54d")}
+                        style={{ flex: 1, fontSize: 14, color: tc("#f5f5f5") }}
+                      />
+                      <If when={pluginQuery() !== ""}>
+                        <Text onPress={() => pluginQuery.set("")} style={{ color: dim(), fontSize: 13, paddingHorizontal: 4 }}>Clear</Text>
                       </If>
-                    );
-                  }}
-                </Each>
-                {/* Connected: the live MCP registry (our "Team plugins" slot) */}
-                <If when={mcpServers().length > 0}>
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 20, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
-                    <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>Connected</Text>
+                    </View>
+                    <View style={{ height: 36, borderRadius: 10, borderWidth: 1, borderColor: "#f5f5f514", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>◐</Text>
+                      <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates ↗</Text>
+                    </View>
                   </View>
-                  <Each of={mcpServers()}>
-                    {(s) => (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12, height: 56, paddingHorizontal: 8 }}>
-                        <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: hue(s().id), alignItems: "center", justifyContent: "center" }}>
-                          <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{(s().name || s().id)[0].toUpperCase()}</Text>
+                  <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                    <Each of={pluginCats()}>
+                      {(c) => (
+                        <View
+                          onPress={() => pluginCat.set(c())}
+                          activeOpacity={0.7}
+                          style={{ height: 28, borderRadius: 9999, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", backgroundColor: pluginCat() === c() ? tc("#f5f5f5") : tc("#f5f5f50a") }}
+                        >
+                          <Text style={{ color: pluginCat() === c() ? "#1f1f1f" : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
+                        </View>
+                      )}
+                    </Each>
+                  </View>
+                </View>
+                <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 6, paddingHorizontal: 20, paddingBottom: 24 }}>
+                  <If when={pluginQuery() !== "" && pluginList().length === 0}>
+                    <Text style={{ color: dim(), fontSize: 13, paddingVertical: 24, textAlign: "center" }}>No plugins match</Text>
+                  </If>
+                  <If when={pluginQuery() === "" && pluginCat() === "All" && pluginList().length > 0}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
+                      <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>Recommended for you</Text>
+                    </View>
+                    <Each of={pluginPairs(pluginList().slice(0, 6))}>
+                      {(pair) => (
+                        <View style={{ flexDirection: "row" }}>
+                          <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                        </View>
+                      )}
+                    </Each>
+                  </If>
+                  <Each of={pluginCats().filter((c) => c !== "All" && (pluginCat() === "All" || pluginCat() === c))}>
+                    {(cat) => {
+                      const items = pluginList().filter((p) => p.category.toLowerCase() === cat().toLowerCase() && !(pluginQuery() === "" && pluginCat() === "All" && pluginList().slice(0, 6).includes(p)));
+                      return (
+                        <If when={items.length > 0}>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 20, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
+                            <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>{cat()}</Text>
+                            <Text onPress={() => pluginCat.set(cat())} style={{ color: dim(), fontSize: 12 }}>View all</Text>
+                          </View>
+                          <Each of={pluginPairs(items)}>
+                            {(pair) => (
+                              <View style={{ flexDirection: "row" }}>
+                                <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                              </View>
+                            )}
+                          </Each>
+                        </If>
+                      );
+                    }}
+                  </Each>
+                </Scroll>
+                {/* search dropdown — Grok shows matched rows over the grid */}
+                <If when={pluginQuery() !== "" && pluginList().length > 0}>
+                  <View style={{ position: "absolute", left: 20, top: 98, right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: "#262626", borderWidth: 1, borderColor: "#f5f5f51f", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
+                    <Text style={{ color: dim(), fontSize: 12, paddingLeft: 14, paddingTop: 10, paddingBottom: 4 }}>Plugins</Text>
+                    <Each of={pluginList().slice(0, 10)}>
+                      {(p) => (
+                        <View
+                          onPress={() => { pushNav({ page: "plugin", name: p().name }); }}
+                          activeOpacity={0.6}
+                          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, height: 40 }}
+                        >
+                          <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: hue(p().name), alignItems: "center", justifyContent: "center" }}>
+                            <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{p().name.slice(0, 3).toLowerCase()}</Text>
+                          </View>
+                          <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{pluginTitle(p().name)}</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>›</Text>
+                        </View>
+                      )}
+                    </Each>
+                    <View style={{ height: 8 }} />
+                  </View>
+                </If>
+              </If>
+
+              {/* ═══ CONNECTED page — "Manage plugins and skills" ═══ */}
+              <If when={pluginPage() === "connected"}>
+                <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
+                  <View onPress={popNav} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ color: dim(), fontSize: 15 }}>‹</Text>
+                    <Text style={{ color: dim(), fontSize: 14 }}>Connect Apps</Text>
+                  </View>
+                </View>
+                <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}>
+                  <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "600", paddingTop: 4, paddingBottom: 14 }}>Manage plugins and skills</Text>
+                  <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 8 }}>Installed</Text>
+                  <Each of={pluginPairs((() => {
+                    const installed = plugins().filter((p) => p.installed);
+                    const pluginIds = new Set(installed.flatMap((p) => pluginDetails()[p.name]?.meta?.mcp || []));
+                    const standalone = mcpServers().filter((s) => !pluginIds.has(s.id));
+                    const shown = showAllInstalled() ? installed : installed.slice(0, 4);
+                    return [
+                      ...shown.map((p) => ({ kind: "plugin", p })),
+                      ...standalone.map((s) => ({ kind: "mcp", s })),
+                    ];
+                  })())}>
+                    {(pair) => (
+                      <View style={{ flexDirection: "row", gap: 8, paddingBottom: 8 }}>
+                        <Each of={pair()}>
+                          {(item) => { const it = item() as any; return it.kind === "plugin" ? (
+                            <View
+                              onPress={() => pushNav({ page: "plugin", name: it.p.name })}
+                              activeOpacity={0.6}
+                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: "#f5f5f50a" }}
+                            >
+                              <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: hue(it.p.name), alignItems: "center", justifyContent: "center" }}>
+                                <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{it.p.name[0].toUpperCase()}</Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{pluginTitle(it.p.name)}</Text>
+                                <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>
+                                  {(() => { const d = pluginDetails()[it.p.name]; return d ? `${d.mcp.length || 0} connector${d.mcp.length === 1 ? "" : "s"}, ${d.skills.length} skill${d.skills.length === 1 ? "" : "s"}` : "…"; })()}
+                                </Text>
+                              </View>
+                              {(() => { const d = pluginDetails()[it.p.name]; const st = d?.mcp?.some((m: any) => m.status === "connected") ? "Connected" : d?.mcp?.some((m: any) => m.status === "error") ? "Error" : d ? "Installed" : "…"; return (
+                                <Text style={{ color: st === "Connected" ? "#32bb78" : st === "Error" ? "#ff5f57" : dim(), fontSize: 12 }}>{st}</Text>
+                              ); })()}
+                            </View>
+                          ) : (
+                            <View
+                              onPress={() => pushNav({ page: "mcp", id: it.s.id })}
+                              activeOpacity={0.6}
+                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: "#f5f5f50a" }}
+                            >
+                              <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: hue(it.s.id), alignItems: "center", justifyContent: "center" }}>
+                                <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{(it.s.name || it.s.id)[0].toUpperCase()}</Text>
+                              </View>
+                              <View style={{ flex: 1, minWidth: 0 }}>
+                                <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{it.s.name || it.s.id}</Text>
+                                <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>1 connector</Text>
+                              </View>
+                              <Text style={{ color: it.s.status === "connected" ? "#32bb78" : it.s.status === "error" ? "#ff5f57" : dim(), fontSize: 12 }}>
+                                {it.s.status === "connected" ? "Connected" : it.s.status === "error" ? "Error" : it.s.enabled ? "Idle" : "Off"}
+                              </Text>
+                            </View>
+                          ); }}
+                        </Each>
+                      </View>
+                    )}
+                  </Each>
+                  <If when={plugins().filter((p) => p.installed).length > 4}>
+                    <Text onPress={() => showAllInstalled.set(!showAllInstalled())} style={{ color: dim(), fontSize: 12, paddingVertical: 10 }}>
+                      {showAllInstalled() ? "Show less" : `Show all ${plugins().filter((p) => p.installed).length} plugins`}
+                    </Text>
+                  </If>
+                  {/* Plugin skills — our "Private skills" section */}
+                  {(() => { const allSkills = plugins().filter((p) => p.installed).flatMap((p) => (pluginDetails()[p.name]?.skills || []).map((s: any) => ({ ...s, plugin: p.name }))); return (
+                    <If when={allSkills.length > 0}>
+                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 18, paddingBottom: 8 }}>Plugin skills</Text>
+                      <Each of={allSkills}>
+                        {(s) => (
+                          <View
+                            onPress={() => pushNav({ page: "skill", name: s().plugin, id: s().name })}
+                            activeOpacity={0.6}
+                            style={{ flexDirection: "row", gap: 12, paddingVertical: 10, alignItems: "flex-start" }}
+                          >
+                            <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ color: dim(), fontSize: 15 }}>▤</Text>
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{s().name}</Text>
+                              <Text numberOfLines={1} style={{ color: dim(), fontSize: 12 }}>{s().plugin} · {s().description}</Text>
+                            </View>
+                          </View>
+                        )}
+                      </Each>
+                    </If>
+                  ); })()}
+                </Scroll>
+              </If>
+
+              {/* ═══ PLUGIN detail page ═══ */}
+              <If when={pluginPage() === "plugin"}>
+                <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
+                  <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
+                    <Text style={{ color: dim(), fontSize: 17 }}>‹</Text>
+                  </View>
+                </View>
+                {(() => {
+                  const name = pluginNav()[pluginNav().length - 1]?.name || "";
+                  const d: any = pluginDetails()[name] || { skills: [], commands: [], agents: [], mcp: [], manifest: {} };
+                  const mcpL: any[] = d.mcp || [];
+                  const cmdL: any[] = d.commands || [];
+                  const skillList: any[] = d.skills || [];
+                  const shownSkills = skillsExpanded() ? skillList : skillList.slice(0, 5);
+                  const connected = d.mcp?.some((m: any) => m.status === "connected");
+                  return (
+                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                      {/* header: icon + name + View Source ↗  ···  Share + Add/Uninstall */}
+                      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14, paddingBottom: 14 }}>
+                        <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: hue(name), alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>{name[0].toUpperCase()}</Text>
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{s().name || s().id}</Text>
-                          <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>
-                            {s().status === "connected" ? `${s().tools} tools` : s().status === "error" ? `error — ${s().err || "failed"}` : s().enabled ? "idle" : "disabled"}
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 16, fontWeight: "600" }}>{pluginTitle(name)}</Text>
+                          <Text style={{ color: "#f5f5f58f", fontSize: 12, paddingTop: 2 }}>View Source ↗</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                          <View style={{ height: 34, borderRadius: 9999, borderWidth: 1, borderColor: "#f5f5f51f", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>🔗</Text>
+                            <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Share</Text>
+                          </View>
+                          {d.installed ? (
+                            <View onPress={() => uninstallPlugin(name)} activeOpacity={0.7} style={{ height: 34, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{pluginBusy() === name ? "…" : "Uninstall"}</Text>
+                            </View>
+                          ) : (
+                            <View onPress={() => installPlugin(name)} activeOpacity={0.7} style={{ height: 34, borderRadius: 9999, backgroundColor: "#f5f5f5", paddingHorizontal: 18, alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ color: "#1f1f1f", fontSize: 13, fontWeight: "600" }}>{pluginBusy() === name ? "Adding…" : "Add"}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <Text style={{ color: "#f5f5f5cc", fontSize: 13, lineHeight: 20, paddingBottom: 16 }}>{d.description || plugins().find((p) => p.name === name)?.description || ""}</Text>
+                      {/* Accounts — only when the plugin ships MCP connectors */}
+                      <If when={(d.mcp || []).length > 0}>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 8 }}>Accounts</Text>
+                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12 }}>
+                            <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>default ⌘</Text>
+                            <View style={{ flex: 1 }} />
+                            <Text style={{ color: connected ? "#32bb78" : d.mcp?.some((m: any) => m.status === "error") ? "#ff5f57" : dim(), fontSize: 12 }}>
+                              {connected ? "Connected" : d.mcp?.some((m: any) => m.status === "error") ? "Error" : "Idle"}
+                            </Text>
+                          </View>
+                          <View style={{ borderTopWidth: 0.5, borderTopColor: "#f5f5f512", paddingVertical: 12 }}>
+                            <Text style={{ color: dim(), fontSize: 13 }}>＋ Add Another Account</Text>
+                          </View>
+                        </View>
+                      </If>
+                      {/* Apps (connectors) */}
+                      <If when={(d.mcp || []).length > 0}>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Apps  {d.mcp.length}</Text>
+                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+                          <Each of={mcpL}>
+                            {(m) => (
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
+                                <Text style={{ color: dim(), fontSize: 13 }}>⚡</Text>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{m().name}</Text>
+                                  <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>Connector{m().transport === "remote" ? " · remote" : ""}</Text>
+                                </View>
+                              </View>
+                            )}
+                          </Each>
+                        </View>
+                      </If>
+                      {/* Skills */}
+                      <If when={skillList.length > 0}>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Skills  {skillList.length}</Text>
+                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+                          <Each of={shownSkills}>
+                            {(s) => (
+                              <View onPress={() => pushNav({ page: "skill", name, id: s().name })} activeOpacity={0.6} style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 11, alignItems: "flex-start" }}>
+                                <Text style={{ color: dim(), fontSize: 14, paddingTop: 1 }}>▤</Text>
+                                <View style={{ flex: 1, minWidth: 0 }}>
+                                  <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{s().name}</Text>
+                                  <Text numberOfLines={2} style={{ color: dim(), fontSize: 11, lineHeight: 15 }}>{s().description}</Text>
+                                </View>
+                              </View>
+                            )}
+                          </Each>
+                        </View>
+                        <If when={skillList.length > 5}>
+                          <Text onPress={() => skillsExpanded.set(!skillsExpanded())} style={{ color: dim(), fontSize: 12, paddingTop: 10, textAlign: "center" }}>
+                            {skillsExpanded() ? "Show less" : `${skillList.length - 5} more`}
+                          </Text>
+                        </If>
+                      </If>
+                      {/* Commands / Agents */}
+                      <If when={(d.commands || []).length > 0}>
+                        <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Commands  {d.commands.length}</Text>
+                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+                          <Each of={cmdL}>
+                            {(c) => (
+                              <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
+                                <Text style={{ color: dim(), fontSize: 13 }}>/</Text>
+                                <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{c().name}</Text>
+                              </View>
+                            )}
+                          </Each>
+                        </View>
+                      </If>
+                      {/* Information */}
+                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Information</Text>
+                      <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Capabilities</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>{d.mcp?.length || 0} app{(d.mcp?.length || 0) === 1 ? "" : "s"}, {skillList.length} skill{skillList.length === 1 ? "" : "s"}</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Developer</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>{d.manifest?.author || (d.homepage ? new URL(d.homepage).host.split(".")[0] : "—")}</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Category</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>{pluginTitle(d.category || "")}</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Website</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>{d.homepage ? new URL(d.homepage).host : "—"}</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Availability</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>Public</Text>
+                        </View>
+                      </View>
+                    </Scroll>
+                  );
+                })()}
+              </If>
+
+              {/* ═══ MCP server detail page (manually added connector) ═══ */}
+              <If when={pluginPage() === "mcp"}>
+                <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
+                  <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
+                    <Text style={{ color: dim(), fontSize: 17 }}>‹</Text>
+                  </View>
+                  <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
+                    {mcpServers().find((s) => s.id === pluginNav()[pluginNav().length - 1]?.id)?.name || ""}
+                  </Text>
+                </View>
+                {(() => {
+                  const s = mcpServers().find((x) => x.id === pluginNav()[pluginNav().length - 1]?.id);
+                  if (!s) return <View />;
+                  return (
+                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 16 }}>
+                        <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: hue(s.id), alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>{(s.name || s.id)[0].toUpperCase()}</Text>
+                        </View>
+                        <Text style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 16, fontWeight: "600" }}>{s.name}</Text>
+                        <View
+                          onPress={() => { post("/mcp/server/delete", { id: s.id }).then(() => { fetchMcp(); popNav(); }); }}
+                          activeOpacity={0.7}
+                          style={{ height: 34, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}
+                        >
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>Uninstall</Text>
+                        </View>
+                      </View>
+                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 8 }}>Accounts</Text>
+                      <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>default</Text>
+                          <View style={{ flex: 1 }} />
+                          <Text style={{ color: s.status === "connected" ? "#32bb78" : s.status === "error" ? "#ff5f57" : dim(), fontSize: 12 }}>
+                            {s.status === "connected" ? "Connected" : s.status === "error" ? "Error" : s.enabled ? "Idle" : "Off"}
                           </Text>
                         </View>
-                        <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: s().status === "connected" ? "#32bb78" : s().status === "error" ? "#ff5f57" : s().enabled ? "#febc2e" : "#f5f5f533" }} />
                       </View>
-                    )}
-                  </Each>
-                </If>
-              </Scroll>
+                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Details</Text>
+                      <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Source</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>Added manually</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Transport</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>{s.url ? "Remote" : "Command"}</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 20, paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{s.url ? "URL" : "Command"}</Text>
+                          <Text numberOfLines={2} style={{ color: dim(), fontSize: 13, flex: 1, textAlign: "right" }}>{s.url || `${s.command} ${(s.args || []).join(" ")}`.trim()}</Text>
+                        </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Tools</Text>
+                          <Text style={{ color: dim(), fontSize: 13 }}>{s.tools}</Text>
+                        </View>
+                      </View>
+                    </Scroll>
+                  );
+                })()}
+              </If>
+
+              {/* ═══ SKILL detail page ═══ */}
+              <If when={pluginPage() === "skill"}>
+                <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
+                  <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
+                    <Text style={{ color: dim(), fontSize: 17 }}>‹</Text>
+                  </View>
+                  <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
+                    {pluginNav()[pluginNav().length - 1]?.id || ""}
+                  </Text>
+                </View>
+                {(() => {
+                  const nav = pluginNav()[pluginNav().length - 1] || {};
+                  const sk = skillBodies()[`${nav.name}/${nav.id}`] || null;
+                  return (
+                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
+                        <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: dim(), fontSize: 18 }}>▤</Text>
+                        </View>
+                        <View>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>{nav.id}</Text>
+                          <Text style={{ color: dim(), fontSize: 12, paddingTop: 2 }}>Plugin skill · {nav.name}</Text>
+                        </View>
+                      </View>
+                      <Text style={{ color: "#f5f5f5cc", fontSize: 13, lineHeight: 20, paddingBottom: 14 }}>{sk?.description || ""}</Text>
+                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>Name</Text>
+                      <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
+                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{nav.id}</Text>
+                      </View>
+                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Description</Text>
+                      <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
+                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{sk?.description || "—"}</Text>
+                      </View>
+                      <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Instructions</Text>
+                      <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10, minHeight: 140 }}>
+                        <Text style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 18 }}>{sk ? sk.body : "Loading…"}</Text>
+                      </View>
+                    </Scroll>
+                  );
+                })()}
+              </If>
             </View>
           </View>
         </If>
