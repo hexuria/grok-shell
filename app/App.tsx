@@ -1140,10 +1140,16 @@ function App() {
   // and the file name is display-only (the module stays R<n>.tsx on disk).
   const appRename = signal<{ name: string; field: "title" | "file" } | null>(null);
   const appRenameText = signal("");
-  const appMenu = (a: { name: string; title: string; file: string }) =>
+  const appMenu = (a: { name: string; title: string; file: string; published?: boolean }) =>
     Menu.popup([
       { label: "Rename Title…", onSelect: () => { appRenameText.set(a.title); appRename.set({ name: a.name, field: "title" }); } },
       { label: "Rename File Name…", onSelect: () => { appRenameText.set(a.file); appRename.set({ name: a.name, field: "file" }); } },
+      { type: "separator" },
+      a.published
+        ? { label: "Remove from Mini Apps", onSelect: () => post("/unpublish", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) }
+        : { label: "Promote to Mini Apps", onSelect: () => post("/publish", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
+      { type: "separator" },
+      { label: "Delete…", onSelect: () => post("/app/delete", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
     ]);
   const saveAppRename = async () => {
     const r = appRename();
