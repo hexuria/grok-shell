@@ -22,11 +22,12 @@ own native renderer.
   `query_source`, `office_*`…), typechecks each generated widget into
   `generated/R<N>.tsx`, and the dev server hot-patches it into the running
   app. Plain questions get text answers — UI is one tool among several.
-- **Inference** — Anthropic Messages API when `ANTHROPIC_API_KEY` is set
-  (default `claude-haiku-5-5`); per-thread model picks route through
-  **opencodex** (`OPENCODEX_URL`, default `http://localhost:8080`). Any
-  OpenAI-compatible endpoint works via `GEN_BASE_URL`/`GEN_MODEL` (OpenRouter
-  by default). `MOCK=1` runs fully offline.
+- **Inference** — Claude through **opencodex**'s Anthropic Messages endpoint
+  by default (`OPENCODEX_URL`, default `http://localhost:8080`; it owns the
+  real key, default model `claude-haiku-5-5`). `GEN_PROVIDER=openai` with
+  `GEN_BASE_URL`/`GEN_MODEL` selects an OpenAI-compatible backend (OpenRouter
+  by default). Direct-to-Anthropic escape hatch: `ANTHROPIC_BASE_URL` +
+  `ANTHROPIC_API_KEY`. `MOCK=1` runs fully offline.
 - **Persistence** — `generated/app.db` (SQLite via `node:sqlite`): bots,
   threads, turns, widget state, and the `apps` metadata table (display
   title/filename per artifact, owned per bot; published Mini Apps survive bot
@@ -59,9 +60,8 @@ below), `just stop`, `just clean`.
 
 `tools/start.sh` resolves the nsh binary as `$NSH`, then
 `<nsh repo>/target/release/nsh` (release first — the debug host is several
-times slower on the UI thread), then debug, then `nsh` on `PATH`. It pulls
-`ANTHROPIC_API_KEY` from `secret get` if the env var isn't set, and reuses an
-already-running server instead of starting a second one.
+times slower on the UI thread), then debug, then `nsh` on `PATH`, and reuses
+an already-running server instead of starting a second one.
 
 To run the pieces by hand:
 
@@ -76,8 +76,9 @@ MOCK=1 node server/app-server.mjs     # offline: canned widgets, no API key
 
 Server environment variables: `PORT` (default `8787`), `GEN_PROVIDER`,
 `GEN_BASE_URL`, `GEN_MODEL`, `GEN_MAX_TOKENS`, `OPENCODEX_URL`,
-`ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `NSH` (nsh binary used for widget
-typechecks and pop-outs), `POP_W`/`POP_H` (pop-out sizing), `MOCK`.
+`ANTHROPIC_BASE_URL`/`ANTHROPIC_API_KEY` (direct-mode escape hatch only),
+`OPENROUTER_API_KEY`, `NSH` (nsh binary used for widget typechecks and
+pop-outs), `POP_W`/`POP_H` (pop-out sizing), `MOCK`.
 
 ### In the app
 
