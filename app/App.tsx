@@ -212,7 +212,7 @@ function App() {
   const upDraft = signal<AvatarDraft | null>(null);
   const draftCrop = signal<{ s: number; x: number; y: number }>({ s: 1, x: 0, y: 0 });
   const avatarErr = signal("");
-  const threadApps = signal<{ name: string; title: string; file: string; subtitle: string; published: boolean; mtime: number; v?: number | null; versions?: { v: number; parent: number | null; created_at: number }[] }[]>([]);
+  const threadApps = signal<{ name: string; title: string; file: string; subtitle: string; published: boolean; mtime: number; v?: number | null; versions?: { v: number; parent: number | null; created_at: number; label?: string | null }[] }[]>([]);
   // Library version history: the expanded artifact's name (its rows show
   // the git-style tree — dot = current, ← = parent when it branches).
   const versOpen = signal("");
@@ -1179,7 +1179,7 @@ function App() {
   });
   // Library renames land in the server's apps table — the title is a label
   // and the file name is display-only (the module stays R<n>.tsx on disk).
-  const appRename = signal<{ name: string; field: "title" | "file" } | null>(null);
+  const appRename = signal<{ name: string; field: "title" | "file" | "label"; v?: number } | null>(null);
   const appRenameText = signal("");
   const appMenu = (a: { name: string; title: string; file: string; published?: boolean }) =>
     Menu.popup([
@@ -1191,13 +1191,21 @@ function App() {
         : { label: "Promote to Mini Apps", onSelect: () => post("/publish", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
       { type: "separator" },
       { label: "Delete…", onSelect: () => post("/app/delete", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
+      ...(a.published
+        ? [{ label: "Delete Everywhere…", onSelect: () => post("/app/delete", { name: a.name, everywhere: true }).then(() => { fetchThreadApps(); refreshThreads(); }) }]
+        : []),
     ]);
   const saveAppRename = async () => {
     const r = appRename();
     const v = appRenameText().trim();
     appRename.set(null);
-    if (!r || !v) return;
-    await post("/app/meta", r.field === "title" ? { name: r.name, title: v } : { name: r.name, file: v });
+    if (!r) return;
+    if (r.field === "label") {
+      await post("/app/version/label", { name: r.name, v: r.v, label: v });
+    } else {
+      if (!v) return;
+      await post("/app/meta", r.field === "title" ? { name: r.name, title: v } : { name: r.name, file: v });
+    }
     fetchThreadApps();
   };
   const openAvatarEditor = () => {
@@ -2194,9 +2202,20 @@ function App() {
                                       <Text style={{ color: vr().v === a().v ? tc("#f5f5f5") : tc("#f5f5f58a"), fontSize: 12, fontFamily: "monospace" }}>
                                         {`v${vr().v}`}
                                       </Text>
+                                      <If when={!!vr().label}>
+                                        <Text numberOfLines={1} style={{ color: "#c4b0ff", fontSize: 11, maxWidth: 90 }}>{vr().label}</Text>
+                                      </If>
                                       <If when={vr().parent != null && vr().parent !== vr().v - 1}>
                                         <Text style={{ color: "#b16dff", fontSize: 11 }}>{`⎇ from v${vr().parent}`}</Text>
                                       </If>
+                                      {/* name/rename this branch */}
+                                      <View
+                                        onPress={() => { appRenameText.set(vr().label || ""); appRename.set({ name: a().name, field: "label", v: vr().v }); }}
+                                        activeOpacity={0.6}
+                                        style={{ borderRadius: 5, paddingHorizontal: 3 }}
+                                      >
+                                        <Text style={{ color: tc("#f5f5f54d"), fontSize: 10 }}>✎</Text>
+                                      </View>
                                       <If when={vr().v === a().v}>
                                         <Text style={{ color: "#32bb78", fontSize: 11 }}>current</Text>
                                       </If>
@@ -2805,13 +2824,13 @@ function App() {
               style={{ width: 320, borderRadius: 16, backgroundColor: tc("#1f1f1f"), borderWidth: 0.5, borderColor: tc("#f5f5f51a"), padding: 16, gap: 12 }}
             >
               <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>
-                {appRename()?.field === "file" ? "Rename File Name" : "Rename Title"}
+                {appRename()?.field === "file" ? "Rename File Name" : appRename()?.field === "label" ? `Name Branch · v${appRename()?.v}` : "Rename Title"}
               </Text>
               <View style={{ borderRadius: 10, borderWidth: 1, borderColor: tc("#f5f5f51f"), backgroundColor: tc("#161616"), paddingHorizontal: 10 }}>
                 <Input
                   value={appRenameText()}
                   onChangeText={(t) => appRenameText.set(t)}
-                  placeholder={appRename()?.field === "file" ? "file-name.tsx" : "App title"}
+                  placeholder={appRename()?.field === "file" ? "file-name.tsx" : appRename()?.field === "label" ? "branch name (e.g. slow-ball)" : "App title"}
                   placeholderTextColor={tc("#f5f5f566")}
                   autoFocus
                   onSubmitEditing={saveAppRename}

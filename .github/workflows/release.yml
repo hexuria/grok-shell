@@ -13,9 +13,11 @@ permissions:
   contents: write
 
 env:
-  # Upstream nsh at the revision the app was tested against. Bump deliberately.
-  NSH_REPO: https://github.com/longbridge/nsh.git
-  NSH_REF: 4adbe63911079d553839d030e9b153b5ebc3f06b
+  # nsh at the revision the app was tested against. Bump deliberately.
+  # Fork pin: 4adbe63 + the load_chunk patch (longbridge/nsh#211). When that
+  # PR merges, move back to upstream at the merge SHA.
+  NSH_REPO: https://github.com/hexuria/native-shell.git
+  NSH_REF: 45533742e62ed138bd8bbd4a67e5bfb68a681145
 
 jobs:
   package:

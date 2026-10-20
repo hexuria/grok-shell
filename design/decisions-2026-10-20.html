@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Grok Shell — decisions · 2026-10-20</title>
+<style>
+  :root{
+    --bg:#0c0c0d; --pane:#131313; --card:#1f1f1f; --card2:#161616;
+    --line:#f5f5f50f; --line2:#f5f5f514;
+    --tx:#f5f5f5; --mut:#f5f5f5a8; --dim:#f5f5f566; --faint:#f5f5f540;
+    --acc:#f9670e; --green:#32bb78; --red:#ff5f57; --yellow:#febc2e; --gnd:#28c840;
+    --blue:#4f8dff; --purple:#9b7bff;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--tx);font:14px/1.5 -apple-system,"SF Pro Text",Inter,sans-serif;padding:40px 0 140px}
+  .wrap{max-width:1240px;margin:0 auto;padding:0 28px}
+  h1{font-size:26px;letter-spacing:-.02em}
+  .sub{color:var(--dim);margin-top:6px;font-size:13px;max-width:860px}
+  .iss{margin:48px 0 96px}
+  .iss-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+  .num{color:var(--acc);font-weight:700;font-size:13px;font-family:ui-monospace,Menlo,monospace}
+  .iss h2{font-size:19px;letter-spacing:-.01em}
+  .chip{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:99px;letter-spacing:.04em;text-transform:uppercase}
+  .c-plan{background:#7aa2ff22;color:#a8c1ff}
+  .c-agree{background:#32bb7833;color:#6fe0ab;border:1px solid #32bb7855}
+  .story{color:var(--mut);font-size:13.5px;max-width:860px;margin:10px 0 8px}
+  .story b{color:var(--tx);font-weight:600}
+  .story code,.notes code,.pros code{background:#ffffff14;padding:1px 6px;border-radius:5px;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#ffd9c4}
+  /* option picker */
+  .optbar{display:flex;gap:8px;margin:18px 0 4px;flex-wrap:wrap}
+  .opt{border:1px solid var(--line2);background:#ffffff08;color:var(--mut);border-radius:9px;padding:7px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;display:flex;gap:8px;align-items:center;transition:all .12s}
+  .opt .k{font-weight:700;color:var(--tx);font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
+  .opt:hover{background:#ffffff12;border-color:#f5f5f52a}
+  .opt.sel{background:#f9670e1c;border-color:#f9670e88;color:#ffd9c4}
+  .opt.sel .k{color:var(--acc)}
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:14px}
+  .col-label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:10px}
+  .before .col-label{color:#ff8f89}
+  .after .col-label{color:#6fe0ab}
+  .pros{margin-top:10px;border-left:2px solid var(--acc);padding:9px 14px;background:#f9670e0d;border-radius:0 10px 10px 0;font-size:12.5px;color:var(--mut)}
+  .pros b{color:var(--tx)}
+  .pros .bad{color:#ff8f89}
+  /* app mock (same skin as review doc) */
+  .mock{background:var(--pane);border:1px solid var(--line2);border-radius:14px;overflow:hidden;display:flex;font-size:12.5px;min-height:280px}
+  .m-sidebar{width:150px;background:#0f0f10;border-right:1px solid var(--line);padding:12px 10px;flex-shrink:0}
+  .m-railav{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#f9670e,#b93c00);display:flex;align-items:center;justify-content:center;font-size:15px;margin-bottom:14px}
+  .m-nav{color:var(--dim);font-size:11px;margin:10px 2px 6px;letter-spacing:.05em;text-transform:uppercase}
+  .m-chat-item{display:flex;gap:7px;align-items:center;padding:5px 7px;border-radius:7px}
+  .m-chat-item .av{width:20px;height:20px;border-radius:99px;background:#2f6df6;color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .m-chat-item span{color:var(--mut);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m-feed{flex:1;padding:16px 16px 12px;min-width:0;position:relative}
+  .m-bub{max-width:82%;padding:7px 12px;border-radius:16px;margin-bottom:12px;font-size:12px;line-height:1.5}
+  .m-bub.me{margin-left:auto;background:var(--acc);color:#fff}
+  .m-bub.ai{background:var(--card);border:1px solid var(--line);color:#f5f5f5d9}
+  .m-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:10px;position:relative}
+  .m-card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .m-tag{font-size:9.5px;letter-spacing:.1em;color:var(--dim);font-weight:600;text-transform:uppercase}
+  .m-cap{color:#f5f5f5d9;font-size:11.5px;margin-bottom:8px}
+  .vchip{font-size:9px;font-weight:700;background:#4f8dff22;color:#8fb6ff;border:1px solid #4f8dff44;border-radius:5px;padding:0 5px;letter-spacing:.03em}
+  .vchip.cur{background:#32bb7822;color:#6fe0ab;border-color:#32bb7855}
+  .vchip.br{background:#9b7bff22;color:#c4b0ff;border-color:#9b7bff55}
+  .m-lib{width:196px;border-left:1px solid var(--line);padding:12px 10px;flex-shrink:0;overflow:hidden}
+  .m-lib-tabs{display:flex;gap:4px;margin-bottom:10px}
+  .m-lib-tabs span{font-size:10px;padding:3px 8px;border-radius:6px;color:var(--dim)}
+  .m-lib-tabs span.on{background:#ffffff10;color:var(--tx)}
+  .m-lib-grp{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:8px 0 5px}
+  .m-lib-row{display:flex;gap:7px;align-items:center;padding:5px 6px;border-radius:8px}
+  .m-lib-row:hover{background:#ffffff08}
+  .m-lib-ic{width:22px;height:22px;border-radius:5px;background:#2f6df6;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .m-lib-ic.g{background:#32bb78}.m-lib-ic.o{background:#f9670e}.m-lib-ic.p{background:#9b7bff}.m-lib-ic.gray{background:#3a3a3c;color:#8a8a90}
+  .m-lib-row .t{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;gap:5px;align-items:center}
+  .m-lib-row .f{font-size:9.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .m-lib-row .age{margin-left:auto;color:var(--faint);font-size:10px;flex-shrink:0}
+  .vgraph{margin:6px 2px 2px;padding:8px 8px;background:#101012;border:1px solid var(--line);border-radius:10px}
+  .vg-title{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:6px;display:flex;justify-content:space-between}
+  .vg-row{display:flex;align-items:center;gap:8px;height:22px;position:relative}
+  .vg-dot{width:10px;height:10px;border-radius:99px;border:2px solid var(--blue);flex-shrink:0;z-index:2;background:#101012}
+  .vg-dot.cur{border-color:var(--gnd);background:var(--gnd)}
+  .vg-dot.br2{border-color:var(--purple);margin-left:16px;position:relative}
+  .vg-lab{font-size:10.5px;color:var(--mut);white-space:nowrap}
+  .vg-lab b{color:var(--tx)}
+  .vg-lab .who{color:var(--faint);font-size:9.5px}
+  .vg-line{position:absolute;left:4px;top:11px;bottom:-11px;width:2px;background:var(--blue);opacity:.5;z-index:1}
+  .vg-row:last-child .vg-line{display:none}
+  .vg-branchline{position:absolute;left:4px;top:11px;width:16px;height:11px;border-left:2px solid var(--purple);border-bottom:2px solid var(--purple);border-radius:0 0 0 8px;opacity:.6}
+  .brtag{font-size:8.5px;color:var(--purple);background:#9b7bff18;border-radius:4px;padding:0 4px;margin-left:4px}
+  .menu-mock{position:absolute;left:10px;top:34px;background:#282828;border:1px solid #ffffff1f;border-radius:10px;box-shadow:0 12px 34px #000a;padding:5px;min-width:200px;z-index:5}
+  .menu-mock div{padding:5px 10px;border-radius:6px;font-size:12px;color:#f5f5f5e6;display:flex;justify-content:space-between;gap:14px}
+  .menu-mock div:hover{background:#3a6cd8}
+  .menu-mock .sep{height:1px;background:#ffffff14;margin:4px 6px;padding:0}
+  .menu-mock .danger{color:#ff8f89}
+  .composer{background:var(--card);border:1px solid var(--line2);border-radius:16px;padding:10px 12px;margin-top:10px}
+  .composer .inp{color:var(--dim);font-size:12.5px}
+  .composer .inp .hl{color:var(--tx);background:#f9670e33;border-radius:4px;padding:0 3px}
+  /* mini app content */
+  .bars{display:flex;gap:10px;align-items:flex-end;height:74px;padding:4px 6px 0;position:relative}
+  .bars i{flex:1;background:#4f8dff;border-radius:4px 4px 0 0;display:block}
+  .bars + .xl{display:flex;justify-content:space-around;color:var(--faint);font-size:9px;margin-top:3px}
+  .mw{background:#f4f4f6;border-radius:10px;padding:10px 12px;color:#191919;font-size:11px}
+  .mw h4{font-size:13px;display:flex;justify-content:space-between;align-items:center}
+  .mw h4 em{font-style:normal;font-size:9px;background:#2f6df6;color:#fff;border-radius:99px;padding:1px 7px}
+  .mw .sub2{color:#8a8a90;font-size:9.5px;margin:2px 0 8px}
+  .mw .rowq{display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#fff;border-radius:7px;margin-bottom:5px;border:1px solid #00000008}
+  .mw .rowq b{font-size:11.5px}.mw .rowq small{display:block;color:#8a8a90;font-size:9px}
+  .mw .rowq .q{text-align:right;color:#b0b0b8;font-size:10px}
+  .codep{background:#121212;border:1px solid var(--line2);border-radius:9px;overflow:hidden}
+  .codep .h{display:flex;justify-content:space-between;padding:5px 10px;background:#f5f5f50f;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:var(--mut)}
+  .codep .b{padding:8px 10px;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#f5f5f5a8;line-height:1.7;white-space:pre-wrap}
+  .codep .b .ok{color:#6fe0ab}.codep .b .err{color:#ff8f89}.codep .b .skip{color:#ffd28a}.codep .b .cm{color:#f5f5f54d}
+  /* pipeline mock */
+  .pipe{display:flex;flex-direction:column;gap:8px;padding:14px}
+  .pl{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:12px}
+  .pl .st{width:18px;height:18px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0}
+  .pl .st.ok{background:#32bb7826;color:#6fe0ab}
+  .pl .st.bad{background:#ff5f5726;color:#ff8f89}
+  .pl .st.wait{background:#febc2e26;color:#ffd28a}
+  .pl small{color:var(--faint);margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:9.5px}
+  .pl .b2{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#a8c1ff}
+  .arr{color:var(--faint);text-align:center;font-size:14px;line-height:1}
+  /* rank picker */
+  .rankgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:16px}
+  .rk{border:1px solid var(--line2);border-radius:14px;background:var(--pane);overflow:hidden;cursor:pointer;transition:all .12s;position:relative}
+  .rk:hover{border-color:#f5f5f52e}
+  .rk.sel{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+  .rk .hd{padding:10px 12px 0;display:flex;align-items:center;gap:8px}
+  .rk .hd b{font-size:12.5px}
+  .rk .ord{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:99px;border:1.5px dashed #f5f5f530;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--dim);font-weight:700}
+  .rk.sel .ord{background:var(--acc);border-color:var(--acc);color:#fff;border-style:solid}
+  .rk .bd{padding:10px 12px 12px}
+  .rk .bd .mini{margin-top:8px}
+  .mini-bub{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:5px 8px;font-size:10px;color:var(--mut);margin-bottom:5px;display:flex;gap:6px;align-items:center}
+  .mini-bub .av{width:14px;height:14px;border-radius:99px;font-size:7px;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+  .setrow{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;border-radius:6px;font-size:10.5px;color:var(--mut);background:var(--card);border:1px solid var(--line);margin-bottom:4px}
+  .setrow .tg{width:24px;height:13px;border-radius:99px;background:#3a3a3c;position:relative;flex-shrink:0}
+  .setrow .tg.on{background:var(--gnd)}
+  .setrow .tg i{position:absolute;top:1.5px;left:1.5px;width:10px;height:10px;border-radius:99px;background:#fff}
+  .setrow .tg.on i{left:12px}
+  .wave{display:flex;gap:2px;align-items:center;height:22px;margin-top:4px}
+  .wave i{width:3px;background:var(--acc);border-radius:2px;display:block}
+  /* sticky decision dock */
+  .dock{position:fixed;left:0;right:0;bottom:0;background:#161616f2;border-top:1px solid var(--line2);backdrop-filter:blur(14px);padding:12px 0;z-index:50}
+  .dock .in{max-width:1240px;margin:0 auto;padding:0 28px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  .dock .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:700}
+  .dock .picks{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--tx);display:flex;gap:10px;flex-wrap:wrap}
+  .dock .picks b{color:var(--acc)}
+  .dock .picks .un{color:var(--faint)}
+  .dock button{margin-left:auto;background:var(--acc);border:0;color:#fff;border-radius:9px;padding:8px 16px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .dock button:hover{background:#ff7c2b}
+  .dock .okmsg{color:#6fe0ab;font-size:12px}
+  @media (max-width:1000px){.pair{grid-template-columns:1fr}.rankgrid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Grok Shell — open decisions <span style="color:#a8c1ff;font-size:15px">· pick per item</span></h1>
+  <div class="sub">2026-10-20 · the six review issues are shipped. These are the forks I need your call on. Click an option on each card to preview its outcome; your picks collect in the bar at the bottom — copy them back to me.</div>
+
+  <!-- ═══════════ DECISION 1 ═══════════ -->
+  <div class="iss" data-dec="1">
+    <div class="iss-head">
+      <span class="num">1</span><h2>How does the upstream <code style="font-size:14px">load_chunk</code> patch ship?</h2>
+      <span class="chip c-plan">decision</span>
+    </div>
+    <p class="story">Runtime chunk loading (the fix for "module missing") lives in <b>Native Shell</b>, on local branch <code>macos-load-chunk</code> (<code>4553374</code>, on top of pinned <code>4adbe63</code>). Your local packaged app has it — <b>CI does not</b>: <code>release.yml</code> pins <code>longbridge/nsh@4adbe63</code>, so a CI-built package would resurrect the bug.</p>
+
+    <div class="optbar">
+      <button class="opt sel" data-o="a"><span class="k">A</span> PR upstream, wait for merge</button>
+      <button class="opt" data-o="b"><span class="k">B</span> Pin CI to the fork SHA now</button>
+      <button class="opt" data-o="c"><span class="k">C</span> Status quo — local-only for now</button>
+    </div>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now — two build lanes diverge</div>
+        <div class="mock"><div class="pipe" style="flex:1">
+          <div class="pl"><span class="st ok">✓</span> <b>Local package</b> — dist/Grok Shell.app <span class="b2">nsh@4553374</span> <small>chunks ✓</small></div>
+          <div class="pl"><span class="st bad">✗</span> <b>CI release build</b> <span class="b2">nsh@4adbe63</span> <small>no load_chunk</small></div>
+          <div class="pl"><span class="st wait">…</span> CI-built app: runtime-generated modules <b style="color:#ff8f89">"module missing" again</b></div>
+        </div></div>
+      </div>
+      <div class="after">
+        <div class="col-label" data-lbl>Option A — upstream first</div>
+
+        <div class="optpane" data-o="a">
+          <div class="mock"><div class="pipe" style="flex:1">
+            <div class="pl"><span class="st wait">→</span> Open PR on <b>longbridge/nsh</b>: <i>"macos: serve split-bundle + runtime-delivered chunks"</i></div>
+            <div class="arr">↓ review</div>
+            <div class="pl"><span class="st wait">…</span> upstream merges → new SHA on main</div>
+            <div class="arr">↓</div>
+            <div class="pl"><span class="st ok">✓</span> grok-shell pin bumps to merged SHA — CI + local identical</div>
+          </div></div>
+          <div class="pros"><b>Cleanest.</b> No fork drift, upstream reviews the sink/message design. <span class="bad">Cost: CI stays broken until upstream merges — could be days or never.</span></div>
+        </div>
+
+        <div class="optpane" data-o="b" hidden>
+          <div class="mock"><div class="pipe" style="flex:1">
+            <div class="pl"><span class="st ok">✓</span> <code style="font-size:10.5px">release.yml</code> pins <b>your fork @ 4553374</b></div>
+            <div class="pl"><span class="st ok">✓</span> CI build: chunks load — parity with local <small>today</small></div>
+            <div class="pl"><span class="st wait">⌁</span> still open the upstream PR — when it merges, re-pin to upstream</div>
+          </div></div>
+          <div class="pros"><b>Unblocked today.</b> Temporary divergence, converges back on merge. <span class="bad">Cost: releases ride a fork until upstream takes the patch.</span></div>
+        </div>
+
+        <div class="optpane" data-o="c" hidden>
+          <div class="mock"><div class="pipe" style="flex:1">
+            <div class="pl"><span class="st ok">✓</span> local builds keep working</div>
+            <div class="pl"><span class="st bad">✗</span> CI builds silently ship the old runner</div>
+            <div class="pl"><span class="st bad">✗</span> anyone building from CI/clone hits "module missing"</div>
+          </div></div>
+          <div class="pros"><b>Zero upstream risk.</b> <span class="bad">Cost: the bug is only fixed on your machine — CI and fresh builds regress. Fine if the app only ever ships from this laptop.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ DECISION 2 ═══════════ -->
+  <div class="iss" data-dec="2">
+    <div class="iss-head">
+      <span class="num">2</span><h2>Delete on a published artifact — does the Mini App die with it?</h2>
+      <span class="chip c-plan">decision</span>
+    </div>
+    <p class="story">Right-click <b>Delete…</b> on a Library row currently removes <b>everything</b>: generated source, all versions, chat cards — <b>and the published widget copy</b>. Alternative: delete the chat artifact but let the published Mini App live on (it's already a separate copy).</p>
+
+    <div class="optbar">
+      <button class="opt sel" data-o="a"><span class="k">A</span> Delete = gone everywhere <i style="font-style:normal;color:var(--faint)">(current)</i></button>
+      <button class="opt" data-o="b"><span class="k">B</span> Delete chat artifact, Mini App survives</button>
+    </div>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now — right-click on a published row</div>
+        <div class="mock">
+          <div class="m-feed">
+            <div class="m-lib-row" style="background:#ffffff08;position:relative">
+              <span class="m-lib-ic g">◫</span>
+              <span class="t"><b>Brick Breaker</b> <span class="vchip cur">v3</span></span>
+              <span class="age">widgets ✓</span>
+            </div>
+            <div class="menu-mock" style="position:static;margin-top:6px">
+              <div>Rename Title…</div>
+              <div>Rename File Name…</div>
+              <div class="sep"></div>
+              <div>Remove from Mini Apps</div>
+              <div class="sep"></div>
+              <div class="danger">Delete… <span class="k" style="color:#f5f5f580">artifact + widget + cards</span></div>
+            </div>
+          </div>
+          <div class="m-lib">
+            <div class="m-lib-tabs"><span>Chat</span><span class="on">Mini Apps</span></div>
+            <div class="m-lib-row"><span class="m-lib-ic g">◫</span><span class="t">Brick Breaker</span></div>
+            <div class="m-lib-row"><span class="m-lib-ic o">▦</span><span class="t">Rate Pad</span></div>
+            <div class="m-lib-row"><span class="m-lib-ic p">?</span><span class="t">Rust Quiz</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label" data-lbl>Option A — everything dies (current)</div>
+
+        <div class="optpane" data-o="a">
+          <div class="mock">
+            <div class="m-feed">
+              <div class="m-bub ai" style="opacity:.5">Deleted <b>Brick Breaker</b> — source, 3 versions, and its Mini App copy.</div>
+              <div class="m-bub me" style="opacity:.55">undo?</div>
+              <div class="m-bub ai" style="opacity:.5">No — delete is final. Tombstone covers re-rendered cards.</div>
+            </div>
+            <div class="m-lib">
+              <div class="m-lib-tabs"><span>Chat</span><span class="on">Mini Apps</span></div>
+              <div class="m-lib-row" style="opacity:.35;text-decoration:line-through"><span class="m-lib-ic gray">◫</span><span class="t">Brick Breaker</span></div>
+              <div class="m-lib-row"><span class="m-lib-ic o">▦</span><span class="t">Rate Pad</span></div>
+              <div class="m-lib-row"><span class="m-lib-ic p">?</span><span class="t">Rust Quiz</span></div>
+            </div>
+          </div>
+          <div class="pros"><b>One concept:</b> delete means delete. No orphaned widgets pointing at missing generated sources. <span class="bad">Cost: one click can kill a Mini App you spent iterations on — no undo.</span></div>
+        </div>
+
+        <div class="optpane" data-o="b" hidden>
+          <div class="mock">
+            <div class="m-feed">
+              <div class="m-bub ai" style="opacity:.5">Deleted <b>Brick Breaker</b> artifact + versions + cards. <b>Mini App copy kept</b> — still launchable.</div>
+              <div class="menu-mock" style="position:static;margin-top:6px">
+                <div class="danger">Delete… <span class="k" style="color:#f5f5f580">chat artifact only</span></div>
+                <div class="sep"></div>
+                <div class="danger">Delete Everywhere… <span class="k" style="color:#f5f5f580">incl. Mini App</span></div>
+              </div>
+            </div>
+            <div class="m-lib">
+              <div class="m-lib-tabs"><span>Chat</span><span class="on">Mini Apps</span></div>
+              <div class="m-lib-row"><span class="m-lib-ic g">◫</span><span class="t">Brick Breaker <small style="color:var(--faint)">· source gone</small></span></div>
+              <div class="m-lib-row"><span class="m-lib-ic o">▦</span><span class="t">Rate Pad</span></div>
+              <div class="m-lib-row"><span class="m-lib-ic p">?</span><span class="t">Rust Quiz</span></div>
+            </div>
+          </div>
+          <div class="pros"><b>Matches the bot-delete rule</b> — chat-side cleanup never kills a published surface. Menu gets two delete rows. <span class="bad">Cost: a widget can outlive its artifact — "edit source" on it has nothing to revise (would re-generate v1).</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ DECISION 3 ═══════════ -->
+  <div class="iss" data-dec="3">
+    <div class="iss-head">
+      <span class="num">3</span><h2><code style="font-size:14px">tools/office/wasm.ts</code> fails <code style="font-size:14px">nsh check</code></h2>
+      <span class="chip c-plan">decision</span>
+    </div>
+    <p class="story">The BetterOffice tooling uses <code>import.meta.resolve</code>, which the checker doesn't support — it's been left red awaiting your call. Three ways to go green.</p>
+
+    <div class="optbar">
+      <button class="opt sel" data-o="a"><span class="k">A</span> Fix the code</button>
+      <button class="opt" data-o="b"><span class="k">B</span> Exclude office tooling from check</button>
+      <button class="opt" data-o="c"><span class="k">C</span> Leave it red</button>
+    </div>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now — <span style="text-transform:none">just check</span></div>
+        <div class="codep">
+          <div class="h"><span>$ nsh check app server tools</span><span>1 fail</span></div>
+          <div class="b"><span class="ok">✓ app/shell.tsx</span>
+<span class="ok">✓ app/App.tsx</span>
+<span class="ok">✓ server/*</span>
+<span class="err">✗ tools/office/wasm.ts:41 — import.meta.resolve is not supported</span></div>
+        </div>
+      </div>
+      <div class="after">
+        <div class="col-label" data-lbl>Option A — rewrite the resolve</div>
+
+        <div class="optpane" data-o="a">
+          <div class="codep">
+            <div class="h"><span>$ nsh check app server tools</span><span class="ok">all pass</span></div>
+            <div class="b"><span class="cm">// was: import.meta.resolve("../wasm/office.wasm")</span>
+<span class="cm">// now: resolve via asset path passed from the host</span>
+<span class="ok">✓ tools/office/wasm.ts</span>
+<span class="ok">✓ everything green</span></div>
+          </div>
+          <div class="pros"><b>Clean gate, real fix.</b> wasm.ts resolves the .wasm via an explicit path the server hands it. <span class="bad">Cost: touches BetterOffice plumbing — isolated worktree, needs a small careful patch.</span></div>
+        </div>
+
+        <div class="optpane" data-o="b" hidden>
+          <div class="codep">
+            <div class="h"><span>$ nsh check app server tools</span><span class="ok">pass + skip</span></div>
+            <div class="b"><span class="ok">✓ app/shell.tsx</span>
+<span class="ok">✓ app/App.tsx</span>
+<span class="ok">✓ server/*</span>
+<span class="skip">⊘ tools/office/** — excluded from check scope</span></div>
+          </div>
+          <div class="pros"><b>One-line justfile change.</b> Office is provenance tooling anyway — it doesn't ship in the app bundle, so checking it buys little. <span class="bad">Cost: real regressions in office code won't be caught by the gate.</span></div>
+        </div>
+
+        <div class="optpane" data-o="c" hidden>
+          <div class="codep">
+            <div class="h"><span>$ nsh check app server tools</span><span class="err">1 fail (known)</span></div>
+            <div class="b"><span class="ok">✓ …</span>
+<span class="err">✗ tools/office/wasm.ts — still red, documented as known-fail</span></div>
+          </div>
+          <div class="pros"><b>Zero work.</b> <span class="bad">Cost: a permanently red gate trains everyone (and me) to ignore the gate — the next real failure hides in the noise.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ DECISION 4 ═══════════ -->
+  <div class="iss" data-dec="4">
+    <div class="iss-head">
+      <span class="num">4</span><h2>Branch labels in the version history</h2>
+      <span class="chip c-plan">decision</span>
+    </div>
+    <p class="story">Reverting to v4 then revising creates a sibling branch — the Library graph marks it <code>⎇ from v4</code>. Should a branch get a <b>name</b>, or is the auto-tag enough?</p>
+
+    <div class="optbar">
+      <button class="opt sel" data-o="a"><span class="k">A</span> Auto-label only <i style="font-style:normal;color:var(--faint)">(current)</i></button>
+      <button class="opt" data-o="b"><span class="k">B</span> Optional name at branch point</button>
+    </div>
+
+    <div class="pair">
+      <div class="before">
+        <div class="col-label">Now — Library history for Brick Breaker</div>
+        <div class="mock"><div class="m-feed" style="display:flex;align-items:center;justify-content:center">
+          <div class="vgraph" style="width:230px">
+            <div class="vg-title"><span>Brick Breaker · history</span><span>head v7</span></div>
+            <div class="vg-row"><span class="vg-dot"></span><span class="vg-line"></span><span class="vg-lab"><b>v1</b> <span class="who">initial</span></span></div>
+            <div class="vg-row"><span class="vg-dot"></span><span class="vg-line"></span><span class="vg-lab"><b>v4</b> <span class="who">physics tune</span></span></div>
+            <div class="vg-row"><span class="vg-dot"></span><span class="vg-line"></span><span class="vg-lab"><b>v5</b> <span class="who">power-ups</span></span></div>
+            <div class="vg-row"><span class="vg-dot br2"></span><span class="vg-branchline"></span><span class="vg-lab"><b>v7</b> <span class="brtag">⎇ from v4</span></span></div>
+            <div class="vg-row"><span class="vg-dot cur"></span><span class="vg-line"></span><span class="vg-lab"><b>v6</b> <span class="who">current</span></span></div>
+          </div>
+        </div></div>
+      </div>
+      <div class="after">
+        <div class="col-label" data-lbl>Option A — stays automatic</div>
+
+        <div class="optpane" data-o="a">
+          <div class="mock"><div class="m-feed" style="display:flex;align-items:center;justify-content:center">
+            <div class="vgraph" style="width:230px">
+              <div class="vg-title"><span>Brick Breaker · history</span><span>head v7</span></div>
+              <div class="vg-row"><span class="vg-dot"></span><span class="vg-line"></span><span class="vg-lab"><b>v1</b> <span class="who">initial</span></span></div>
+              <div class="vg-row"><span class="vg-dot"></span><span class="vg-line"></span><span class="vg-lab"><b>v4</b> <span class="who">physics tune</span></span></div>
+              <div class="vg-row"><span class="vg-dot"></span><span class="vg-line"></span><span class="vg-lab"><b>v5</b> <span class="who">power-ups</span></span></div>
+              <div class="vg-row"><span class="vg-dot br2"></span><span class="vg-branchline"></span><span class="vg-lab"><b>v7</b> <span class="brtag">⎇ from v4</span></span></div>
+              <div class="vg-row"><span class="vg-dot cur"></span><span class="vg-line"></span><span class="vg-lab"><b>v6</b> <span class="who">current</span></span></div>
+            </div>
+          </div></div>
+          <div class="pros"><b>Zero friction.</b> Revise is one step; the graph still shows where it forked. <span class="bad">Cost: two diverging branches both say "from v4" — telling "the paddle-fix line" from "the power-ups line" means opening code.</span></div>
+        </div>
+
+        <div class="optpane" data-o="b" hidden>
+          <div class="mock"><div class="m-feed">
+            <div class="m-bub me">@brick-breaker back to v4 — try a slower ball instead</div>
+            <div class="m-bub ai">Revised <b>Brick Breaker</b> → <span class="vchip">v7</span> — this branches off <b>v4</b>.<br><span style="color:var(--mut);font-size:11.5px">Name this branch?</span></div>
+            <div class="composer" style="max-width:300px"><div class="inp"><span class="hl">slow-ball</span> <span style="color:var(--faint)">(enter = name, esc = skip)</span></div></div>
+            <div class="vgraph" style="width:240px;margin-top:10px">
+              <div class="vg-row"><span class="vg-dot br2"></span><span class="vg-branchline"></span><span class="vg-lab"><b>v7 · slow-ball</b> <span class="brtag">⎇ from v4</span></span></div>
+              <div class="vg-row"><span class="vg-dot cur"></span><span class="vg-lab"><b>v6</b> <span class="who">current</span></span></div>
+            </div>
+          </div></div>
+          <div class="pros"><b>Git-style branches you can read.</b> Optional — esc skips, nothing breaks. <span class="bad">Cost: a small composer prompt after branch-creating revisions; names need a column in <code>versions</code>.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ DECISION 5 ═══════════ -->
+  <div class="iss" data-dec="5">
+    <div class="iss-head">
+      <span class="num">5</span><h2>What gets built next?</h2>
+      <span class="chip c-plan">priority</span>
+    </div>
+    <p class="story">The review backlog is clear — this is the forward roadmap. <b>Click tiles in the order you want them built</b>; click again to un-pick. The order feeds the dock at the bottom.</p>
+
+    <div class="rankgrid" id="rank">
+      <div class="rk" data-rk="group">
+        <span class="ord"></span>
+        <div class="hd"><span class="m-lib-ic" style="background:#2f6df6">👥</span><b>Group chat</b></div>
+        <div class="bd">
+          <div class="mini">
+            <div class="mini-bub"><span class="av" style="background:#2f6df6">U</span>ship the landing page?</div>
+            <div class="mini-bub"><span class="av" style="background:#32bb78">G</span>Grok: drafting Hero v1 ↓</div>
+            <div class="mini-bub"><span class="av" style="background:#9b7bff">M</span>Mistral: pricing table too</div>
+          </div>
+          <div style="font-size:10px;color:var(--faint);margin-top:6px">Multiple bots per thread · per-bot artifact scope · @bot addressing</div>
+        </div>
+      </div>
+      <div class="rk" data-rk="settings">
+        <span class="ord"></span>
+        <div class="hd"><span class="m-lib-ic" style="background:#32bb78">⚙</span><b>Settings + updates</b></div>
+        <div class="bd">
+          <div class="mini">
+            <div class="setrow"><span>Model</span><b style="font-size:10px">claude-haiku-5-5 ▾</b></div>
+            <div class="setrow"><span>Auto-update</span><span class="tg on"><i></i></span></div>
+            <div class="setrow"><span>Data dir</span><b style="font-size:9px;color:var(--faint)">~/Library/…</b></div>
+          </div>
+          <div style="font-size:10px;color:var(--faint);margin-top:6px">Model/API keys UI · update channel · data-location control</div>
+        </div>
+      </div>
+      <div class="rk" data-rk="mcp">
+        <span class="ord"></span>
+        <div class="hd"><span class="m-lib-ic" style="background:#9b7bff">⬡</span><b>Connect Apps / MCP</b></div>
+        <div class="bd">
+          <div class="mini">
+            <div class="setrow"><span>Notion</span><b style="font-size:9px;color:#6fe0ab">connected</b></div>
+            <div class="setrow"><span>Linear</span><b style="font-size:9px;color:var(--faint)">connect…</b></div>
+            <div class="setrow"><span>Custom MCP server</span><b style="font-size:9px;color:var(--faint)">+</b></div>
+          </div>
+          <div style="font-size:10px;color:var(--faint);margin-top:6px">External tools into the agent loop · scoped per bot</div>
+        </div>
+      </div>
+      <div class="rk" data-rk="voice">
+        <span class="ord"></span>
+        <div class="hd"><span class="m-lib-ic" style="background:#f9670e">◉</span><b>Dictation / voice</b></div>
+        <div class="bd">
+          <div class="mini">
+            <div class="composer" style="margin-top:0;padding:7px 10px">
+              <div class="inp" style="font-size:11px;display:flex;align-items:center;gap:8px">
+                <span style="color:#ff8f89">●</span> listening…
+                <span class="wave"><i style="height:6px"></i><i style="height:14px"></i><i style="height:20px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:5px"></i><i style="height:12px"></i></span>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--faint);margin-top:6px">Push-to-talk in composer · streamed transcript · stays native</div>
+        </div>
+      </div>
+    </div>
+    <div class="pros" style="margin-top:14px;border-left-color:#7aa2ff;background:#7aa2ff0d"><b>My read:</b> <code>settings</code> is the cheapest unblock (model/keys belong in UI, not env vars). <code>group chat</code> is the biggest architecture rock — it multiplies everything else. <code>voice</code> needs upstream audio capture. <code>mcp</code> is self-contained server work.</div>
+  </div>
+
+  <div class="iss" style="margin-bottom:40px">
+    <div class="iss-head"><span class="num">·</span><h2 style="font-size:15px">Also on the radar — shout if any matter</h2></div>
+    <div class="notes"><ul>
+      <li><b>Undo for delete</b> — a transient toast before the atomic wipe commits.</li>
+      <li><b>Version pruning</b> — keep all forever (current) vs. GC old non-branch versions.</li>
+      <li><b>Card pop-out pins its version</b> — locked: a v1 card pops out v1, Library always launches current.</li>
+      <li><b>WidgetKit promotion</b> — pop-outs that survive as desktop widgets, the long-term play.</li>
+    </ul></div>
+  </div>
+</div>
+
+<div class="dock"><div class="in">
+  <span class="lab">Your picks</span>
+  <span class="picks" id="picks"></span>
+  <span class="okmsg" id="okmsg"></span>
+  <button id="copy">Copy decisions</button>
+</div></div>
+
+<script>
+const picks = JSON.parse(localStorage.getItem("gs-decisions") || "{}");
+const order = []; // for decision 5 ranking
+
+function renderPicks(){
+  const parts = ["1","2","3","4"].map(d =>
+    `<span>${d}${picks[d] ? `<b>${picks[d].toUpperCase()}</b>` : '<span class="un">–</span>'}</span>`);
+  const r = order.length ? `<b>${order.join("›")}</b>` : '<span class="un">–</span>';
+  parts.push(`<span>5 ${r}</span>`);
+  document.getElementById("picks").innerHTML = parts.join('<span class="un">·</span>');
+}
+
+document.querySelectorAll(".iss[data-dec]").forEach(iss => {
+  const d = iss.dataset.dec;
+  const opts = iss.querySelectorAll(".opt");
+  const panes = iss.querySelectorAll(".optpane");
+  const lbl = iss.querySelector("[data-lbl]");
+  const labels = {
+    "1": {a:"Option A — upstream first", b:"Option B — fork pin, converge later", c:"Option C — status quo"},
+    "2": {a:"Option A — everything dies (current)", b:"Option B — Mini App survives"},
+    "3": {a:"Option A — rewrite the resolve", b:"Option B — exclude office from check", c:"Option C — known-red"},
+    "4": {a:"Option A — stays automatic", b:"Option B — named branches"},
+  }[d];
+  function choose(o){
+    picks[d] = o;
+    opts.forEach(b => b.classList.toggle("sel", b.dataset.o === o));
+    panes.forEach(p => p.hidden = p.dataset.o !== o);
+    if (lbl && labels) lbl.textContent = labels[o];
+    localStorage.setItem("gs-decisions", JSON.stringify(picks));
+    renderPicks();
+  }
+  opts.forEach(b => b.onclick = () => choose(b.dataset.o));
+  if (picks[d]) choose(picks[d]);
+});
+
+document.querySelectorAll("#rank .rk").forEach(rk => {
+  rk.onclick = () => {
+    const k = rk.dataset.rk;
+    const i = order.indexOf(k);
+    if (i >= 0) order.splice(i, 1); else order.push(k);
+    document.querySelectorAll("#rank .rk").forEach(r => {
+      const j = order.indexOf(r.dataset.rk);
+      r.classList.toggle("sel", j >= 0);
+      r.querySelector(".ord").textContent = j >= 0 ? j + 1 : "";
+    });
+    localStorage.setItem("gs-order", JSON.stringify(order));
+    renderPicks();
+  };
+});
+const saved = JSON.parse(localStorage.getItem("gs-order") || "[]");
+saved.forEach(k => { const el = document.querySelector(`#rank .rk[data-rk="${k}"]`); if (el) el.click(); });
+
+document.getElementById("copy").onclick = async () => {
+  const r = order.length ? `5: ${order.join(" > ")}` : "5: –";
+  const txt = ["1","2","3","4"].map(d => `${d}${(picks[d]||"-").toUpperCase()}`).join(" ") + "  |  " + r;
+  try { await navigator.clipboard.writeText(txt); }
+  catch { prompt("Copy:", txt); }
+  const m = document.getElementById("okmsg");
+  m.textContent = "copied — paste it in chat";
+  setTimeout(() => m.textContent = "", 2400);
+};
+renderPicks();
+</script>
+</body>
+</html>
