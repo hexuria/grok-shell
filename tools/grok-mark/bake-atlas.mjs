@@ -5,10 +5,10 @@
 // 10–40ms a frame in QuickJS and some poses take seconds.
 // Run: node tools/grok-mark/bake-atlas.mjs [--check]   (env STEP, K)
 import fs from "node:fs";
-import { Cs, IM, pc, YN } from "../../motion.mjs";
-import { atlasOutline, decodeAtlas } from "../../markatlas.mjs";
+import { Cs, IM, pc, YN } from "../../app/mark/motion.mjs";
+import { atlasOutline, decodeAtlas } from "../../app/mark/markatlas.mjs";
 
-const OUT = new URL("../../atlas.data.ts", import.meta.url);
+const OUT = new URL("../../app/mark/atlas.data.ts", import.meta.url);
 const STEP = Number(process.env.STEP || 10); // grid spacing, degrees
 const K = Number(process.env.K || 128); // radial samples
 const NREF = 160;

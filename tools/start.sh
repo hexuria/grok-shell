@@ -26,4 +26,4 @@ if ! curl -sf -o /dev/null "http://127.0.0.1:8787/widget-feed"; then
   done
 fi
 
-exec "$NSH" run "$ROOT/App.tsx" --target macos
+exec "$NSH" run "$ROOT/app" --target macos

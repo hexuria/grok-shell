@@ -1,7 +1,7 @@
 import { Canvas } from "nsh/canvas";
 import { signal, View } from "nsh";
 import { blobPokes, BotBlob } from "./blob";
-import { UN, vx, yl, Zx } from "./motion.mjs";
+import { UN, vx, yl, Zx } from "./mark/motion.mjs";
 import { tc } from "./theme";
 
 const TAU = Math.PI * 2;
@@ -18,7 +18,7 @@ const startFx = () => {
   requestAnimationFrame(tick);
 };
 
-export type AgentFx = "none" | import("./motion.mjs").MarkMorph;
+export type AgentFx = "none" | import("./mark/motion.mjs").MarkMorph;
 
 export const STATES = Zx.flatMap((group) => group.states);
 

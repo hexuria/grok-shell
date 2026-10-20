@@ -4,11 +4,11 @@ import { Image } from "nsh/image";
 import { cleanup, effect, signal, Text, View } from "nsh";
 import { appearance } from "./theme";
 import { mediaUrl } from "./filetile";
-import { ih, rP, rv, Uh, Wn, YN } from "./motion.mjs";
-import { atlasOutline, decodeAtlas, type Atlas } from "./markatlas.mjs";
-import { paintTree } from "./markpaint";
-import { ATLAS, ATLAS_K, ATLAS_STEP } from "./atlas.data";
-import { REST, REST_EN, REST_LAYERS, REST_N } from "./rest.data";
+import { ih, rP, rv, Uh, Wn, YN } from "./mark/motion.mjs";
+import { atlasOutline, decodeAtlas, type Atlas } from "./mark/markatlas.mjs";
+import { paintTree } from "./mark/markpaint";
+import { ATLAS, ATLAS_K, ATLAS_STEP } from "./mark/atlas.data";
+import { REST, REST_EN, REST_LAYERS, REST_N } from "./mark/rest.data";
 
 // Grok's IM() looks every outline up in its cache first: answer it from the
 // atlas its own solver pre-computed, so no outline is solved live — that

@@ -24,7 +24,7 @@ import { Palette, paletteOpen, type PaletteItem } from "./palette";
 import { FileTile, type Attachment } from "./filetile";
 import { FileViewer, viewing } from "./fileviewer";
 import { Lightbox } from "./lightbox";
-import { WidgetShelf } from "./widgets/index";
+import { WidgetShelf } from "../widgets/index";
 import { FxOverlay, morphKind, ShimmerText, StatusAvatar, STATES, statusLabel } from "./statusfx";
 
 const GEN = "http://127.0.0.1:8787";

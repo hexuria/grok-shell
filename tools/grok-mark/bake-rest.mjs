@@ -5,9 +5,9 @@
 // Chromium, and nearly every hover frame lands on a new pose), so resting
 // marks interpolate these frames instead. Run: node tools/grok-mark/bake-rest.mjs
 import fs from "node:fs";
-import { ih, rv, Uh, YN } from "../../motion.mjs";
+import { ih, rv, Uh, YN } from "../../app/mark/motion.mjs";
 
-const OUT = new URL("../../rest.data.ts", import.meta.url);
+const OUT = new URL("../../app/mark/rest.data.ts", import.meta.url);
 const SHAPES = ["blob", "cloud", "square", "sparkle", "clover", "heart", "flower", "teardrop", "tablet", "wedge", "house", "star", "hex"];
 const W = 192; // Uh's viewBox; the mark box is W·0.6/0.92 (KN's resolution rule)
 // hold layers and their gaze grids (cols: gaze x −1…1, rows: gaze y −1…1)

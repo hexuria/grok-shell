@@ -14,7 +14,7 @@ default:
 
 # Full app: backend (reuses a live :8787 server) + Native Shell window.
 run: server
-    {{nsh}} run App.tsx --target macos
+    {{nsh}} run app --target macos
 
 # Backend only — idempotent: reuses whatever already answers on :8787,
 # whichever worktree it belongs to (`just status` shows the owner).
@@ -53,8 +53,8 @@ server-mock:
 build:
     [ -d node_modules ] || npm install
     [ -f generated/index.tsx ] || { mkdir -p generated; printf 'export const MODULES: Record<string, any> = {};\n' > generated/index.tsx; }
-    -{{nsh}} check App.tsx
-    {{nsh}} build App.tsx
+    -{{nsh}} check app
+    {{nsh}} build app
     npm run build:office-editor
 
 # ── publish ──────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ build:
 # Installable macOS .app → out/ (ad-hoc signed).
 # NOTE: the .app is only the UI shell — chat/state still needs `just server`.
 publish: build
-    {{nsh}} package App.tsx --target macos
+    {{nsh}} package app --target macos
     @echo "packaged .app is in out/ — it still needs 'just server' for chat + state."
 
 # Signed .nshpkg for hosts that embed nsh (not a standalone app).
@@ -78,7 +78,7 @@ publish-signed: build
         --apps com.example.genuichat --out keys/release.cert
       echo "created keys/ (gitignored)"
     fi
-    {{nsh}} publish App.tsx --key keys/release.secret --cert keys/release.cert
+    {{nsh}} publish app --key keys/release.secret --cert keys/release.cert
 
 # ── housekeeping ─────────────────────────────────────────────────────────
 

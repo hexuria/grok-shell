@@ -8,7 +8,7 @@ import { appearance, bubbleFill, OnFill, tc, tg } from "./theme";
 const agentFill = () => (appearance() === "light" ? "#0000000f" : tc("#1f1f1f"));
 import { Menu } from "nsh/desktop";
 import { Markdown } from "./md";
-import { MODULES } from "./generated/index";
+import { MODULES } from "../generated/index";
 
 // ChatGPT-style action row + chrome around every generated widget.
 //   👍 👎  persist a reaction   ·   ↻ regenerate in place (rewrites this module)

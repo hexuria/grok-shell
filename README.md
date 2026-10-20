@@ -67,10 +67,10 @@ To run the pieces by hand:
 
 ```sh
 node tools/gen-server.mjs            # agent loop on :8787
-nsh run App.tsx --target macos       # dev server + host window, hot reload
-nsh dev App.tsx --port 8791          # dev server only (see worktrees below)
-nsh check App.tsx                    # typecheck
-nsh build App.tsx                    # typecheck + bundle into out/
+nsh run app --target macos       # dev server + host window, hot reload
+nsh dev app --port 8791          # dev server only (see worktrees below)
+nsh check app                    # typecheck
+nsh build app                    # typecheck + bundle into out/
 MOCK=1 node tools/gen-server.mjs     # offline: canned widgets, no API key
 ```
 
@@ -113,7 +113,7 @@ want; it's also why "my apps are gone" means you're looking at the other
 worktree's app.
 
 **Only one generation server can bind :8787**, and several URLs are
-hardwired to it: `GEN` in `App.tsx` and `fileviewer.tsx`, the system prompt's
+hardwired to it: `GEN` in `app/App.tsx` and `app/fileviewer.tsx`, the system prompt's
 widget fetch URL, and every already-generated `R*.tsx`. So:
 
 - The worktree that owns :8787 is the **primary** — full feature set (chat,
@@ -122,7 +122,7 @@ widget fetch URL, and every already-generated `R*.tsx`. So:
 
   ```sh
   PORT=8789 node tools/gen-server.mjs
-  # then point the GEN consts in App.tsx/fileviewer.tsx at :8789 —
+  # then point the GEN consts in app/App.tsx/app/fileviewer.tsx at :8789 —
   # keep that as a local, uncommitted change
   ```
 
@@ -139,7 +139,7 @@ two worktrees mostly just works — but you can't tell the windows apart. To
 label a second instance, run the pieces yourself:
 
 ```sh
-nsh dev App.tsx --port 8791
+nsh dev app --port 8791
 nsh-macos-host --dev-server ws://127.0.0.1:8791/ws --name "My Branch"
 ```
 
@@ -181,36 +181,50 @@ read-only viewer once). Everything degrades: no npm packages, no wasm, or a
 dead MCP child → the `office_*` tools simply drop out of the tool list and
 file viewing falls back to the classic renderers.
 
-> **Note:** `nsh check` currently trips on `import.meta.resolve` in
-> `tools/office/wasm.ts` — it typechecks the Node server scripts too. Known
-> and cosmetic; `nsh build` and the app itself are unaffected.
+## Layout
+
+```
+app/          the nsh app — App.tsx entry + nsh.json + tsconfig.json
+  mark/       the Grok mark engine: motion.mjs, markatlas, markpaint, atlas/rest data
+generated/    runtime output — model-written mini apps + registry + app.db (gitignored)
+widgets/      Mini Apps shelf (index.tsx is source; R*.tsx artifacts are gitignored)
+tools/        gen-server + office + bake/stow scripts (Node — not typechecked by nsh)
+native-widget/ WidgetKit extension
+legacy/       superseded code kept for reference — candidates for deletion
+.stow/        grok-shell-stow checkout (gitignored) — plans/notes live there via
+              tools/stow.sh { init | add <path> | status }
+```
 
 ## Grok Bot parity
 
-The mark: `design/grok-bot.md` + `design/grok-tokens.json` hold the extracted
-token set (type ramp, spacing grid, radii, neutral ramps for both themes).
+The mark: `design/grok-bot.md` + `design/grok-tokens.json` (now stowed in
+[grok-shell-stow](https://github.com/hexuria/grok-shell-stow)) hold the
+extracted token set (type ramp, spacing grid, radii, neutral ramps for both
+themes).
 
 Beyond static tokens, the avatar runs Grok Bot's own motion code:
 
-- **`motion.mjs`** — Grok Bot's mark motion system extracted verbatim from its
-  renderer bundle (acorn dependency closure): the engine (28 keyframe clips with
-  bridging, pointer gaze, pokes, shape crossfades, face morphs, ambient morphs
-  like the writing stylus), the state director and state table, and the frame
-  renderer. `markpaint.ts` paints each frame's SVG tree onto an nsh canvas.
-- **`blob.tsx`** — one engine per avatar placement, ticked at Grok's 30fps:
+- **`app/mark/motion.mjs`** — Grok Bot's mark motion system extracted verbatim
+  from its renderer bundle (acorn dependency closure): the engine (28 keyframe
+  clips with bridging, pointer gaze, pokes, shape crossfades, face morphs,
+  ambient morphs like the writing stylus), the state director and state table,
+  and the frame renderer. `markpaint.ts` paints each frame's SVG tree onto an
+  nsh canvas.
+- **`app/blob.tsx`** — one engine per avatar placement, ticked at Grok's 30fps:
   idle marks rest and turn toward the pointer the way Grok's do; active marks
   play their state. Grok's silhouette solver is too heavy for QuickJS (10–40ms
   a frame, seconds on some poses), so outlines come pre-solved by the same
-  engine: `atlas.data.ts` (every pose, via `markatlas.mjs` answering the
-  engine's own outline cache; `tools/grok-mark/bake-atlas.mjs`) and, for
-  resting/hovered marks, `rest.data.ts` (`tools/grok-mark/bake-rest.mjs`).
+  engine: `app/mark/atlas.data.ts` (every pose, via `markatlas.mjs` answering
+  the engine's own outline cache; `tools/grok-mark/bake-atlas.mjs`) and, for
+  resting/hovered marks, `app/mark/rest.data.ts`
+  (`tools/grok-mark/bake-rest.mjs`).
 - **Agent states** — tool calls map to Grok's activity verbs (`generate_app` →
   writing, `web_search` → searching, …) and on to its mark states; the bot's
   sidebar mark (row, pinned tile, rail) and the status row play them — like
   Grok, the header and info-pane avatars stay at rest — and `/status:<state>`
   mock commands exercise the whole table without a generation.
-- Light/dark themes both supported via `theme.ts` (`tc()` maps dark neutrals to
-  Sand's light ramp).
+- Light/dark themes both supported via `app/theme.ts` (`tc()` maps dark
+  neutrals to Sand's light ramp).
 
 ## Roadmap
 

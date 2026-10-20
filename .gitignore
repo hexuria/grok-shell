@@ -1,4 +1,5 @@
 .nsh/
+.stow/
 out/
 tools/.stage/
 node_modules/
