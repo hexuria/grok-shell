@@ -106,6 +106,9 @@ function App() {
   // run is in flight, or by /status:<state> to preview one without a call.
   const agent = signal<{ state: string; label: string } | null>(null);
   const agentBot = signal<string | null>(null);
+  // the chat the run belongs to: its status row shows only there (the bot's
+  // sidebar mark keeps playing the state wherever you are)
+  const agentThread = signal("");
   const settled = signal<{ id: string; state: string } | null>(null);
   const emphBot = signal("");
   let settledTimer: ReturnType<typeof setTimeout> | null = null;
@@ -124,6 +127,7 @@ function App() {
   const mockStatus = (arg: string) => {
     if (mockTimer) { clearInterval(mockTimer); mockTimer = null; }
     agentBot.set(activeBot()?.id ?? null);
+    agentThread.set(activeId());
     settled.set(null);
     if (!arg || arg === "off" || arg === "idle" || arg === "clear") {
       agent.set(null);
@@ -470,6 +474,7 @@ function App() {
     const bot = activeBot()?.id ?? "";
     inflight.update((n) => n + 1);
     agentBot.set(bot);
+    agentThread.set(activeId());
     settled.set(null);
     agent.set({ state: "working", label: statusLabel("working") });
     try {
@@ -1568,7 +1573,7 @@ function App() {
           >
           {/* agent status row: the mark playing the ambient effect + the
               shimmering label — Grok's status line */}
-          <If when={!!agent()}>
+          <If when={!!agent() && agentThread() === activeId()}>
             <View
               onHoverIn={() => emphBot.set(agentBot() ?? activeBot()?.id ?? "")}
               onHoverOut={() => emphBot.set("")}
