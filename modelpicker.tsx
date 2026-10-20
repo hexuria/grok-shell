@@ -177,21 +177,25 @@ export function ModelPopover(props: { choice: () => Choice; setChoice: (c: Choic
       </If>
     </View>
   );
-  const card = {
-    position: "absolute",
-    width: W,
-    borderRadius: 12,
-    backgroundColor: tc("#1f1f1f"),
-    borderWidth: 0.5,
-    borderColor: tc("#f5f5f51a"),
-    boxShadow: "0 10px 24px -6px rgba(0,0,0,0.45)",
-  } as const;
+  // a getter, not a const — tc() must re-read themePref inside the tracked
+  // style expression or the card freezes at mount (still "dark" before
+  // /state loads the saved theme)
+  const card = () =>
+    ({
+      position: "absolute",
+      width: W,
+      borderRadius: 12,
+      backgroundColor: tc("#1f1f1f"),
+      borderWidth: 0.5,
+      borderColor: tc("#f5f5f51a"),
+      boxShadow: "0 10px 24px -6px rgba(0,0,0,0.45)",
+    }) as const;
   return (
     <If when={!!open()}>
       <View onPress={() => open.set(null)} style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }} />
       {/* ————— effort card ————— */}
       <If when={open()?.mode === "effort"}>
-        <View onPress={() => {}} style={{ ...card, ...pos(efforts().length ? 92 : 56), padding: 8, gap: 8 }}>
+        <View onPress={() => {}} style={{ ...card(), ...pos(efforts().length ? 92 : 56), padding: 8, gap: 8 }}>
           <View style={{ flexDirection: "row", alignItems: "center", height: 36 }}>
             {/* fast mode: only on models with a "--fast" twin; elsewhere an empty seat */}
             <If when={!!modelOf(props.choice().model)?.fast}>
@@ -344,7 +348,7 @@ export function ModelPopover(props: { choice: () => Choice; setChoice: (c: Choic
       </If>
       {/* ————— model list ————— */}
       <If when={open()?.mode === "list"}>
-        <View onPress={() => {}} style={{ ...card, ...pos(286), paddingVertical: 6 }}>
+        <View onPress={() => {}} style={{ ...card(), ...pos(286), paddingVertical: 6 }}>
           <Text style={{ color: tc("#f5f5f58a"), fontSize: 12, lineHeight: 16, paddingHorizontal: 12, paddingVertical: 4 }}>Select model</Text>
           <Scroll style={{ maxHeight: 256 }} contentContainerStyle={{ paddingHorizontal: 4 }}>
             <View
