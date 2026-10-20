@@ -61,10 +61,16 @@ build:
 
 # ── publish ──────────────────────────────────────────────────────────────
 
-# Installable macOS .app → out/ (ad-hoc signed).
-# NOTE: the .app is only the UI shell — chat/state still needs `just server`.
-publish: build
-    {{nsh}} package app --target macos
+# Installable macOS .app → dist/ (ad-hoc signed, app-server + nsh binaries
+# bundled — runs standalone, keeps its data in ~/Library/Application Support).
+publish:
+    tools/package.sh dist
+    @echo "packaged dist/Grok Shell.app — fully standalone"
+
+# Bare nsh package without the bundled server (UI shell only, still needs
+# `just server` running for chat + state).
+publish-shell: build
+    {{nsh}} package app --target macos --icon app/icon.png --out out
     @echo "packaged .app is in out/ — it still needs 'just server' for chat + state."
 
 # Signed .nshpkg for hosts that embed nsh (not a standalone app).

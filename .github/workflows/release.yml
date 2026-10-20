@@ -1,0 +1,165 @@
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload to (e.g. v1.0.0); empty = artifacts only
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  # Upstream nsh at the revision the app was tested against. Bump deliberately.
+  NSH_REPO: https://github.com/longbridge/nsh.git
+  NSH_REF: 4adbe63911079d553839d030e9b153b5ebc3f06b
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-14, name: macos-arm64, target: macos, host: nsh-macos-host }
+          - { os: ubuntu-22.04, name: linux-x64, target: linux, host: nsh-linux-host }
+          - { os: windows-latest, name: windows-x64, target: windows, host: nsh-windows-host }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: nsh-src
+
+      - name: Linux GTK build deps
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libglib2.0-dev pkg-config
+
+      - name: Build nsh CLI + host
+        run: |
+          git clone "$NSH_REPO" nsh-src
+          cd nsh-src
+          git checkout "$NSH_REF"
+          cargo build --release -p nsh-cli -p ${{ matrix.host }}
+          ./target/release/nsh --version
+
+      - name: Install app deps
+        run: npm ci
+
+      - name: Package app (macOS)
+        if: matrix.target == 'macos'
+        env:
+          NSH: nsh-src/target/release/nsh
+          NSH_HOST: nsh-src/target/release/nsh-macos-host
+        run: tools/package.sh dist
+
+      - name: Package app (Linux)
+        if: matrix.target == 'linux'
+        env:
+          NSH: nsh-src/target/release/nsh
+          NSH_HOST: nsh-src/target/release/nsh-linux-host
+        run: |
+          NSH_BIN="$PWD/nsh-src/target/release/nsh"
+          "$NSH_BIN" package app --target linux --icon app/icon.png \
+            --app-version "${{ github.event.release.tag_name || '0.0.0' }}" --out dist
+          PKG=$(find dist -mindepth 1 -maxdepth 1 -type d | head -1)
+          rm -f dist/*.tar.gz  # upstream's archive predates the server injection
+          mkdir -p "$PKG/server"
+          cp "$(node -p process.execPath)" "$PKG/server/node"
+          bun build server/app-server.mjs --target=node --format=esm \
+            --outfile "$PKG/server/app-server.mjs"
+          cp nsh-src/target/release/nsh "$PKG/server/nsh"
+          cp nsh-src/target/release/nsh-linux-host "$PKG/server/nsh-linux-host"
+          cp -R widgets "$PKG/server/widgets" || true
+          cat > "$PKG/grok-shell.sh" <<'EOF'
+          #!/bin/sh
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export GROK_DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/grok-shell"
+          export GROK_BUNDLE_ID="dev.goldcoders.grokshell"
+          export NSH="$DIR/server/nsh" NSH_HOST="$DIR/server/nsh-linux-host"
+          mkdir -p "$GROK_DATA_DIR"
+          [ -d "$GROK_DATA_DIR/widgets" ] || cp -R "$DIR/server/widgets" "$GROK_DATA_DIR/widgets"
+          curl -fs http://127.0.0.1:8787/health >/dev/null 2>&1 || \
+            "$DIR/server/node" "$DIR/server/app-server.mjs" >>"$GROK_DATA_DIR/server.log" 2>&1 &
+          exec "$DIR/GrokShell" "$@"
+          EOF
+          chmod +x "$PKG/grok-shell.sh"
+          tar -czf "dist/grok-shell-linux-x64.tar.gz" -C dist "$(basename "$PKG")"
+
+      - name: Package app (Windows)
+        if: matrix.target == 'windows'
+        shell: bash
+        env:
+          NSH: nsh-src/target/release/nsh.exe
+          NSH_HOST: nsh-src/target/release/nsh-windows-host.exe
+        run: |
+          NSH_BIN="$PWD/nsh-src/target/release/nsh.exe"
+          "$NSH_BIN" package app --target windows --icon app/icon.png \
+            --app-version "${{ github.event.release.tag_name || '0.0.0' }}" --out dist
+          PKG=$(find dist -mindepth 1 -maxdepth 1 -type d | head -1)
+          rm -f dist/*.zip  # upstream's archive predates the server injection
+          mkdir -p "$PKG/server"
+          NODE_EXE="$(node -p 'process.execPath' | sed 's/\\\\/\\//g')"
+          cp "$(cygpath -u "$NODE_EXE" 2>/dev/null || echo "$NODE_EXE")" "$PKG/server/node.exe"
+          bun build server/app-server.mjs --target=node --format=esm \
+            --outfile "$PKG/server/app-server.mjs"
+          cp nsh-src/target/release/nsh.exe "$PKG/server/nsh.exe"
+          cp nsh-src/target/release/nsh-windows-host.exe "$PKG/server/nsh-windows-host.exe"
+          cp -R widgets "$PKG/server/widgets" || true
+          cat > "$PKG/GrokShell.cmd" <<'EOF'
+          @echo off
+          setlocal
+          set DIR=%~dp0
+          set DATA=%LOCALAPPDATA%\GrokShell
+          set GROK_DATA_DIR=%DATA%
+          set GROK_BUNDLE_ID=dev.goldcoders.grokshell
+          set NSH=%DIR%server\nsh.exe
+          set NSH_HOST=%DIR%server\nsh-windows-host.exe
+          if not exist "%DATA%" mkdir "%DATA%"
+          if not exist "%DATA%\widgets" xcopy /E /I /Q "%DIR%server\widgets" "%DATA%\widgets" >nul
+          curl -fs http://127.0.0.1:8787/health >nul 2>&1 || start "" /b "%DIR%server\node.exe" "%DIR%server\app-server.mjs" >>"%DATA%\server.log" 2>&1
+          start "" "%DIR%GrokShell.exe"
+          EOF
+          (cd dist && powershell -NoProfile -Command \
+            "Compress-Archive -Path '$(basename "$PKG")' -DestinationPath 'grok-shell-windows-x64.zip' -Force")
+
+      - name: Archive macOS app
+        if: matrix.target == 'macos'
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent "Grok Shell.app" grok-shell-macos-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grok-shell-${{ matrix.name }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/**/GrokShell.cmd
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: github.event_name == 'release' || inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REL_TAG: ${{ github.event_name == 'release' && github.ref_name || inputs.tag }}
+        run: |
+          shopt -s nullglob globstar
+          files=(dist/**/*.zip dist/**/*.tar.gz dist/**/*.cmd)
+          [ ${#files[@]} -gt 0 ] && gh release upload "$REL_TAG" "${files[@]}" --clobber
