@@ -1255,6 +1255,10 @@ function App() {
     }).catch(() => {});
   const plugins = signal<{ name: string; description: string; category: string; homepage: string | null; domains: string[]; keywords: string[]; installed: boolean }[]>([]);
   const pluginBusy = signal("");
+  const hdrCollapsed = signal(false); // market page: search row pins to the ✕ line on scroll
+  const hoverTpl = signal(false); // Bot templates pill
+  const hoverChip = signal(false); // "N connected" chip
+  const hoverX = signal(false); // modal close
   const pluginCat = signal("All");
   const pluginQuery = signal("");
   const fetchPlugins = async () => {
@@ -1337,33 +1341,37 @@ function App() {
     for (let i = 0; i < list.length; i += 2) out.push(list.slice(i, i + 2));
     return out;
   };
-  // Marketplace row: whole row navigates to the plugin page; the Add
-  // button inside installs without navigating (inner press wins).
+  // Marketplace row (Grok's metrics): 12px padding, 12 gap, 64 tall,
+  // radius-16 hover wash, 40px icon w/ hairline border, 13/500 name over
+  // 12/420 .66 desc. Row navigates; the Add pill installs (inner press wins).
+  const hoverPlugin = signal("");
   const pluginRow = (p: { name: string; description: string; installed: boolean }) => (
     <View
       onPress={() => pushNav({ page: "plugin", name: p.name })}
-      activeOpacity={0.6}
-      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 56, paddingHorizontal: 8 }}
+      onHoverIn={() => hoverPlugin.set(p.name)}
+      onHoverOut={() => hoverPlugin() === p.name && hoverPlugin.set("")}
+      activeOpacity={1}
+      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 64, paddingHorizontal: 12, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? "#f5f5f50a" : "transparent" }}
     >
-      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: hue(p.name), alignItems: "center", justifyContent: "center" }}>
+      <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: hue(p.name), borderWidth: 0.5, borderColor: "#f5f5f50f", alignItems: "center", justifyContent: "center" }}>
         <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{p.name[0].toUpperCase()}</Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{pluginTitle(p.name)}</Text>
-        <Text numberOfLines={1} style={{ color: dim(), fontSize: 11, lineHeight: 14 }}>{p.description}</Text>
+        <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500", lineHeight: 18 }}>{pluginTitle(p.name)}</Text>
+        <Text numberOfLines={1} style={{ color: "#f5f5f5a8", fontSize: 12, lineHeight: 18 }}>{p.description}</Text>
       </View>
       {p.installed ? (
         <Text style={{ fontSize: 12, paddingHorizontal: 8 }}>
           <Text style={{ color: "#32bb78" }}>✓</Text>
-          <Text style={{ color: "#f5f5f566" }}> Added</Text>
+          <Text style={{ color: "#f5f5f5a8" }}> Added</Text>
         </Text>
       ) : (
         <View
           onPress={() => installPlugin(p.name)}
           activeOpacity={0.7}
-          style={{ height: 28, paddingHorizontal: 14, borderRadius: 9999, backgroundColor: tc("#f5f5f512"), alignItems: "center", justifyContent: "center" }}
+          style={{ height: 26, paddingHorizontal: 10, borderRadius: 13, backgroundColor: "#f5f5f50a", alignItems: "center", justifyContent: "center" }}
         >
-          <Text style={{ color: tc("#f5f5f5"), fontSize: 12, fontWeight: "500" }}>{pluginBusy() === p.name ? "Adding…" : "Add"}</Text>
+          <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>{pluginBusy() === p.name ? "Adding…" : "Add"}</Text>
         </View>
       )}
     </View>
@@ -3222,45 +3230,97 @@ function App() {
               {/* close */}
               <View
                 onPress={() => pluginsOpen.set(false)}
-                activeOpacity={0.7}
+                onHoverIn={() => hoverX.set(true)}
+                onHoverOut={() => hoverX.set(false)}
+                activeOpacity={1}
                 accessibilityLabel="Close plugins"
-                style={{ position: "absolute", top: 12, right: 14, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2 }}
+                style={{ position: "absolute", top: 12, right: 14, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? "#f5f5f50a" : "transparent" }}
               >
                 <Text style={{ color: dim(), fontSize: 15 }}>✕</Text>
               </View>
 
-              {/* ═══ MARKET page ═══ */}
+              {/* ═══ MARKET page ═══
+                  Header (Grok's metrics): row1 = "Connect Apps" 17/500 ·
+                  icon-stack + "N connected" › chip · ✕; row2 = 28px search
+                  (radius 9999, hairline .5px, ⌕ 14px/.54, input 14) +
+                  32px "Bot templates ↗" (grok-bot-mark 18px). On scroll the
+                  title row + pills scroll away and row2 pins at the ✕ line. */}
               <If when={pluginPage() === "market"}>
-                <View style={{ paddingTop: 12, paddingHorizontal: 20, gap: 10, paddingBottom: 4 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "flex-end", alignItems: "center", paddingRight: 22 }}>
+                {(() => {
+                  const installedTiles = plugins().filter((p) => p.installed).slice(0, 4);
+                  const connCount = mcpServers().length + plugins().filter((p) => p.installed).length;
+                  const connChip = (
                     <View
                       onPress={() => pushNav({ page: "connected" })}
-                      activeOpacity={0.7}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 4, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8 }}
+                      onHoverIn={() => hoverChip.set(true)}
+                      onHoverOut={() => hoverChip.set(false)}
+                      activeOpacity={1}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8, backgroundColor: hoverChip() ? "#f5f5f50a" : "transparent" }}
                     >
-                      <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>{mcpServers().length + plugins().filter((p) => p.installed).length} connected ›</Text>
+                      <View style={{ flexDirection: "row" }}>
+                        <Each of={installedTiles}>
+                          {(p, i) => (
+                            <View style={{ width: 18, height: 18, borderRadius: 5, backgroundColor: hue(p().name), borderWidth: 0.5, borderColor: "#f5f5f50f", alignItems: "center", justifyContent: "center", marginLeft: i() === 0 ? 0 : -6 }}>
+                              <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>{p().name[0].toUpperCase()}</Text>
+                            </View>
+                          )}
+                        </Each>
+                      </View>
+                      <Text style={{ color: "#f5f5f5a8", fontSize: 12, lineHeight: 16 }}>{connCount} connected</Text>
+                      <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>›</Text>
                     </View>
-                  </View>
-                  <View style={{ flexDirection: "row", gap: 8 }}>
-                    <View style={{ flex: 1, height: 36, borderRadius: 10, backgroundColor: "#161616", borderWidth: 1, borderColor: "#f5f5f514", flexDirection: "row", alignItems: "center", paddingHorizontal: 10, gap: 8 }}>
-                      <Text style={{ color: dim(), fontSize: 13 }}>⌕</Text>
-                      <Input
-                        value={pluginQuery()}
-                        onChangeText={(t) => pluginQuery.set(t)}
-                        placeholder="Search across apps and skills"
-                        placeholderTextColor={tc("#f5f5f54d")}
-                        style={{ flex: 1, fontSize: 14, color: tc("#f5f5f5") }}
-                      />
-                      <If when={pluginQuery() !== ""}>
-                        <Text onPress={() => pluginQuery.set("")} style={{ color: dim(), fontSize: 13, paddingHorizontal: 4 }}>Clear</Text>
+                  );
+                  const searchAndTpl = (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <View style={{ flex: 1, height: 28, borderRadius: 9999, borderWidth: 0.5, borderColor: "#f5f5f50f", flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}>
+                        <Text style={{ color: "#f5f5f58a", fontSize: 13 }}>⌕</Text>
+                        <Input
+                          value={pluginQuery()}
+                          onChangeText={(t) => pluginQuery.set(t)}
+                          placeholder="Search across apps and skills"
+                          placeholderTextColor={tc("#f5f5f56e")}
+                          style={{ flex: 1, fontSize: 14, color: tc("#f5f5f5") }}
+                        />
+                        <If when={pluginQuery() !== ""}>
+                          <Text onPress={() => pluginQuery.set("")} style={{ color: dim(), fontSize: 12, paddingHorizontal: 4 }}>Clear</Text>
+                        </If>
+                      </View>
+                      <View
+                        onHoverIn={() => hoverTpl.set(true)}
+                        onHoverOut={() => hoverTpl.set(false)}
+                        activeOpacity={1}
+                        style={{ height: 32, borderRadius: 9999, borderWidth: 0.5, borderColor: "#f5f5f50f", backgroundColor: hoverTpl() ? "#f5f5f50a" : "transparent", paddingLeft: 6, paddingRight: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
+                      >
+                        <BotBlob shape="blob" color="#f97316" size={18} paused />
+                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates ↗</Text>
+                      </View>
+                    </View>
+                  );
+                  return (
+                    <View style={{ paddingTop: 12, paddingHorizontal: 16, paddingBottom: 4 }}>
+                      <If when={!hdrCollapsed()}>
+                        <View style={{ flexDirection: "row", alignItems: "center", height: 40, paddingHorizontal: 4, paddingRight: 26 }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "500", letterSpacing: -0.14 }}>Connect Apps</Text>
+                          <View style={{ flex: 1 }} />
+                          {connChip}
+                        </View>
+                        <View style={{ paddingBottom: 10 }}>{searchAndTpl}</View>
+                      </If>
+                      <If when={hdrCollapsed()}>
+                        <View style={{ flexDirection: "row", alignItems: "center", height: 40, paddingRight: 30 }}>
+                          <View style={{ flex: 1 }}>{searchAndTpl}</View>
+                        </View>
                       </If>
                     </View>
-                    <View style={{ height: 36, borderRadius: 10, borderWidth: 1, borderColor: "#f5f5f514", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>◐</Text>
-                      <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates ↗</Text>
-                    </View>
-                  </View>
-                  <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                  );
+                })()}
+                <Scroll
+                  style={{ flex: 1 }}
+                  onScroll={(e) => hdrCollapsed.set(e.y > 24)}
+                  scrollEventThrottle={16}
+                  contentContainerStyle={{ paddingTop: 2, paddingHorizontal: 16, paddingBottom: 24 }}
+                >
+                  <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", paddingBottom: 6 }}>
                     <Each of={pluginCats()}>
                       {(c) => (
                         <View
@@ -3268,23 +3328,21 @@ function App() {
                           activeOpacity={0.7}
                           style={{ height: 28, borderRadius: 9999, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", backgroundColor: pluginCat() === c() ? tc("#f5f5f5") : tc("#f5f5f50a") }}
                         >
-                          <Text style={{ color: pluginCat() === c() ? "#1f1f1f" : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
+                          <Text style={{ color: pluginCat() === c() ? "#121212" : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
                         </View>
                       )}
                     </Each>
                   </View>
-                </View>
-                <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingTop: 6, paddingHorizontal: 20, paddingBottom: 24 }}>
                   <If when={pluginQuery() !== "" && pluginList().length === 0}>
                     <Text style={{ color: dim(), fontSize: 13, paddingVertical: 24, textAlign: "center" }}>No plugins match</Text>
                   </If>
                   <If when={pluginQuery() === "" && pluginCat() === "All" && pluginList().length > 0}>
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 8, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
-                      <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>Recommended for you</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 8, paddingLeft: 12, paddingRight: 8 }}>
+                      <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500", lineHeight: 20 }}>Recommended for you</Text>
                     </View>
                     <Each of={pluginPairs(pluginList().slice(0, 6))}>
                       {(pair) => (
-                        <View style={{ flexDirection: "row" }}>
+                        <View style={{ flexDirection: "row", gap: 8, marginBottom: 2 }}>
                           <Each of={pair()}>{(p) => pluginRow(p())}</Each>
                         </View>
                       )}
@@ -3295,13 +3353,15 @@ function App() {
                       const items = pluginList().filter((p) => p.category.toLowerCase() === cat().toLowerCase() && !(pluginQuery() === "" && pluginCat() === "All" && pluginList().slice(0, 6).includes(p)));
                       return (
                         <If when={items.length > 0}>
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 20, paddingBottom: 6, paddingLeft: 12, paddingRight: 8 }}>
-                            <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>{cat()}</Text>
-                            <Text onPress={() => pluginCat.set(cat())} style={{ color: dim(), fontSize: 12 }}>View all</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 22, paddingBottom: 8, paddingLeft: 12, paddingRight: 8 }}>
+                            <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500", lineHeight: 20 }}>{cat()}</Text>
+                            <View onPress={() => pluginCat.set(cat())} activeOpacity={0.7} style={{ height: 20, borderRadius: 9999, paddingHorizontal: 8, justifyContent: "center" }}>
+                              <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>View all</Text>
+                            </View>
                           </View>
                           <Each of={pluginPairs(items)}>
                             {(pair) => (
-                              <View style={{ flexDirection: "row" }}>
+                              <View style={{ flexDirection: "row", gap: 8, marginBottom: 2 }}>
                                 <Each of={pair()}>{(p) => pluginRow(p())}</Each>
                               </View>
                             )}
@@ -3313,7 +3373,7 @@ function App() {
                 </Scroll>
                 {/* search dropdown — Grok shows matched rows over the grid */}
                 <If when={pluginQuery() !== "" && pluginList().length > 0}>
-                  <View style={{ position: "absolute", left: 20, top: 98, right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: "#262626", borderWidth: 1, borderColor: "#f5f5f51f", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
+                  <View style={{ position: "absolute", left: 20, top: hdrCollapsed() ? 52 : 96, right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: "#262626", borderWidth: 1, borderColor: "#f5f5f51f", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
                     <Text style={{ color: dim(), fontSize: 12, paddingLeft: 14, paddingTop: 10, paddingBottom: 4 }}>Plugins</Text>
                     <Each of={pluginList().slice(0, 10)}>
                       {(p) => (
