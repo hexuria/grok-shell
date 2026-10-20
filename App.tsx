@@ -1847,7 +1847,9 @@ function App() {
                     opacity: panelEditK,
                   }}
                 >
-                  <Text style={{ color: tc("#f5f5f5"), fontSize: 17 }}>✎</Text>
+                  {/* always white — it sits on the avatar darkened to
+                      brightness(0.3), in both themes (Grok's hover pen) */}
+                  <Text style={{ color: "#f5f5f5", fontSize: 24 }}>✎</Text>
                 </View>
               </View>
               <Input
