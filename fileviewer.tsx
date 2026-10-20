@@ -411,6 +411,9 @@ type Rendered = {
   text?: string;
   lines?: [string, string, string][][];
   sheets?: { name: string; rows: string[][]; bold?: boolean[][]; widths?: number[] }[];
+  // BetterOffice engine view: /office/… paints the real slides/sheet in a
+  // WebView. Absent → the classic renderers below are the fallback.
+  office?: string;
   error?: string;
 };
 export const viewing = signal<ReplyFile | null>(null);
@@ -663,6 +666,7 @@ export function FileViewer() {
     const f = viewing()!;
     const r = rendered();
     if (r?.error) return <Unavailable f={f} title="Couldn't load preview" detail={r.error} />;
+    if (r?.office) return <WebView source={{ uri: `${GEN}${r.office}` }} style={{ flex: 1, backgroundColor: "#161616" }} />;
     switch (f.kind) {
       case "image":
         return <Image src={{ uri: raw(f) }} resizeMode="contain" fadeDuration={0} style={{ flex: 1, margin: 24 }} />;
@@ -706,14 +710,18 @@ export function FileViewer() {
           desktop={{ windowDrag: true }}
           style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 52, paddingLeft: 84, paddingRight: 12, borderBottomWidth: 0.5, borderBottomColor: tc("#f5f5f51a") }}
         >
-          <View style={{ flex: 1, minWidth: 0 }}>
+          {/* the artifact name centers against the window, not the space left
+              of the controls — an overlay so the traffic lights and the
+              trailing buttons don't skew it */}
+          <View pointerEvents="none" style={{ position: "absolute", left: 84, right: 84, top: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
             <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>{viewing()!.name}</Text>
             <If when={viewing()!.kind === "table" && !!curSheet()}>
               <Text style={{ color: tc("#f5f5f58f"), fontSize: 11, lineHeight: 14 }}>{`${Math.max(0, (curSheet()?.rows.length ?? 1) - 1)} rows`}</Text>
             </If>
           </View>
-          {/* spreadsheet: sheet tabs in the header (Grok) */}
-          <If when={viewing()!.kind === "table" && (rendered()?.sheets?.length ?? 0) > 1}>
+          <View style={{ flex: 1, minWidth: 0 }} />
+          {/* spreadsheet: sheet tabs in the header (Grok) — the office view has its own */}
+          <If when={viewing()!.kind === "table" && !rendered()?.office && (rendered()?.sheets?.length ?? 0) > 1}>
             <View style={{ flexDirection: "row", gap: 4, marginRight: 4 }}>
               {(rendered()?.sheets ?? []).map((sh, i) => (
                 <View
