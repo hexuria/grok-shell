@@ -275,6 +275,8 @@ function TurnRow({ t, onReply, onJump }: {
       label={label}
       caption={t.caption}
       reaction={t.reaction}
+      i={t.i}
+      onReply={onReply}
     >
       <C />
     </CardShell>
@@ -315,6 +317,8 @@ type Props = {
   label: string;
   caption?: string;
   reaction?: string;
+  i?: number;
+  onReply?: (i: number, text: string, files?: string[]) => void;
   children?: any;
 };
 
@@ -327,11 +331,19 @@ export function CardShell(props: Props) {
   const pinned = signal(false);
   const work = signal("");
   const extra = signal("");
+  const hov = signal(false);
 
   fetch(`${GEN}/pins`)
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (d?.pins?.includes(props.name)) pinned.set(true);
+    })
+    .catch(() => {});
+  fetch(`${GEN}/module?name=${props.name}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (d?.published) published.set(true);
+      if (d?.source) source.set(d.source);
     })
     .catch(() => {});
 
@@ -340,6 +352,14 @@ export function CardShell(props: Props) {
     reaction.set(next);
     post("/react", { name: props.name, r: next });
   };
+  // Older rows stored "up"/"down" — the picker stores the emoji itself now.
+  const badge = () => ({ up: "👍", down: "👎" })[reaction()] || reaction();
+
+  const pickEmoji = () =>
+    Menu.popup(["👍", "❤️", "😂", "😮", "👎"].map((e) => ({
+      label: e + (reaction() === e ? " ✓" : ""),
+      onSelect: () => react(e),
+    })));
 
   const toggleCode = async () => {
     if (!codeOpen() && !source()) {
@@ -351,7 +371,13 @@ export function CardShell(props: Props) {
     codeOpen.update((v) => !v);
   };
 
-  const copySource = () => {
+  const copySource = async () => {
+    if (!source()) {
+      const d = await fetch(`${GEN}/module?name=${props.name}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      if (d?.source) source.set(d.source);
+    }
     const s = source();
     if (!s) return;
     post("/copy", { text: s });
@@ -397,6 +423,34 @@ export function CardShell(props: Props) {
     });
   };
 
+  const unpublish = () =>
+    post("/unpublish", { name: props.name }).then((d) => {
+      if (d?.ok) {
+        published.set(false);
+        extra.set("removed from Mini Apps");
+        setTimeout(() => extra.set(""), 2000);
+      }
+    });
+
+  const more = () =>
+    Menu.popup([
+      { label: codeOpen() ? "Hide Code" : "View Code", onSelect: () => { void toggleCode(); } },
+      { label: "Copy Source", onSelect: () => { void copySource(); } },
+      { type: "separator" },
+      {
+        label: published() ? "Remove from Mini Apps" : "Save to Mini Apps",
+        onSelect: () => (published() ? unpublish() : publish()),
+      },
+      { label: "Open in Window", onSelect: popout },
+      {
+        label: pinned() ? "Unpin Desktop Widget" : "Add to Desktop Widget",
+        onSelect: pin,
+      },
+      { type: "separator" },
+      { label: "Try Again", onSelect: () => { void retry(); } },
+      { label: "Reveal in Finder", onSelect: share },
+    ]);
+
   const retry = async () => {
     if (work()) return;
     work.set("queued");
@@ -421,27 +475,11 @@ export function CardShell(props: Props) {
     work.set("");
   };
 
-  const btn = (icon: string, fn: () => void, active = false, title = "") => (
-    <View
-      onPress={fn}
-      activeOpacity={0.7}
-      accessibilityLabel={title}
-      style={{
-        borderRadius: 8,
-        paddingHorizontal: 7,
-        paddingVertical: 4,
-        backgroundColor: active ? tc("#f5f5f514") : "transparent",
-      }}
-    >
-      <Text style={{ color: active ? tc("#f5f5f5") : tc("#f5f5f585"), fontSize: 13 }}>
-        {icon}
-      </Text>
-    </View>
-  );
-
   return (
     <View
       class="self-stretch rounded-2xl p-3"
+      onHoverIn={() => hov.set(true)}
+      onHoverOut={() => hov.set(false)}
       style={{
         backgroundColor: tc("#1f1f1f"),
         borderWidth: 1,
@@ -456,7 +494,7 @@ export function CardShell(props: Props) {
           {props.label}
         </Text>
         <View class="flex-row items-center gap-1">
-          {btn("⤴", share, false, "reveal in Finder")}
+          <Act glyph="⤴" title="reveal in Finder" onPress={share} />
           <DelBtn k={"name:" + props.name} />
         </View>
       </View>
@@ -515,23 +553,35 @@ export function CardShell(props: Props) {
         </View>
       </If>
 
-      <View class="mt-2 flex-row items-center gap-1">
-        {btn("👍", () => react("up"), reaction() === "up", "good")}
-        {btn("👎", () => react("down"), reaction() === "down", "bad")}
-        {btn("↻", retry, !!work(), "try again")}
-        {btn("</>", () => toggleCode(), codeOpen(), "view source")}
-        {btn("⧉", copySource, copied(), "copy source")}
-        {btn(published() ? "✓ saved" : "save", publish, published(), "publish to Mini Apps")}
-        {btn("★", pin, pinned(), "nominate for the desktop widget")}
-        {btn("↗", popout, false, "open in its own window")}
-        <If when={!!work()}>
-          <Text style={{ color: tc("#f5f5f585"), fontSize: 11 }}>
-            {work()}
-          </Text>
-        </If>
-        <If when={!!extra()}>
-          <Text style={{ color: "#32bb78", fontSize: 11 }}>{extra()}</Text>
-        </If>
+      {/* status text lives at the left of the action row; the icons appear
+          on hover — same pattern as message bubbles (react · reply · ⋯) */}
+      <View class="mt-2 flex-row items-center justify-between" style={{ minHeight: 24 }}>
+        <View class="flex-row items-center gap-2">
+          <If when={!!reaction()}>
+            <Text style={{ fontSize: 13 }}>{badge()}</Text>
+          </If>
+          <If when={!!work()}>
+            <Text style={{ color: tc("#f5f5f585"), fontSize: 11 }}>
+              {work()}
+            </Text>
+          </If>
+          <If when={!!extra()}>
+            <Text style={{ color: "#32bb78", fontSize: 11 }}>{extra()}</Text>
+          </If>
+        </View>
+        <View style={{ opacity: hov() ? 1 : 0, flexDirection: "row", alignItems: "center", gap: 2 }}>
+          <Act glyph="☺" title="react" onPress={pickEmoji} />
+          <Act
+            glyph="↩"
+            title="reply"
+            onPress={() =>
+              props.onReply?.(props.i ?? 0, `app · ${props.name}.tsx`, [
+                `module://${props.name}`,
+              ])
+            }
+          />
+          <Act glyph="⋯" title="more" onPress={more} />
+        </View>
       </View>
     </View>
   );

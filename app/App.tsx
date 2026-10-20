@@ -544,7 +544,16 @@ function App() {
       mockStatus(prompt === "/status" ? "demo" : prompt.slice(8).trim());
       return;
     }
-    run(prompt, { reply, attachments: files });
+    // Files carried by the replied-to message (a mini app's module:// uri or
+    // a file path) travel as attachments so the model sees their contents.
+    const replyFiles: Attach[] = (reply?.files || []).map((p) => {
+      const uri = p.includes("://") ? p : `file://${p}`;
+      const name = decodeURIComponent(
+        uri.replace(/\/$/, "").split("/").pop() || uri.split("://")[1] || p,
+      );
+      return { uri, name, kind: "file" };
+    });
+    run(prompt, { reply, attachments: [...replyFiles, ...files] });
   };
 
   const post = (path: string, body?: object) =>
