@@ -70,8 +70,9 @@ just run             # or: tools/start.sh — gen server (:8787) + Native Shell 
 The `justfile` wraps the everyday commands: `just run` (full app),
 `just server` (backend only, idempotent), `just server-mock` (offline),
 `just build` (typecheck + bundle + office editor), `just publish`
-(installable `.app`), `just status` (which worktree owns :8787 — see
-below), `just stop`, `just clean`.
+(standalone installable `.app` — bundled server, nsh binaries, and data in
+`~/Library/Application Support/Grok Shell`), `just status` (which worktree
+owns :8787 — see below), `just stop`, `just clean`.
 
 `tools/start.sh` resolves the nsh binary as `$NSH`, else `nsh` on `PATH`
 (see **Get nsh** above), and reuses an already-running server instead of
@@ -240,6 +241,20 @@ Beyond static tokens, the avatar runs Grok Bot's own motion code:
   mock commands exercise the whole table without a generation.
 - Light/dark themes both supported via `app/theme.ts` (`tc()` maps dark
   neutrals to Sand's light ramp).
+
+## Releases
+
+`just publish` produces a standalone `dist/Grok Shell.app`: the nsh release
+runner plus a bundled `app-server` (Node binary + single-file bundle),
+`nsh`/`nsh-macos-host` for Mini App pop-outs (`nsh build` → `host --bundle`),
+and a launcher that seeds `~/Library/Application Support/Grok Shell` on
+first run. Ad-hoc signed — for public distribution re-sign with a
+Developer ID and notarize.
+
+`.github/workflows/release.yml` builds the same bundles for macOS
+(`macos-14`/arm64), Linux (`ubuntu-22.04`/x64), and Windows on every
+published GitHub Release, compiling nsh at a pinned revision
+(`env.NSH_REF`) and uploading the zip/tarballs to the release.
 
 ## Roadmap
 
