@@ -17,6 +17,9 @@ widgets/R*.tsx
 # regenerated per pop-out / snapshot — runtime artifacts
 windows/
 
+# runtime module chunks the packaged app imports through NSH_CHUNK_DIR
+chunks/
+
 # compiled artifacts
 native-widget/build/
 tools/*.dylib

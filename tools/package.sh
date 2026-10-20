@@ -41,6 +41,9 @@ export GROK_DATA_DIR="$DATA"
 export GROK_BUNDLE_ID="dev.goldcoders.grokshell"
 export NSH="$RES/server/nsh"
 export NSH_HOST="$RES/server/nsh-macos-host"
+# Runtime-generated modules load through __nsh_import, which the runner's
+# load_chunk serves from here (the bundle's Resources are read-only).
+export NSH_CHUNK_DIR="$DATA/chunks"
 [ -d "$DATA/widgets" ] || cp -R "$RES/server/widgets" "$DATA/widgets"
 if ! /usr/bin/curl -fs "http://127.0.0.1:8787/health" >/dev/null 2>&1; then
   "$RES/server/node" "$RES/server/app-server.mjs" \

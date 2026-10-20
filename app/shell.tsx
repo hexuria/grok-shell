@@ -17,6 +17,28 @@ import { MODULES } from "../generated/index";
 
 const GEN = "http://127.0.0.1:8787";
 
+// Modules generated after this bundle was built are not in MODULES — the
+// host serves their chunk from NSH_CHUNK_DIR through __nsh_import
+// (nsh-macos load_chunk). One signal per key re-renders the row when the
+// chunk lands; "loading" shows a placeholder instead of the
+// module-missing flash. A missing chunk settles null → the old fallback.
+const dynMods = new Map<string, any>();
+function moduleOf(key: string): any {
+  let s = dynMods.get(key);
+  if (!s) {
+    s = signal<any>("loading");
+    dynMods.set(key, s);
+    const imp = (globalThis as any).__nsh_import;
+    if (typeof imp === "function")
+      // chunk ids are flat <stem>.js — "R6@v3" ships as "R6v3.js"
+      Promise.resolve(imp(`${key.replace(/^R(\d+)@v(\d+)$/, "R$1v$2")}.js`))
+        .then((ns: any) => s.set(ns?.default ?? null))
+        .catch(() => s.set(null));
+    else s.set(null);
+  }
+  return s();
+}
+
 const post = (path: string, body: object) =>
   fetch(`${GEN}${path}`, {
     method: "POST",
@@ -256,7 +278,22 @@ function TurnRow({ t, onReply, onJump }: {
       </If>
       </View>
     );
-  const C = MODULES[t.widget ? t.name + "w" : t.name];
+  // A card pins the version it rendered: "R6@v3" resolves that exact module;
+  // cards from before versions (no t.v) resolve the bare name = current.
+  const key = t.v ? `${t.name}@v${t.v}` : t.widget ? t.name + "w" : t.name;
+  let C = MODULES[key];
+  if (!C) {
+    const d = moduleOf(key);
+    if (d === "loading")
+      return (
+        <View class="self-start px-1 py-1 flex-row items-center gap-2">
+          <Text style={{ color: tc("#f5f5f566"), fontSize: 12 }}>
+            {`app · ${t.name} — loading…`}
+          </Text>
+        </View>
+      );
+    if (typeof d === "function") C = d;
+  }
   if (!C)
     return (
       <View class="self-start px-1 py-1 flex-row items-center gap-2">
@@ -268,10 +305,11 @@ function TurnRow({ t, onReply, onJump }: {
     );
   const label = t.widget
     ? `app · ${t.name}.tsx`
-    : `generated · ${t.name}.tsx · ${t.label}${t.retries ? ` · ↻${t.retries}` : ""}`;
+    : `generated · ${t.name}.tsx${t.v ? ` · v${t.v}` : ""} · ${t.label}${t.retries ? ` · ↻${t.retries}` : ""}`;
   return (
     <CardShell
       name={t.name}
+      v={t.v}
       label={label}
       caption={t.caption}
       reaction={t.reaction}
@@ -314,6 +352,8 @@ export function Conversation(props: {
 
 type Props = {
   name: string;
+  /** the version this card pinned (absent on pre-version cards) */
+  v?: number | null;
   label: string;
   caption?: string;
   reaction?: string;
@@ -333,13 +373,16 @@ export function CardShell(props: Props) {
   const extra = signal("");
   const hov = signal(false);
 
+  // The card shows its own pinned version everywhere — code panel, reply
+  // attach, pop-out; bare name only when the card predates versions.
+  const modKey = `${props.name}${props.v ? `@v${props.v}` : ""}`;
   fetch(`${GEN}/pins`)
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (d?.pins?.includes(props.name)) pinned.set(true);
     })
     .catch(() => {});
-  fetch(`${GEN}/module?name=${props.name}`)
+  fetch(`${GEN}/module?name=${modKey}`)
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       if (d?.published) published.set(true);
@@ -363,7 +406,7 @@ export function CardShell(props: Props) {
 
   const srcErr = signal(false);
   const fetchSource = async () => {
-    const d = await fetch(`${GEN}/module?name=${props.name}`)
+    const d = await fetch(`${GEN}/module?name=${modKey}`)
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null);
     if (d?.source) source.set(d.source);
@@ -390,7 +433,7 @@ export function CardShell(props: Props) {
   });
 
   const popout = () => {
-    post("/popout", { name: props.name }).then((d) => {
+    post("/popout", { name: props.name, ...(props.v ? { v: props.v } : {}) }).then((d) => {
       extra.set(
         d?.ok ? (d.already ? "window already open" : "↗ window opened") : "popout failed",
       );
@@ -581,8 +624,8 @@ export function CardShell(props: Props) {
             glyph="↩"
             title="reply"
             onPress={() =>
-              props.onReply?.(props.i ?? 0, `app · ${props.name}.tsx`, [
-                `module://${props.name}`,
+              props.onReply?.(props.i ?? 0, `app · ${props.name}${props.v ? ` v${props.v}` : ""}.tsx`, [
+                `module://${modKey}`,
               ])
             }
           />

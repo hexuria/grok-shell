@@ -212,7 +212,10 @@ function App() {
   const upDraft = signal<AvatarDraft | null>(null);
   const draftCrop = signal<{ s: number; x: number; y: number }>({ s: 1, x: 0, y: 0 });
   const avatarErr = signal("");
-  const threadApps = signal<{ name: string; title: string; file: string; subtitle: string; published: boolean; mtime: number }[]>([]);
+  const threadApps = signal<{ name: string; title: string; file: string; subtitle: string; published: boolean; mtime: number; v?: number | null; versions?: { v: number; parent: number | null; created_at: number }[] }[]>([]);
+  // Library version history: the expanded artifact's name (its rows show
+  // the git-style tree — dot = current, ← = parent when it branches).
+  const versOpen = signal("");
   const activeId = signal("");
   const model = signal("…");
   const sideMode = signal("full"); // "full" | "rail"
@@ -446,6 +449,33 @@ function App() {
   type Attach = Attachment;
   const replyTo = signal<{ i: number; text: string; files?: string[] } | null>(null);
   const attachments = signal<Attach[]>([]);
+  // @ mentions: typing @<query> opens the artifact/file picker (this
+  // thread's apps first, then global); picking stages its uri as an
+  // attachment — the server resolves module:// to the artifact's source so
+  // the model can revise it.
+  const atItems = signal<{ kind: string; name: string; title: string; file: string; v?: number | null; published?: boolean; uri: string; scope: string }[] | null>(null);
+  const atStart = signal(-1);
+  let atSeq = 0;
+  const draftChanged = (t: string) => {
+    draft.set(t);
+    const i = atStart() >= 0 ? atStart() : t.lastIndexOf("@");
+    if (i < 0) { atItems.set(null); atStart.set(-1); return; }
+    const tail = t.slice(i + 1);
+    if (/\s/.test(tail) || tail.length > 40) { atItems.set(null); atStart.set(-1); return; }
+    atStart.set(i);
+    const n = ++atSeq;
+    fetch(`${GEN}/artifacts?thread=${encodeURIComponent(activeId())}&q=${encodeURIComponent(tail)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (n === atSeq) atItems.set(d?.items?.length ? d.items : null); })
+      .catch(() => {});
+  };
+  const atPick = (it: any) => {
+    const t = draft();
+    draft.set(t.slice(0, atStart()) + (it.title || it.name) + " ");
+    atItems.set(null);
+    atStart.set(-1);
+    attachments.set([...attachments(), { uri: it.uri, name: it.title || it.name, kind: "file" }]);
+  };
   const attachHover = signal("");
   // Grok's + menu: a small card just above the button
   let plusBtn!: YNode;
@@ -544,6 +574,8 @@ function App() {
       mockStatus(prompt === "/status" ? "demo" : prompt.slice(8).trim());
       return;
     }
+    atItems.set(null);
+    atStart.set(-1);
     // Files carried by the replied-to message (a mini app's module:// uri or
     // a file path) travel as attachments so the model sees their contents.
     const replyFiles: Attach[] = (reply?.files || []).map((p) => {
@@ -1710,11 +1742,36 @@ function App() {
                 </If>
                 {/* Grok: + · input · dictation · voice chat (send once there is text) */}
                 <View>
+                  {/* @ picker: artifacts/files matching the @<query> tail —
+                      this thread's apps first, then global */}
+                  <If when={!!atItems()?.length}>
+                    <View style={{ marginBottom: 6, borderRadius: 10, backgroundColor: tc("#1f1f1f"), borderWidth: 0.5, borderColor: tc("#f5f5f51a"), paddingVertical: 4, maxHeight: 220, overflow: "hidden" }}>
+                      <Each of={atItems() || []}>
+                        {(it) => (
+                          <View
+                            onPress={() => atPick(it())}
+                            activeOpacity={0.7}
+                            style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 6 }}
+                          >
+                            <View style={{ width: 20, height: 20, borderRadius: 5, backgroundColor: it().kind === "app" ? hue(it().name) : tc("#f5f5f51a"), alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ color: it().kind === "app" ? "#fff" : tc("#f5f5f58a"), fontSize: 10, fontWeight: "600" }}>{it().kind === "app" ? "</>" : "doc"}</Text>
+                            </View>
+                            <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>
+                              {it().title}
+                            </Text>
+                            <Text style={{ color: tc("#f5f5f566"), fontSize: 11 }}>
+                              {it().kind === "app" ? `${it().name}${it().v ? ` · v${it().v}` : ""}${it().scope === "thread" ? " · this chat" : ""}` : it().file}
+                            </Text>
+                          </View>
+                        )}
+                      </Each>
+                    </View>
+                  </If>
                   {/* the wrapper carries the cap: the input's box otherwise grows to all its text */}
                   <View style={{ paddingBottom: composerTall() ? 40 : 0, maxHeight: composerTall() ? 120 + 14 + 40 : 40, overflow: "hidden" }}>
                   <Input
                     value={draft()}
-                    onChangeText={(t) => draft.set(t)}
+                    onChangeText={draftChanged}
                     placeholder={
                       replyTo()
                         ? "Reply…"
@@ -2088,6 +2145,7 @@ function App() {
                       <View style={paneCard()}>
                         <Each of={g().items}>
                           {(a) => (
+                            <View>
                             <View
                               onPress={() => post("/popout", { name: a().name })}
                               onContextMenu={() => appMenu(a())}
@@ -2101,7 +2159,53 @@ function App() {
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, lineHeight: 18 }}>{a().title}</Text>
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f58a"), fontSize: 12, lineHeight: 16 }}>{a().file}</Text>
                               </View>
+                              <If when={!!a().v}>
+                                {/* the version chip toggles the history tree */}
+                                <View
+                                  onPress={() => versOpen.set(versOpen() === a().name ? "" : a().name)}
+                                  activeOpacity={0.7}
+                                  style={{ borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: tc("#f5f5f50f") }}
+                                >
+                                  <Text style={{ color: tc("#f5f5f5cc"), fontSize: 11, fontFamily: "monospace" }}>{`v${a().v} ⎇`}</Text>
+                                </View>
+                              </If>
                               <Text style={{ color: tc("#f5f5f58a"), fontSize: 13, lineHeight: 18 }}>{ago(a().mtime)}</Text>
+                            </View>
+                            {/* version tree: newest first — a click moves the
+                                current pointer (never rewrites history); a
+                                "from v<k>" tag marks a branch point */}
+                            <If when={versOpen() === a().name && (a().versions?.length ?? 0) > 0}>
+                              <View style={{ paddingLeft: 12, paddingVertical: 2 }}>
+                                <Each of={[...(a().versions || [])].sort((x, y) => y.v - x.v)}>
+                                  {(vr) => (
+                                    <View
+                                      onPress={() =>
+                                        post("/app/version", { name: a().name, v: vr().v }).then(() => {
+                                          fetchThreadApps();
+                                          refreshThreads();
+                                        })
+                                      }
+                                      activeOpacity={0.7}
+                                      style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 4, paddingHorizontal: 8 }}
+                                    >
+                                      <Text style={{ color: vr().v === a().v ? "#32bb78" : tc("#f5f5f54d"), fontSize: 11 }}>
+                                        {vr().v === a().v ? "●" : "○"}
+                                      </Text>
+                                      <Text style={{ color: vr().v === a().v ? tc("#f5f5f5") : tc("#f5f5f58a"), fontSize: 12, fontFamily: "monospace" }}>
+                                        {`v${vr().v}`}
+                                      </Text>
+                                      <If when={vr().parent != null && vr().parent !== vr().v - 1}>
+                                        <Text style={{ color: "#b16dff", fontSize: 11 }}>{`⎇ from v${vr().parent}`}</Text>
+                                      </If>
+                                      <If when={vr().v === a().v}>
+                                        <Text style={{ color: "#32bb78", fontSize: 11 }}>current</Text>
+                                      </If>
+                                      <Text style={{ color: tc("#f5f5f54d"), fontSize: 11, flex: 1, textAlign: "right" }}>{ago(vr().created_at)}</Text>
+                                    </View>
+                                  )}
+                                </Each>
+                              </View>
+                            </If>
                             </View>
                           )}
                         </Each>
