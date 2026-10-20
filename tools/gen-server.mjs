@@ -4249,6 +4249,10 @@ ensureOfficeMcp(OUT_DIR).catch(() => {});
   }
 }
 
+// Materialise generated/index.tsx so a fresh clone typechecks before the
+// first generation lands (generated/ is gitignored — nothing tracks it).
+writeIndex();
+
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`gen-server on http://127.0.0.1:${PORT}`);
   console.log(

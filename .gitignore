@@ -4,18 +4,14 @@ tools/.stage/
 node_modules/
 .DS_Store
 
-# runtime state — history lives in app.db; JSON files are legacy/derived
-generated/app.db
-generated/app.db-*
-generated/threads.json
-generated/turns.json
-generated/assets/
-generated/shots/
+# everything under generated/ is runtime output, not source: the R*.tsx
+# mini apps the model writes, the index.tsx registry the server rebuilds
+# (writeIndex), the chat DB, files, attachments, avatars
+generated/
 
-# runtime media — /mock files regenerates these; attachments and avatars are user data
-generated/files/
-generated/attachments/
-generated/avatars/
+# published Mini Apps are runtime artifacts too (widgets/index.tsx — the
+# shelf UI — IS source and stays tracked)
+widgets/R*.tsx
 
 # regenerated per pop-out / snapshot — runtime artifacts
 windows/

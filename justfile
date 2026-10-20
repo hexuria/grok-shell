@@ -48,8 +48,11 @@ server-mock:
 # ── build ────────────────────────────────────────────────────────────────
 
 # Typecheck + compile the app bundle into out/, and the office editor bundle.
+# The stub guard covers a fresh clone: generated/ is gitignored, and
+# shell.tsx imports its registry — the server writes the real one at boot.
 build:
     [ -d node_modules ] || npm install
+    [ -f generated/index.tsx ] || { mkdir -p generated; printf 'export const MODULES: Record<string, any> = {};\n' > generated/index.tsx; }
     -{{nsh}} check App.tsx
     {{nsh}} build App.tsx
     npm run build:office-editor
