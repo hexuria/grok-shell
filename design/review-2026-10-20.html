@@ -152,8 +152,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Grok Shell — issue review <span style="color:var(--dim);font-size:15px">v2</span></h1>
-  <div class="sub">2026-10-20 · updated with your calls: <b style="color:#6fe0ab">3 → A</b> (delete removes the card, atomically) · <b style="color:#6fe0ab">4 → versioned artifacts</b> with branching · <b style="color:#6fe0ab">6</b> builds on the version model.</div>
+  <h1>Grok Shell — issue review <span style="color:var(--dim);font-size:15px">v2</span> <span style="color:#6fe0ab;font-size:15px">· implemented</span></h1>
+  <div class="sub">2026-10-20 · <b style="color:#6fe0ab">shipped:</b> issues 1–6 all landed and verified end-to-end (live MOCK run: v1 → revise v2 → revert v1 → revise v3 = sibling branches; pinned cards; atomic delete). Details inline per issue.</div>
   <div class="legend">
     <div><span class="dot" style="background:#ff8f89"></span> bug — broken now</div>
     <div><span class="dot" style="background:#6fe0ab"></span> decided / done</div>
@@ -240,7 +240,7 @@
     <div class="notes"><h3>The fix — how chat loads live modules</h3>
       <li><b>Same trick as pop-outs:</b> the server already compiles a module to bytecode on demand for pop-outs (<code>nsh build → .nshc → host</code>). The chat needs the equivalent: a <b>runtime-loadable module registry</b> instead of the baked <code>MODULES</code> import.</li>
       <li><b>Honest caveat:</b> the packaged runner is hardened (no <code>eval</code>), so the app can't interpret new TSX itself. Loading runtime modules inside the chat needs the host to load a <b>server-compiled chunk</b> — likely a small upstream nsh change (the Rust <code>Host</code> already supports chunk bundles; it just isn't exposed). I'll confirm the cleanest path before writing it.</li>
-      <li><b>With versioning (issue 4):</b> the registry keys become <code>R6/v3</code> — a card renders the version it produced, not the current one. The loader must resolve versioned paths.</li>
+      <li><b>With versioning (issue 4), as built:</b> registry keys are <code>R6@v3</code> in <code>MODULES</code>, and chunk ids ship flat as <code>R6v3.js</code> (<code>nsh-js</code> validates flat <code>&lt;stem&gt;.js</code> — no paths). The chat resolves a card's pinned version through <code>__nsh_import("R6v3.js")</code>.</li>
       <li>Until that lands, every artifact generated <i>after</i> packaging will hit this. Dev mode is unaffected (JIT reads the filesystem).</li>
     </div>
   </div>
@@ -438,8 +438,8 @@
     </div>
 
     <div class="ask">
-      <div class="q"><b>Check me:</b> when you pop out a <b>v1 card</b> from the transcript — should it open v1 (what you see) or current v7? I drew it as <b>its own version</b>; the Library is what always gives you current.</div>
-      <div class="q"><b>Check me:</b> branch labels — auto-named like git (<i>v5 line</i> / <i>v7 line</i>) or do you want to name them ("the fast one")?</div>
+      <div class="q"><b>Resolved:</b> a card's ↗ pops out <b>its own version</b> (<code>/popout {name, v}</code> mounts <code>generated/R6/v3.tsx</code> — title <i>widget · R6@3</i>); the Library's click launches <i>current</i>.</div>
+      <div class="q"><b>Resolved:</b> branch labels are <b>auto</b> for v1 — the history shows <code>⎇ from v4</code> on the diverging child. Named branches can layer on later without changing the store.</div>
     </div>
   </div>
 
@@ -570,12 +570,12 @@
 
   <div class="notes" style="border-color:#f9670e44">
     <h3 style="color:var(--acc)">Sign-off checklist</h3>
-    <li>☐ <b>Issue 1</b> — live module loading for chat; I'll confirm the upstream chunk-loading path and report before writing code.</li>
-    <li>☐ <b>Issue 2</b> — empty code panel → "deleted/unavailable" state. Small fix, doing it regardless.</li>
-    <li>☑ <b>Issue 3</b> — <b>A:</b> Library Delete removes the artifact <i>and</i> its cards/prompt turns atomically; tombstones should never form.</li>
-    <li>☑ <b>Issue 4</b> — <b>versioned artifacts:</b> cards labeled per-version, Library launches <i>current</i>, revert moves the pointer, revise branches off whatever it points at — with a visible git-style graph.</li>
-    <li>☐ <b>Issue 5</b> — verify the hover bar in the running app (shipped).</li>
-    <li>☐ <b>Issue 6</b> — @ picker + tool calls (<code>revise</code> = new version on the same artifact). Open: card pop-out launches <i>its own version</i> vs current — I drew "its own version"; branch names auto or manual?</li>
+    <li>☑ <b>Issue 1</b> — <b>done:</b> macOS <code>MountSink::load_chunk</code> + <code>NSH_CHUNK_DIR</code>; chunks load as source (trust model kept). Verified live in the packaged runner (<code>load_chunk R9.js → 10812 bytes loaded</code>).</li>
+    <li>☑ <b>Issue 2</b> — <b>done:</b> code panel shows the deleted-source state.</li>
+    <li>☑ <b>Issue 3</b> — <b>done:</b> <code>/app/delete</code> scrubs the artifact's cards + prompt turns across all threads, plus versions/heads/chunks/dirs — atomically.</li>
+    <li>☑ <b>Issue 4</b> — <b>done:</b> <code>versions</code>/<code>heads</code> tables, <code>writeVersion</code>/<code>setHead</code>, cards pin <code>v</code>, Library launches current, revert = pointer move, revise off a non-tip branches. Verified: v1→v2→revert→v3 siblings.</li>
+    <li>☑ <b>Issue 5</b> — <b>done:</b> message-style hover bar (☺ · ↩ · ⋯) ships the whole action set under ⋯.</li>
+    <li>☑ <b>Issue 6</b> — <b>done:</b> @ picker (<code>/artifacts</code>, thread-scope first) + tools <code>revise_app · launch_app · close_app · promote_app · demote_app · set_version · view_code</code>. Reply-to-card attaches <code>module://R@v</code> and revises that exact version.</li>
   </div>
 </div>
 </body>
