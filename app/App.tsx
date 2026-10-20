@@ -101,14 +101,26 @@ const hue = (s: string) =>
 function App() {
   const draft = signal("");
   const inflight = signal(0);
-  // the agent's live state — Grok's status row: a mark playing the ambient
-  // effect plus the shimmering label. Set by the generator's phases while a
-  // run is in flight, or by /status:<state> to preview one without a call.
-  const agent = signal<{ state: string; label: string } | null>(null);
-  const agentBot = signal<string | null>(null);
-  // the chat the run belongs to: its status row shows only there (the bot's
-  // sidebar mark keeps playing the state wherever you are)
-  const agentThread = signal("");
+  // live agent runs, keyed by thread — Grok's status row: a mark playing
+  // the ambient effect plus the shimmering label. Set by the generator's
+  // phases while a run is in flight, or by /status:<state> to preview one
+  // without a call. Per-thread so a run in one chat can't steal or clear
+  // another's row (or stop its bot's sidebar animation).
+  const agentRuns = signal<
+    Record<string, { state: string; label: string; bot: string | null }>
+  >({});
+  const agent = () => agentRuns()[activeId()] ?? null;
+  const agentSet = (
+    thread: string,
+    bot: string | null,
+    v: { state: string; label: string } | null,
+  ) =>
+    agentRuns.update((m) => {
+      const next = { ...m };
+      if (v) next[thread] = { ...v, bot };
+      else delete next[thread];
+      return next;
+    });
   const settled = signal<{ id: string; state: string } | null>(null);
   const emphBot = signal("");
   let settledTimer: ReturnType<typeof setTimeout> | null = null;
@@ -126,16 +138,16 @@ function App() {
   let mockTimer: ReturnType<typeof setInterval> | null = null;
   const mockStatus = (arg: string) => {
     if (mockTimer) { clearInterval(mockTimer); mockTimer = null; }
-    agentBot.set(activeBot()?.id ?? null);
-    agentThread.set(activeId());
+    const thread = activeId();
+    const bot = activeBot()?.id ?? null;
     settled.set(null);
     if (!arg || arg === "off" || arg === "idle" || arg === "clear") {
-      agent.set(null);
+      agentSet(thread, bot, null);
       return;
     }
     const put = (name: string, demo = false) => {
       const label = statusLabel(name) || name;
-      agent.set({ state: name, label: demo ? `${name} — ${label}` : label });
+      agentSet(thread, bot, { state: name, label: demo ? `${name} — ${label}` : label });
     };
     if (arg === "demo") {
       const names = STATES.filter((name) => name !== "idle");
@@ -145,7 +157,7 @@ function App() {
         if (++i >= names.length) {
           if (mockTimer) clearInterval(mockTimer);
           mockTimer = null;
-          agent.set(null);
+          agentSet(thread, bot, null);
           return;
         }
         put(names[i], true);
@@ -155,7 +167,7 @@ function App() {
     if (STATES.includes(arg)) {
       put(arg);
     } else {
-      agent.set({ state: "idle", label: `unknown status "${arg}" — try /status:demo` });
+      agentSet(thread, bot, { state: "idle", label: `unknown status "${arg}" — try /status:demo` });
     }
   };
   // the floating composer's height: the transcript pads its end by it, so the
@@ -228,11 +240,8 @@ function App() {
   // outcome for 8s after it settles, else idle — played by its sidebar mark
   // and the status row (Grok animates only those; header and pane are static)
   const botSt = (id: string) =>
-    agentBot() === id && agent()
-      ? agent()!.state
-      : settled()?.id === id
-        ? settled()!.state
-        : "idle";
+    Object.values(agentRuns()).find((r) => r.bot === id)?.state ??
+    (settled()?.id === id ? settled()!.state : "idle");
   // send: the bot's color; the white/black ink bot sends with the text color
   const neutralSend = () => !bubbleColor() || ["#FFFFFF", "#777777"].includes(bubbleColor().toUpperCase());
   const sendFill = () => (neutralSend() ? tc("#f5f5f5") : bubbleFill());
@@ -472,11 +481,10 @@ function App() {
   );
   const run = async (prompt: string, extra: { reply?: { i: number; text: string } | null; attachments?: Attach[] } = {}) => {
     const bot = activeBot()?.id ?? "";
+    const thread = activeId();
     inflight.update((n) => n + 1);
-    agentBot.set(bot);
-    agentThread.set(activeId());
     settled.set(null);
-    agent.set({ state: "working", label: statusLabel("working") });
+    agentSet(thread, bot, { state: "working", label: statusLabel("working") });
     try {
       const r = await fetch(`${GEN}/chat`, {
         method: "POST",
@@ -500,20 +508,23 @@ function App() {
         const extra =
           inflight() > 1 ? ` · ${inflight()} generations running` : "";
         detail = s.detail || s.phase;
-        agent.set({
+        agentSet(thread, bot, {
           state: PHASE_STATE[s.phase] ?? "working",
           label: `${detail}${extra}`,
         });
         if (s.done) break;
       }
       refreshThreads();
-      agent.set(null);
+      agentSet(thread, bot, null);
       settle(bot, /^(failed|generator error)/.test(detail) ? "failed" : "finished");
     } catch (e) {
-      agent.set({ state: "failed", label: `no generator — run  node server/app-server.mjs` });
+      agentSet(thread, bot, { state: "failed", label: `no generator — run  node server/app-server.mjs` });
       settle(bot, "failed");
-      const stuck = agent();
-      setTimeout(() => { if (agent() === stuck) agent.set(null); }, 5000);
+      setTimeout(() => {
+        const cur = agentRuns()[thread];
+        if (cur?.state === "failed" && cur.label.startsWith("no generator"))
+          agentSet(thread, bot, null);
+      }, 5000);
     }
     inflight.update((n) => n - 1);
     scrollToEnd();
@@ -756,8 +767,11 @@ function App() {
       "mod+n": () => botModal.set(true),
       "mod+shift+m": () => tab.set(tab() === "work" ? "chat" : "work"),
       "mod+d": () => {
-        agent.set({ state: "dictating", label: "Dictation is coming soon" });
-        setTimeout(() => { if (agent()?.label === "Dictation is coming soon") agent.set(null); }, 2400);
+        agentSet(activeId(), activeBot()?.id ?? null, { state: "dictating", label: "Dictation is coming soon" });
+        setTimeout(() => {
+          if (agent()?.label === "Dictation is coming soon")
+            agentSet(activeId(), activeBot()?.id ?? null, null);
+        }, 2400);
       },
       ...Object.fromEntries(
         Array.from({ length: 9 }, (_, k) => [
@@ -1597,9 +1611,9 @@ function App() {
           >
           {/* agent status row: the mark playing the ambient effect + the
               shimmering label — Grok's status line */}
-          <If when={!!agent() && agentThread() === activeId()}>
+          <If when={!!agent()}>
             <View
-              onHoverIn={() => emphBot.set(agentBot() ?? activeBot()?.id ?? "")}
+              onHoverIn={() => emphBot.set(agent()!.bot ?? activeBot()?.id ?? "")}
               onHoverOut={() => emphBot.set("")}
               style={{ alignSelf: "center", width: "100%", maxWidth: 960 + 32, paddingHorizontal: 16 + 4, paddingBottom: 4, flexDirection: "row", alignItems: "center", gap: 7 }}
             >
@@ -1609,7 +1623,7 @@ function App() {
                 state={agent()!.state}
                 size={20}
                 emphasized={emphBot() !== ""}
-                seed={agentBot() ?? activeBot()?.id ?? "status"}
+                seed={agent()!.bot ?? activeBot()?.id ?? "status"}
               />
               <ShimmerText
                 text={agent()!.label}
