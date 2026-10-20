@@ -1751,7 +1751,7 @@ async function toolFetchUrl(input) {
   const r = await fetch(url, {
     signal: AbortSignal.timeout(20000),
     redirect: "follow",
-    headers: { "user-agent": "Mozilla/5.0 (gen-ui-chat)" },
+    headers: { "user-agent": "Mozilla/5.0 (grok-shell)" },
   });
   if (!r.ok) return { content: `fetch failed: ${r.status}`, is_error: true };
   const html = await r.text();
@@ -1788,7 +1788,7 @@ async function toolWebSearch(input) {
   const q = encodeURIComponent(String(input.query || ""));
   const r = await fetch(`https://html.duckduckgo.com/html/?q=${q}`, {
     signal: AbortSignal.timeout(20000),
-    headers: { "user-agent": "Mozilla/5.0 (gen-ui-chat)" },
+    headers: { "user-agent": "Mozilla/5.0 (grok-shell)" },
   });
   if (!r.ok) return { content: `search failed: ${r.status}`, is_error: true };
   const html = await r.text();

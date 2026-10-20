@@ -7,29 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		67FE66823B64CFECEE3736B1 /* GenUIWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F23AA3808CFF004B780E1489 /* GenUIWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		6B529B29BEB6B4C847CCF4BA /* GenUIHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34875614E69A461076D50EAB /* GenUIHostApp.swift */; };
-		F38696FC24CB3302A10741FF /* GenUIWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5882DC2655FBA6DD8BA7D010 /* GenUIWidget.swift */; };
+		608F99C22163E1622AE9FBF4 /* GrokShellWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BDC7AC774B0BDA01D00F6B /* GrokShellWidget.swift */; };
+		97F9479FE5666AD90612A39C /* GrokShellWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1EA4321731670763DCACC50 /* GrokShellWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A9C103148EDB2FCDC3CD7BEC /* GrokShellHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDD19583313006530FBA6712 /* GrokShellHostApp.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		986AF1947DEAC60598940D5E /* PBXContainerItemProxy */ = {
+		69E8A1780FB05F1B69003A35 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = F27E65E461EDA93F21ADFF2F /* Project object */;
+			containerPortal = 326062D340613CAD032F5A55 /* Project object */;
 			proxyType = 1;
-			remoteGlobalIDString = 124837510B21B5DF2970A399;
-			remoteInfo = GenUIWidget;
+			remoteGlobalIDString = A62E77A58D76991D756E6B1A;
+			remoteInfo = GrokShellWidget;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		D8D55DBB4EE4136C96701E89 /* Embed Foundation Extensions */ = {
+		BFE664D0F7FD1250ED7F1B52 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				67FE66823B64CFECEE3736B1 /* GenUIWidget.appex in Embed Foundation Extensions */,
+				97F9479FE5666AD90612A39C /* GrokShellWidget.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -37,108 +37,108 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		2061BEFBA4DA7B5181EE6E54 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		34875614E69A461076D50EAB /* GenUIHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenUIHostApp.swift; sourceTree = "<group>"; };
-		5882DC2655FBA6DD8BA7D010 /* GenUIWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenUIWidget.swift; sourceTree = "<group>"; };
-		98506C64F84CA986D945C5C8 /* GenUIHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GenUIHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B73B8337E9286F22A8A91CD8 /* GenUIWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GenUIWidget.entitlements; sourceTree = "<group>"; };
-		F23AA3808CFF004B780E1489 /* GenUIWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GenUIWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3B4DB5C8A9D60F85475FEECF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		52BDC7AC774B0BDA01D00F6B /* GrokShellWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokShellWidget.swift; sourceTree = "<group>"; };
+		944244FBD0E00D637E6ED78A /* GrokShellWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = GrokShellWidget.entitlements; sourceTree = "<group>"; };
+		A56E7F7E2CDBE55EC2533295 /* GrokShellHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GrokShellHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E1EA4321731670763DCACC50 /* GrokShellWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = GrokShellWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		EDD19583313006530FBA6712 /* GrokShellHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrokShellHostApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		4BBDE394F894DE8793C7C6A5 = {
+		230F2D919736EE61FB1E74F3 = {
 			isa = PBXGroup;
 			children = (
-				BF98EF2936F917EC93153E72 /* GenUIHost */,
-				6BAE8488792B5351267568E8 /* GenUIWidget */,
-				9B3E34898133955A70359AD9 /* Products */,
+				31F10DA37C6649D75B7CAFE6 /* GrokShellHost */,
+				3BB5ED09983470C149FA1975 /* GrokShellWidget */,
+				961357B0192FBB119B478A25 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		6BAE8488792B5351267568E8 /* GenUIWidget */ = {
+		31F10DA37C6649D75B7CAFE6 /* GrokShellHost */ = {
 			isa = PBXGroup;
 			children = (
-				B73B8337E9286F22A8A91CD8 /* GenUIWidget.entitlements */,
-				5882DC2655FBA6DD8BA7D010 /* GenUIWidget.swift */,
-				2061BEFBA4DA7B5181EE6E54 /* Info.plist */,
+				EDD19583313006530FBA6712 /* GrokShellHostApp.swift */,
 			);
-			path = GenUIWidget;
+			path = GrokShellHost;
 			sourceTree = "<group>";
 		};
-		9B3E34898133955A70359AD9 /* Products */ = {
+		3BB5ED09983470C149FA1975 /* GrokShellWidget */ = {
 			isa = PBXGroup;
 			children = (
-				98506C64F84CA986D945C5C8 /* GenUIHost.app */,
-				F23AA3808CFF004B780E1489 /* GenUIWidget.appex */,
+				944244FBD0E00D637E6ED78A /* GrokShellWidget.entitlements */,
+				52BDC7AC774B0BDA01D00F6B /* GrokShellWidget.swift */,
+				3B4DB5C8A9D60F85475FEECF /* Info.plist */,
+			);
+			path = GrokShellWidget;
+			sourceTree = "<group>";
+		};
+		961357B0192FBB119B478A25 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A56E7F7E2CDBE55EC2533295 /* GrokShellHost.app */,
+				E1EA4321731670763DCACC50 /* GrokShellWidget.appex */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		BF98EF2936F917EC93153E72 /* GenUIHost */ = {
-			isa = PBXGroup;
-			children = (
-				34875614E69A461076D50EAB /* GenUIHostApp.swift */,
-			);
-			path = GenUIHost;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		124837510B21B5DF2970A399 /* GenUIWidget */ = {
+		410089836681B0FCE2F52FA0 /* GrokShellHost */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A40701FA0CE37E672C6D7280 /* Build configuration list for PBXNativeTarget "GenUIWidget" */;
+			buildConfigurationList = FB7AC43B3F51D69163FA39A9 /* Build configuration list for PBXNativeTarget "GrokShellHost" */;
 			buildPhases = (
-				2440C1F4308921A9898DB15D /* Sources */,
+				E8CCA7B9A4BF9B7945CC6069 /* Sources */,
+				BFE664D0F7FD1250ED7F1B52 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9755FBF755761ABF7684B12E /* PBXTargetDependency */,
 			);
-			name = GenUIWidget;
+			name = GrokShellHost;
 			packageProductDependencies = (
 			);
-			productName = GenUIWidget;
-			productReference = F23AA3808CFF004B780E1489 /* GenUIWidget.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
-		9A68FF6B401B287E3B1FE341 /* GenUIHost */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = D9B80794220CDC2614853FFC /* Build configuration list for PBXNativeTarget "GenUIHost" */;
-			buildPhases = (
-				2C2F7D2503357E920894523D /* Sources */,
-				D8D55DBB4EE4136C96701E89 /* Embed Foundation Extensions */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				E7FD7BEAA66842488FC296C0 /* PBXTargetDependency */,
-			);
-			name = GenUIHost;
-			packageProductDependencies = (
-			);
-			productName = GenUIHost;
-			productReference = 98506C64F84CA986D945C5C8 /* GenUIHost.app */;
+			productName = GrokShellHost;
+			productReference = A56E7F7E2CDBE55EC2533295 /* GrokShellHost.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A62E77A58D76991D756E6B1A /* GrokShellWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1AD035CB1043666E839E7A8D /* Build configuration list for PBXNativeTarget "GrokShellWidget" */;
+			buildPhases = (
+				610093E2278283227FD44798 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = GrokShellWidget;
+			packageProductDependencies = (
+			);
+			productName = GrokShellWidget;
+			productReference = E1EA4321731670763DCACC50 /* GrokShellWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		F27E65E461EDA93F21ADFF2F /* Project object */ = {
+		326062D340613CAD032F5A55 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					124837510B21B5DF2970A399 = {
+					410089836681B0FCE2F52FA0 = {
 						ProvisioningStyle = Automatic;
 					};
-					9A68FF6B401B287E3B1FE341 = {
+					A62E77A58D76991D756E6B1A = {
 						ProvisioningStyle = Automatic;
 					};
 				};
 			};
-			buildConfigurationList = C1D0FCCFD936C704C09A48DF /* Build configuration list for PBXProject "GenUIWidgets" */;
+			buildConfigurationList = 4524E9CB18688DEBB7E15F18 /* Build configuration list for PBXProject "GrokShellWidgets" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -146,47 +146,47 @@
 				Base,
 				en,
 			);
-			mainGroup = 4BBDE394F894DE8793C7C6A5;
+			mainGroup = 230F2D919736EE61FB1E74F3;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				9A68FF6B401B287E3B1FE341 /* GenUIHost */,
-				124837510B21B5DF2970A399 /* GenUIWidget */,
+				410089836681B0FCE2F52FA0 /* GrokShellHost */,
+				A62E77A58D76991D756E6B1A /* GrokShellWidget */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
-		2440C1F4308921A9898DB15D /* Sources */ = {
+		610093E2278283227FD44798 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F38696FC24CB3302A10741FF /* GenUIWidget.swift in Sources */,
+				608F99C22163E1622AE9FBF4 /* GrokShellWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		2C2F7D2503357E920894523D /* Sources */ = {
+		E8CCA7B9A4BF9B7945CC6069 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6B529B29BEB6B4C847CCF4BA /* GenUIHostApp.swift in Sources */,
+				A9C103148EDB2FCDC3CD7BEC /* GrokShellHostApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		E7FD7BEAA66842488FC296C0 /* PBXTargetDependency */ = {
+		9755FBF755761ABF7684B12E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 124837510B21B5DF2970A399 /* GenUIWidget */;
-			targetProxy = 986AF1947DEAC60598940D5E /* PBXContainerItemProxy */;
+			target = A62E77A58D76991D756E6B1A /* GrokShellWidget */;
+			targetProxy = 69E8A1780FB05F1B69003A35 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		05511DA683601DCC636C3679 /* Debug */ = {
+		0D7B2BF17A979D25BA7ED69B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -248,21 +248,21 @@
 			};
 			name = Debug;
 		};
-		33142F9EB97E7E0F6A679181 /* Debug */ = {
+		5CBDBECA14827770A2F77FC0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = GenUIWidget/GenUIWidget.entitlements;
+				CODE_SIGN_ENTITLEMENTS = GrokShellWidget/GrokShellWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = GenUIWidget/Info.plist;
+				INFOPLIST_FILE = GrokShellWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.genui.host.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grokshell.host.widget;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -270,7 +270,51 @@
 			};
 			name = Debug;
 		};
-		5CBB52BAA0096AE0A1FDB9F5 /* Release */ = {
+		70D9A8EB4FA738A6E7D0EB01 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Grok Shell Widgets";
+				INFOPLIST_KEY_LSUIElement = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grokshell.host;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Debug;
+		};
+		77266F6AA7A4BDFDE7713492 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Grok Shell Widgets";
+				INFOPLIST_KEY_LSUIElement = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grokshell.host;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.10;
+			};
+			name = Release;
+		};
+		9707672873D10681FF1889A5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -325,21 +369,21 @@
 			};
 			name = Release;
 		};
-		7954FF71CCF9D2CD2E1FFE13 /* Release */ = {
+		CC28B2AFE2B5E3AE0276701C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = GenUIWidget/GenUIWidget.entitlements;
+				CODE_SIGN_ENTITLEMENTS = GrokShellWidget/GrokShellWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = GenUIWidget/Info.plist;
+				INFOPLIST_FILE = GrokShellWidget/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.genui.host.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.grokshell.host.widget;
 				PRODUCT_BUNDLE_PACKAGE_TYPE = "XPC!";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -347,81 +391,37 @@
 			};
 			name = Release;
 		};
-		977259A9655A35A1BCD4FFAF /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Gen UI Widgets";
-				INFOPLIST_KEY_LSUIElement = NO;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.genui.host;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.10;
-			};
-			name = Release;
-		};
-		E0D192465B198A65B7DFB127 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Gen UI Widgets";
-				INFOPLIST_KEY_LSUIElement = NO;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.genui.host;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.10;
-			};
-			name = Debug;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A40701FA0CE37E672C6D7280 /* Build configuration list for PBXNativeTarget "GenUIWidget" */ = {
+		1AD035CB1043666E839E7A8D /* Build configuration list for PBXNativeTarget "GrokShellWidget" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				33142F9EB97E7E0F6A679181 /* Debug */,
-				7954FF71CCF9D2CD2E1FFE13 /* Release */,
+				5CBDBECA14827770A2F77FC0 /* Debug */,
+				CC28B2AFE2B5E3AE0276701C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		C1D0FCCFD936C704C09A48DF /* Build configuration list for PBXProject "GenUIWidgets" */ = {
+		4524E9CB18688DEBB7E15F18 /* Build configuration list for PBXProject "GrokShellWidgets" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				05511DA683601DCC636C3679 /* Debug */,
-				5CBB52BAA0096AE0A1FDB9F5 /* Release */,
+				0D7B2BF17A979D25BA7ED69B /* Debug */,
+				9707672873D10681FF1889A5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		D9B80794220CDC2614853FFC /* Build configuration list for PBXNativeTarget "GenUIHost" */ = {
+		FB7AC43B3F51D69163FA39A9 /* Build configuration list for PBXNativeTarget "GrokShellHost" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				E0D192465B198A65B7DFB127 /* Debug */,
-				977259A9655A35A1BCD4FFAF /* Release */,
+				70D9A8EB4FA738A6E7D0EB01 /* Debug */,
+				77266F6AA7A4BDFDE7713492 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = F27E65E461EDA93F21ADFF2F /* Project object */;
+	rootObject = 326062D340613CAD032F5A55 /* Project object */;
 }

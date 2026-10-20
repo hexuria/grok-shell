@@ -7,7 +7,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { createOfficeMcpServer } from "./agents/mcp.ts";
 import type { DocumentRenderer } from "./agents/types.ts";
 
-// gen-ui-chat: the workspace is the generated-files dir (what file cards show),
+// grok-shell: the workspace is the generated-files dir (what file cards show),
 // overridable with GEN_OFFICE_ROOT for testing.
 function resolveRoot(env: NodeJS.ProcessEnv = process.env): string {
   return env.GEN_OFFICE_ROOT?.trim()
@@ -23,7 +23,7 @@ async function main() {
     },
   });
   if (values.help) {
-    process.stderr.write("Usage: office-mcp [--root <directory>] [--read-only]\n\ngen-ui-chat's bundled BetterOffice stdio MCP server for DOCX, XLSX, and PPTX create/read/edit/export.\n");
+    process.stderr.write("Usage: office-mcp [--root <directory>] [--read-only]\n\ngrok-shell's bundled BetterOffice stdio MCP server for DOCX, XLSX, and PPTX create/read/edit/export.\n");
     return;
   }
   // Rendering needs @napi-rs/canvas and @betteroffice/fonts; when they are

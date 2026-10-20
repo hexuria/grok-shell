@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 xcodegen
 # A fresh build number every build — WidgetKit keys extension registration
 # on (bundle id, build); without it the system keeps serving a stale appex.
-xcodebuild -scheme GenUIHost -configuration Debug -derivedDataPath build \
+xcodebuild -scheme GrokShellHost -configuration Debug -derivedDataPath build \
     CURRENT_PROJECT_VERSION="$(date +%Y%m%d%H%M)" \
     ${DEVELOPMENT_TEAM:+DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM} \
     ${DEVELOPMENT_TEAM:-CODE_SIGN_IDENTITY=-} \
@@ -20,17 +20,17 @@ xcodebuild -scheme GenUIHost -configuration Debug -derivedDataPath build \
 if [ -z "$DEVELOPMENT_TEAM" ]; then
     CERT="${CODESIGN_CERT:-$(security find-identity -v -p codesigning \
         | awk '/Apple Development/{print $2; exit}')}" # hash, not name (dup certs are ambiguous)
-    APP=build/Build/Products/Debug/GenUIHost.app
-    APPEX="$APP/Contents/PlugIns/GenUIWidget.appex"
+    APP=build/Build/Products/Debug/GrokShellHost.app
+    APPEX="$APP/Contents/PlugIns/GrokShellWidget.appex"
     [ -n "$CERT" ] && {
         codesign --force --sign "$CERT" \
-            --entitlements GenUIWidget/GenUIWidget.entitlements \
+            --entitlements GrokShellWidget/GrokShellWidget.entitlements \
             --timestamp=none "$APPEX"
         codesign --force --sign "$CERT" --timestamp=none "$APP"
         echo "Re-signed with: $CERT"
     }
 fi
 echo
-echo "Built: native-widget/build/Build/Products/Debug/GenUIHost.app"
+echo "Built: native-widget/build/Build/Products/Debug/GrokShellHost.app"
 echo "Next:  copy it to /Applications, run it once, then add the widget"
-echo "       (Notification Center → Edit Widgets → Gen UI Widgets)."
+echo "       (Notification Center → Edit Widgets → Grok Shell Widgets)."

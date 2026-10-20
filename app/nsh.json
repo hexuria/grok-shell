@@ -1,6 +1,6 @@
 {
   "name": "Grok Shell",
-  "id": "com.example.genuichat",
+  "id": "com.example.grok-shell",
   "version": "1.0.0",
   "build": 1,
   "capabilities": {

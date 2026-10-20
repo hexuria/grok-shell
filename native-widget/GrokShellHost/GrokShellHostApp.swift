@@ -7,7 +7,7 @@ import WidgetKit
 // otherwise keeps serving an entry rendered by the OLD extension build
 // until the next scheduled refresh, which hides rebuilds.
 @main
-struct GenUIHostApp: App {
+struct GrokShellHostApp: App {
     init() {
         WidgetCenter.shared.reloadAllTimelines()
     }

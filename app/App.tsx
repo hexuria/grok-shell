@@ -602,7 +602,7 @@ function App() {
     Window.setTitleBar("hidden", 44);
     Menu.setApplicationMenu([
       {
-        label: "Gen UI Chat",
+        label: "Grok Shell",
         submenu: [
           { role: "about" },
           { type: "separator" },
@@ -1810,7 +1810,7 @@ function App() {
                 onHoverIn={() => pillHover.set(true)}
                 onHoverOut={() => pillHover.set(false)}
                 activeOpacity={0.85}
-                accessibilityLabel={activeBot()?.name ?? "Gen UI Chat"}
+                accessibilityLabel={activeBot()?.name ?? "Grok Shell"}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -1840,7 +1840,7 @@ function App() {
                   />
                 </If>
                 <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500" }}>
-                  {activeBot()?.name ?? "Gen UI Chat"}
+                  {activeBot()?.name ?? "Grok Shell"}
                 </Text>
                 <If when={pillHover() && !rightEff()}>
                   <Text style={{ color: tc("#f5f5f5a8"), fontSize: 16 }}>›</Text>

@@ -102,8 +102,8 @@ Two agents (or two branches) often need separate running apps. The layout
 supports it, with caveats.
 
 ```sh
-git worktree add ../gen-ui-chat-<name> <branch>
-cd ../gen-ui-chat-<name> && npm install
+git worktree add ../grok-shell-<name> <branch>
+cd ../grok-shell-<name> && npm install
 ```
 
 **State is isolated per worktree.** Each checkout has its own

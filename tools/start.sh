@@ -1,5 +1,5 @@
 #!/bin/bash
-# Launches gen-ui-chat end to end: the generation server (Claude via
+# Launches grok-shell end to end: the generation server (Claude via
 # `secret`) plus the chat app in a Native Shell host.
 #
 # Uses the patched nsh checkout by default (Window.setFrame / setLevel —

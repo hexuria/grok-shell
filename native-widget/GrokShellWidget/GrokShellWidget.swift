@@ -74,7 +74,7 @@ struct FeedEntry: TimelineEntry {
 struct RefreshIntent: AppIntent {
     static var title: LocalizedStringResource = "Refresh"
     func perform() async throws -> some IntentResult {
-        WidgetCenter.shared.reloadTimelines(ofKind: "GenUILinearWidget")
+        WidgetCenter.shared.reloadTimelines(ofKind: "GrokShellLinearWidget")
         return .result()
     }
 }
@@ -198,7 +198,7 @@ struct Provider: AppIntentTimelineProvider {
 
 private let accent = Color(red: 0.37, green: 0.42, blue: 0.83)
 
-struct GenUIFeedView: View {
+struct GrokShellFeedView: View {
     @Environment(\.widgetFamily) var family
     var entry: FeedEntry
 
@@ -596,11 +596,11 @@ struct GenUIFeedView: View {
 
 // MARK: - Widget + bundle
 
-struct GenUIFeedWidget: Widget {
-    let kind = "GenUILinearWidget" // keep kind stable — placed widgets update in place
+struct GrokShellFeedWidget: Widget {
+    let kind = "GrokShellLinearWidget" // keep kind stable — placed widgets update in place
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, intent: SelectWidgetIntent.self, provider: Provider()) { entry in
-            GenUIFeedView(entry: entry)
+            GrokShellFeedView(entry: entry)
                 .containerBackground(.regularMaterial, for: .widget)
         }
         .configurationDisplayName("Gen UI Feed")
@@ -610,8 +610,8 @@ struct GenUIFeedWidget: Widget {
 }
 
 @main
-struct GenUIWidgetBundle: WidgetBundle {
+struct GrokShellWidgetBundle: WidgetBundle {
     var body: some Widget {
-        GenUIFeedWidget()
+        GrokShellFeedWidget()
     }
 }

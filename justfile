@@ -75,7 +75,7 @@ publish-signed: build
       {{nsh}} keygen keys/root
       {{nsh}} keygen keys/release
       {{nsh}} certify --root keys/root.secret --key keys/release.pub \
-        --apps com.example.genuichat --out keys/release.cert
+        --apps com.example.grok-shell --out keys/release.cert
       echo "created keys/ (gitignored)"
     fi
     {{nsh}} publish app --key keys/release.secret --cert keys/release.cert

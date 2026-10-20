@@ -356,7 +356,7 @@ export function mockFiles(dir) {
     execFileSync("sips", ["-c", "210", "420", join(dir, "chip.png")], { stdio: "ignore" });
     out.push(join(dir, "chip.png"));
   } catch {}
-  put("README.md", "# Gen UI Chat\n\nA **native** generative-UI chat.\n\n- Grok-style sidebar\n- Model picker via *opencodex*\n- File viewers\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\n| Feature | Status |\n| --- | --- |\n| Viewers | done |\n");
+  put("README.md", "# Grok Shell\n\nA **native** generative-UI chat.\n\n- Grok-style sidebar\n- Model picker via *opencodex*\n- File viewers\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\n| Feature | Status |\n| --- | --- |\n| Viewers | done |\n");
   put("main.rs", `use std::collections::HashMap;\n\n/// Counts words in a sentence.\nfn count_words(text: &str) -> HashMap<&str, usize> {\n    let mut counts = HashMap::new();\n    for word in text.split_whitespace() {\n        *counts.entry(word).or_insert(0) += 1;\n    }\n    counts\n}\n\nfn main() {\n    let counts = count_words("the quick brown fox jumps over the lazy dog the end");\n    let mut pairs: Vec<_> = counts.into_iter().collect();\n    pairs.sort_by(|a, b| b.1.cmp(&a.1));\n    for (word, n) in pairs.iter().take(3) {\n        println!("{word}: {n}");\n    }\n}\n`);
   put("App.tsx", `import { signal, Text, View } from "nsh";\n\nexport default function Counter() {\n  const n = signal(0);\n  return (\n    <View onPress={() => n.update((v) => v + 1)}>\n      <Text>{\`Clicked \${n()} times\`}</Text>\n    </View>\n  );\n}\n`);
   put("data.json", JSON.stringify({ bot: "Kiffy", model: { id: "gpt-6-luna", effort: "max", fast: false }, tags: ["native", "nsh"], count: 3, ok: true }));
