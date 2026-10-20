@@ -5,7 +5,9 @@
 #   nsh run — the Native Shell window (dev server + hot reload; Cmd+R reloads)
 # `just status` shows who is serving what — vital when several worktrees run.
 
-nsh := env_var_or_default("NSH", "/Volumes/goldcoders/Projects/nsh/target/release/nsh")
+# $NSH overrides; otherwise `nsh` resolves on PATH (needs the patched fork —
+# see README). NSH=<path> just run etc.
+nsh := env_var_or_default("NSH", "nsh")
 
 default:
     @just --list

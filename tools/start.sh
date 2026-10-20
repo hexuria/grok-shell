@@ -8,12 +8,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-# Release first: the debug host is several times slower on the UI thread
-# (objc2 checks every message's signature in debug builds).
-NSH_REPO=/Volumes/goldcoders/Projects/nsh
-NSH="${NSH:-$NSH_REPO/target/release/nsh}"
-[ -x "$NSH" ] || NSH="$NSH_REPO/target/debug/nsh"
-[ -x "$NSH" ] || NSH=nsh
+# nsh binary: $NSH, else `nsh` on PATH. Pop-outs/typechecks need the patched
+# fork (Window.setFrame/setLevel, onContextMenu); point NSH at your build
+# (e.g. NSH=<nsh repo>/target/release/nsh) or install it on PATH.
+NSH="${NSH:-nsh}"
 
 # Generation server (idempotent: an existing one is reused).
 if ! curl -sf -o /dev/null "http://127.0.0.1:8787/widget-feed"; then

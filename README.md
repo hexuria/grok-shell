@@ -58,10 +58,12 @@ The `justfile` wraps the everyday commands: `just run` (full app),
 (installable `.app`), `just status` (which worktree owns :8787 — see
 below), `just stop`, `just clean`.
 
-`tools/start.sh` resolves the nsh binary as `$NSH`, then
-`<nsh repo>/target/release/nsh` (release first — the debug host is several
-times slower on the UI thread), then debug, then `nsh` on `PATH`, and reuses
-an already-running server instead of starting a second one.
+`tools/start.sh` resolves the nsh binary as `$NSH`, else `nsh` on `PATH`,
+and reuses an already-running server instead of starting a second one. The
+app needs the patched fork (`Window.setFrame`/`setLevel`, `onContextMenu`,
+`onMouseMove` — see Stow'd `NSH-FEATURE-REQUEST.md`): build
+`<nsh checkout>/target/release/nsh` and put it on `PATH` (alongside
+`nsh-macos-host`) or export `NSH=<path>`/`NSH_HOST=<path>`.
 
 To run the pieces by hand:
 
