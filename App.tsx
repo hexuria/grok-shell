@@ -596,7 +596,7 @@ function App() {
   // stay at their native spot; our strip is `titleBar().height` tall so our
   // controls sit level with them. Real app menu too.
   if (isAvailable) {
-    Window.setTitle("Gen UI Chat");
+    Window.setTitle("Grok Shell");
     // a 44pt bar: the lights land at Grok's ~15pt inset instead of AppKit's
     // own (9pt in a 32pt bar — the row kept its tighter native spot)
     Window.setTitleBar("hidden", 44);

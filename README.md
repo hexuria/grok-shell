@@ -48,8 +48,14 @@ checkout, or the `nsh` CLI on `PATH`).
 
 ```sh
 npm install          # server deps + BetterOffice engines
-tools/start.sh       # gen server (127.0.0.1:8787) + Native Shell host
+just run             # or: tools/start.sh — gen server (:8787) + Native Shell host
 ```
+
+The `justfile` wraps the everyday commands: `just run` (full app),
+`just server` (backend only, idempotent), `just server-mock` (offline),
+`just build` (typecheck + bundle + office editor), `just publish`
+(installable `.app`), `just status` (which worktree owns :8787 — see
+below), `just stop`, `just clean`.
 
 `tools/start.sh` resolves the nsh binary as `$NSH`, then
 `<nsh repo>/target/release/nsh` (release first — the debug host is several
