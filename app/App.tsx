@@ -1188,8 +1188,13 @@ function App() {
     const next = d?.servers || [];
     if (JSON.stringify(next) !== JSON.stringify(mcpServers())) mcpServers.set(next);
   };
+  // Poll while the tab is open — the agent can also change servers from
+  // chat (mcp_install/disable), which only the server knows about.
   effect(() => {
-    if (detailTab() === "connect") fetchMcp();
+    if (detailTab() !== "connect") return;
+    fetchMcp();
+    const t = setInterval(fetchMcp, 2000);
+    cleanup(() => clearInterval(t));
   });
   const mcpMenu = (s: { id: string; name: string; enabled: boolean }) =>
     Menu.popup([
