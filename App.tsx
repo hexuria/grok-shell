@@ -200,7 +200,7 @@ function App() {
   const upDraft = signal<AvatarDraft | null>(null);
   const draftCrop = signal<{ s: number; x: number; y: number }>({ s: 1, x: 0, y: 0 });
   const avatarErr = signal("");
-  const threadApps = signal<{ name: string; title: string; subtitle: string; published: boolean; mtime: number }[]>([]);
+  const threadApps = signal<{ name: string; title: string; file: string; subtitle: string; published: boolean; mtime: number }[]>([]);
   const activeId = signal("");
   const model = signal("…");
   const sideMode = signal("full"); // "full" | "rail"
@@ -775,6 +775,11 @@ function App() {
     if (name && !sections().includes(name)) sections.set([...sections(), name]);
     updateBot(id, { section: name, pinned: false });
   };
+  const deleteBot = async (b: BotMeta) => {
+    await post("/bot/delete", { id: b.id });
+    await refreshThreads();
+    refreshTurns();
+  };
   const botMenu = (b: BotMeta) =>
     Menu.popup([
       { label: b.pinned ? "Unpin" : "Pin", onSelect: () => updateBot(b.id, { pinned: !b.pinned }) },
@@ -798,6 +803,8 @@ function App() {
         label: b.hidden ? "Show in sidebar" : "Hide from sidebar",
         onSelect: () => updateBot(b.id, { hidden: !b.hidden }),
       },
+      { type: "separator" },
+      { label: "Delete Bot", onSelect: () => deleteBot(b) },
     ]);
   const newMenu = () =>
     Menu.popup([
@@ -1103,18 +1110,35 @@ function App() {
     for (const a of threadApps()) g[now - a.mtime < day ? 0 : now - a.mtime < 7 * day ? 1 : 2].items.push(a);
     return g.filter((x) => x.items.length);
   };
-  effect(() => {
-    const thread = activeId();
-    threads();
-    if (!rightEff()) return;
-    fetch(`${GEN}/thread/apps?thread=${encodeURIComponent(thread)}`)
+  const fetchThreadApps = async () => {
+    const d = await fetch(`${GEN}/thread/apps?thread=${encodeURIComponent(activeId())}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        const next = d?.apps || [];
-        if (JSON.stringify(next) !== JSON.stringify(threadApps())) threadApps.set(next);
-      })
-      .catch(() => {});
+      .catch(() => null);
+    const next = d?.apps || [];
+    if (JSON.stringify(next) !== JSON.stringify(threadApps())) threadApps.set(next);
+  };
+  effect(() => {
+    activeId();
+    threads();
+    if (rightEff()) fetchThreadApps();
   });
+  // Library renames land in the server's apps table — the title is a label
+  // and the file name is display-only (the module stays R<n>.tsx on disk).
+  const appRename = signal<{ name: string; field: "title" | "file" } | null>(null);
+  const appRenameText = signal("");
+  const appMenu = (a: { name: string; title: string; file: string }) =>
+    Menu.popup([
+      { label: "Rename Title…", onSelect: () => { appRenameText.set(a.title); appRename.set({ name: a.name, field: "title" }); } },
+      { label: "Rename File Name…", onSelect: () => { appRenameText.set(a.file); appRename.set({ name: a.name, field: "file" }); } },
+    ]);
+  const saveAppRename = async () => {
+    const r = appRename();
+    const v = appRenameText().trim();
+    appRename.set(null);
+    if (!r || !v) return;
+    await post("/app/meta", r.field === "title" ? { name: r.name, title: v } : { name: r.name, file: v });
+    fetchThreadApps();
+  };
   const openAvatarEditor = () => {
     avatarHover.set(false);
     panelEditK.timing(0, { duration: 200 });
@@ -2037,6 +2061,7 @@ function App() {
                           {(a) => (
                             <View
                               onPress={() => post("/popout", { name: a().name })}
+                              onContextMenu={() => appMenu(a())}
                               activeOpacity={0.7}
                               style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8 }}
                             >
@@ -2045,7 +2070,7 @@ function App() {
                               </View>
                               <View style={{ flex: 1, minWidth: 0 }}>
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, lineHeight: 18 }}>{a().title}</Text>
-                                <Text numberOfLines={1} style={{ color: tc("#f5f5f58a"), fontSize: 12, lineHeight: 16 }}>{a().name}.tsx</Text>
+                                <Text numberOfLines={1} style={{ color: tc("#f5f5f58a"), fontSize: 12, lineHeight: 16 }}>{a().file}</Text>
                               </View>
                               <Text style={{ color: tc("#f5f5f58a"), fontSize: 13, lineHeight: 18 }}>{ago(a().mtime)}</Text>
                             </View>
@@ -2630,6 +2655,46 @@ function App() {
                   style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: tc("#f5f5f5") }}
                 >
                   <Text style={{ color: tc("#121212"), fontSize: 13, fontWeight: "600" }}>Move</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </If>
+
+        {/* ————— Library rename: title / display file name ————— */}
+        <If when={!!appRename()}>
+          <View
+            onPress={() => appRename.set(null)}
+            style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "#00000080", alignItems: "center", justifyContent: "center" }}
+          >
+            <View
+              onPress={() => {}}
+              style={{ width: 320, borderRadius: 16, backgroundColor: tc("#1f1f1f"), borderWidth: 0.5, borderColor: tc("#f5f5f51a"), padding: 16, gap: 12 }}
+            >
+              <Text style={{ color: tc("#f5f5f5"), fontSize: 15, fontWeight: "600" }}>
+                {appRename()?.field === "file" ? "Rename File Name" : "Rename Title"}
+              </Text>
+              <View style={{ borderRadius: 10, borderWidth: 1, borderColor: tc("#f5f5f51f"), backgroundColor: tc("#161616"), paddingHorizontal: 10 }}>
+                <Input
+                  value={appRenameText()}
+                  onChangeText={(t) => appRenameText.set(t)}
+                  placeholder={appRename()?.field === "file" ? "file-name.tsx" : "App title"}
+                  placeholderTextColor={tc("#f5f5f566")}
+                  autoFocus
+                  onSubmitEditing={saveAppRename}
+                  style={{ fontSize: 14, color: tc("#f5f5f5"), paddingVertical: 9 }}
+                />
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+                <View onPress={() => appRename.set(null)} activeOpacity={0.7} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 }}>
+                  <Text style={{ color: dim(), fontSize: 13, fontWeight: "500" }}>Cancel</Text>
+                </View>
+                <View
+                  onPress={saveAppRename}
+                  activeOpacity={0.7}
+                  style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: tc("#f5f5f5") }}
+                >
+                  <Text style={{ color: tc("#121212"), fontSize: 13, fontWeight: "600" }}>Rename</Text>
                 </View>
               </View>
             </View>

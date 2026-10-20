@@ -299,6 +299,7 @@ db.exec(`
     id TEXT PRIMARY KEY, name TEXT NOT NULL, shape TEXT NOT NULL,
     color TEXT NOT NULL, thread_id TEXT, ord INTEGER NOT NULL DEFAULT 0);
   CREATE TABLE IF NOT EXISTS kv(name TEXT PRIMARY KEY, data TEXT);
+  CREATE TABLE IF NOT EXISTS apps(name TEXT PRIMARY KEY, title TEXT, file TEXT);
   CREATE TABLE IF NOT EXISTS timeclock(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     clock_in TEXT NOT NULL, clock_out TEXT);
@@ -314,6 +315,21 @@ for (const col of ["pinned INTEGER DEFAULT 0", "section TEXT", "hidden INTEGER D
 const metaGet = (k) => db.prepare("SELECT v FROM meta WHERE k=?").get(k)?.v;
 const metaSet = (k, v) =>
   db.prepare("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)").run(k, v);
+
+// A module's display filename (Library rows, /app/meta renames): kebab-case
+// plus ".tsx", or "" when nothing usable is left. Never the real file —
+// R<n>.tsx stays the module's name on disk and in imports.
+const slugFile = (s) => {
+  const slug = String(s || "")
+    .trim()
+    .replace(/\.tsx$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+  return /^[a-z0-9][a-z0-9-]{0,39}$/.test(slug) ? `${slug}.tsx` : "";
+};
 
 function loadStore() {
   const s = {
@@ -1517,6 +1533,16 @@ const TOOLS = [
           type: "string",
           description: "optional one-line markdown caption rendered above the card",
         },
+        title: {
+          type: "string",
+          description:
+            'optional short product name for the app (e.g. "Tiny Trajectory") — the Library lists it under this',
+        },
+        slug: {
+          type: "string",
+          description:
+            'optional kebab-case display filename, no extension (e.g. "tiny-trajectory" → tiny-trajectory.tsx)',
+        },
       },
       required: ["code"],
     },
@@ -1562,7 +1588,7 @@ const agentSystem = () => `You are the assistant inside a generative-UI chat app
 
 Reply style: GitHub-flavored markdown, concise. Conversation, questions, and explanations get a text reply — do NOT build a card for those. When the user asks about their own data use query_source first, then answer (or build a widget from what it returns).
 
-When a real interface is what they want — apps, games, trackers, dashboards, forms, anything interactive or persistent — call generate_app once with the complete module. The server typechecks it; if it returns a compiler error, fix the code and call again (a few tries is normal). You may build more than one card in a turn when the request implies it.
+When a real interface is what they want — apps, games, trackers, dashboards, forms, anything interactive or persistent — call generate_app once with the complete module. The server typechecks it; if it returns a compiler error, fix the code and call again (a few tries is normal). You may build more than one card in a turn when the request implies it. Always set generate_app's title (a short product name, e.g. "Tiny Trajectory") and slug (kebab-case, e.g. tiny-trajectory) — they name the app in the user's Library.
 
 Compose tools: search the web or query a source first, then build the widget around real results — that composition is the point of this app.
 
@@ -1624,6 +1650,13 @@ async function toolGenerateApp(job, thread, input) {
       is_error: true,
     };
   writeFileSync(join(GEN_DIR, `${name}.tsx`), code);
+  db.prepare(
+    "INSERT OR REPLACE INTO apps(name,title,file) VALUES(?,?,?)",
+  ).run(
+    name,
+    String(input.title || "").trim().slice(0, 60) || null,
+    slugFile(input.slug) || null,
+  );
   thread.turns.push({
     role: "ai",
     name,
@@ -2369,6 +2402,46 @@ const server = createServer((req, res) => {
     });
     return;
   }
+  // Deleting a bot removes its thread AND the artifacts its turns point at:
+  // the generated module, its /state rows, its apps meta. Published Mini
+  // Apps survive — their live copy is widgets/<name>.tsx, untouched here.
+  if (req.method === "POST" && req.url === "/bot/delete") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const { id } = JSON.parse(body || "{}");
+        const bot = store.bots.find((b) => b.id === id);
+        if (!bot) throw new Error(`unknown bot ${id}`);
+        const thread = store.list.find((t) => t.id === bot.threadId);
+        const published = new Set(
+          db.prepare("SELECT name FROM widgets").all().map((w) => w.name),
+        );
+        for (const u of thread?.turns || []) {
+          const name = u.role === "ai" ? u.name : "";
+          if (!/^R\d+$/.test(name || "") || published.has(name)) continue;
+          try {
+            unlinkSync(join(GEN_DIR, `${name}.tsx`));
+          } catch {}
+          db.prepare("DELETE FROM kv WHERE name=?").run(name);
+          db.prepare("DELETE FROM apps WHERE name=?").run(name);
+        }
+        store.bots = store.bots.filter((b) => b.id !== id);
+        store.list = store.list.filter((t) => t.id !== bot.threadId);
+        // never leave the app threadless — /threads dereferences one
+        if (!store.list.length)
+          store.list.push({ id: `t${threadSeq++}`, title: "new chat", turns: [] });
+        if (store.active === bot.threadId) store.active = store.list[0].id;
+        writeIndex();
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    });
+    return;
+  }
   // Image avatars (Grok's Generate / Upload tabs): files land in
   // generated/avatars and the app shows them by file:// URI.
   // Mermaid, rendered by mermaid.js in a web view (served locally: the web
@@ -2825,6 +2898,9 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
     const id = new URL(req.url, "http://localhost").searchParams.get("thread");
     const t = (id && store.list.find((x) => x.id === id)) || activeThread();
     const published = new Set(db.prepare("SELECT name FROM widgets").all().map((w) => w.name));
+    const metas = new Map(
+      db.prepare("SELECT name,title,file FROM apps").all().map((r) => [r.name, r]),
+    );
     const seen = new Set();
     const apps = [];
     for (let i = t.turns.length - 1; i >= 0; i--) {
@@ -2835,9 +2911,11 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
       for (let j = i - 1; j >= 0; j--) if (t.turns[j].role === "user") { prompt = t.turns[j].text || ""; break; }
       const file = join(GEN_DIR, `${u.name}.tsx`);
       const caption = u.caption && !/error|implicit|rejected/i.test(u.caption) ? u.caption : "";
+      const meta = metas.get(u.name) || {};
       apps.push({
         name: u.name,
-        title: u.label || caption || prompt.slice(0, 60) || u.name,
+        title: meta.title || u.label || caption || prompt.slice(0, 60) || u.name,
+        file: meta.file || `${u.name}.tsx`,
         subtitle: prompt.replace(/\s+/g, " ").slice(0, 120),
         published: published.has(u.name),
         mtime: existsSync(file) ? statSync(file).mtimeMs : 0,
@@ -2845,6 +2923,40 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
     }
     res.setHeader("content-type", "application/json");
     return res.end(JSON.stringify({ apps }));
+  }
+  // POST /app/meta {name, title?, file?} — the Library's renames: a display
+  // title and/or a kebab-case display filename. The real module file
+  // (R<n>.tsx) never moves — `file` is a label, not a rename on disk.
+  if (req.method === "POST" && req.url === "/app/meta") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const { name, title, file } = JSON.parse(body || "{}");
+        if (!/^R\d+$/.test(String(name || "")))
+          throw new Error(`no such module ${name}`);
+        const cur =
+          db.prepare("SELECT title,file FROM apps WHERE name=?").get(name) ||
+          {};
+        const t =
+          title === undefined
+            ? (cur.title ?? null)
+            : String(title).trim().slice(0, 60) || null;
+        const f =
+          file === undefined ? (cur.file ?? null) : slugFile(file) || null;
+        db.prepare(
+          "INSERT OR REPLACE INTO apps(name,title,file) VALUES(?,?,?)",
+        ).run(name, t, f);
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({ ok: true, title: t || "", file: f || `${name}.tsx` }),
+        );
+      } catch (e) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    });
+    return;
   }
   // The model picker's catalog: opencodex's models (its "--fast" twins fold
   // into a `fast` flag), each with its effort ladder and default.
