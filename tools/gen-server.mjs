@@ -2817,10 +2817,13 @@ window.addEventListener("message",(e)=>{const c=e.data;z=c==="in"?Math.min(4,z*1
     return res.end(JSON.stringify({ ok: true }));
   }
   // ————— publish / widgets shelf / persisted state —————
-  // The right pane's Details / Library: the active thread's generated apps
-  // (newest first) with their caption, Mini Apps state and file age.
-  if (req.method === "GET" && req.url === "/thread/apps") {
-    const t = activeThread();
+  // The right pane's Details / Library: the viewed thread's generated apps
+  // (newest first) with their caption, Mini Apps state and file age — the
+  // app names its thread; the server's own active thread is wherever the
+  // last generation ran, which leaked one bot's apps into another's pane.
+  if (req.method === "GET" && req.url.split("?")[0] === "/thread/apps") {
+    const id = new URL(req.url, "http://localhost").searchParams.get("thread");
+    const t = (id && store.list.find((x) => x.id === id)) || activeThread();
     const published = new Set(db.prepare("SELECT name FROM widgets").all().map((w) => w.name));
     const seen = new Set();
     const apps = [];

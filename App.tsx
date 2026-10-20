@@ -1104,10 +1104,10 @@ function App() {
     return g.filter((x) => x.items.length);
   };
   effect(() => {
-    activeId();
+    const thread = activeId();
     threads();
     if (!rightEff()) return;
-    fetch(`${GEN}/thread/apps`)
+    fetch(`${GEN}/thread/apps?thread=${encodeURIComponent(thread)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const next = d?.apps || [];
