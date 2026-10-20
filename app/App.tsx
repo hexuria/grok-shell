@@ -1177,6 +1177,53 @@ function App() {
     threads();
     if (rightEff()) fetchThreadApps();
   });
+  // Connected MCP servers (Connect tab): live status from the server.
+  const mcpServers = signal<{ id: string; name: string; command: string; args: string[]; enabled: boolean; bot: string | null; status: string; tools: number; err: string | null }[]>([]);
+  const mcpFormOpen = signal(false);
+  const mcpForm = signal({ name: "", command: "", args: "", env: "", scope: "all" as "all" | "bot" });
+  const mcpErr = signal("");
+  const mcpBusy = signal(false);
+  const fetchMcp = async () => {
+    const d = await fetch(`${GEN}/mcp/servers`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const next = d?.servers || [];
+    if (JSON.stringify(next) !== JSON.stringify(mcpServers())) mcpServers.set(next);
+  };
+  effect(() => {
+    if (detailTab() === "connect") fetchMcp();
+  });
+  const mcpMenu = (s: { id: string; name: string; enabled: boolean }) =>
+    Menu.popup([
+      s.enabled
+        ? { label: "Disable", onSelect: () => post("/mcp/server/state", { id: s.id, enabled: false }).then(fetchMcp) }
+        : { label: "Enable", onSelect: () => post("/mcp/server/state", { id: s.id, enabled: true }).then(fetchMcp) },
+      { label: "Reconnect", onSelect: () => post("/mcp/servers", { id: s.id }).then(fetchMcp) },
+      { type: "separator" },
+      { label: "Remove…", onSelect: () => post("/mcp/server/delete", { id: s.id }).then(fetchMcp) },
+    ]);
+  const addMcpServer = async () => {
+    if (mcpBusy()) return;
+    mcpErr.set("");
+    const f = mcpForm();
+    if (!f.name.trim() || !f.command.trim()) { mcpErr.set("name and command are required"); return; }
+    mcpBusy.set(true);
+    try {
+      const env = Object.fromEntries(
+        f.env.split(";").map((p) => p.trim().match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/)).filter(Boolean).map((m) => [m![1], m![2]]),
+      );
+      const r = await post("/mcp/servers", {
+        name: f.name.trim(), command: f.command.trim(), args: f.args.trim(), env,
+        bot: f.scope === "bot" ? activeBot()?.id : undefined,
+      });
+      if (!r) { mcpErr.set("server unreachable"); return; }
+      const d = await r.json().catch(() => null);
+      if (!r.ok || d?.ok === false) mcpErr.set(d?.error || `connect failed (${r.status})`);
+      else if (d?.status === "error") mcpErr.set(d.err || "server failed to start");
+      else { mcpForm.set({ name: "", command: "", args: "", env: "", scope: "all" }); mcpFormOpen.set(false); }
+      await fetchMcp();
+    } finally {
+      mcpBusy.set(false);
+    }
+  };
   // Library renames land in the server's apps table — the title is a label
   // and the file name is display-only (the module stays R<n>.tsx on disk).
   const appRename = signal<{ name: string; field: "title" | "file" | "label"; v?: number } | null>(null);
@@ -2107,7 +2154,7 @@ function App() {
               </If>
               {/* Details | Library | Computer — 13/18 pills, selected .04 */}
               <View style={{ flexDirection: "row", gap: 1, paddingTop: 14, paddingBottom: 10 }}>
-                <Each of={["details", "library", "computer"]}>
+                <Each of={["details", "library", "computer", "connect"]}>
                   {(tb) => (
                     <View
                       onPress={() => detailTab.set(tb())}
@@ -2234,6 +2281,96 @@ function App() {
                 </Each>
               </If>
               {/* Computer: 180pt #161616 card, the muted sleeping avatar + zzz */}
+              {/* Connect: MCP servers — global + this bot. Status is live:
+                  a server only spawns on first use or on add/edit probe. */}
+              <If when={detailTab() === "connect"}>
+                {paneLabel("Connected apps")}
+                <View style={paneCard()}>
+                  <If when={mcpServers().length === 0}>
+                    <Text style={{ color: dim(), fontSize: 13, lineHeight: 18, paddingVertical: 10, paddingHorizontal: 13 }}>
+                      No apps connected yet. Add an MCP server below — its tools become available to {activeBot()!.name}.
+                    </Text>
+                  </If>
+                  <Each of={mcpServers()}>
+                    {(s) => (
+                      <View
+                        onContextMenu={() => mcpMenu(s())}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 8, paddingHorizontal: 10 }}
+                      >
+                        <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: hue(s().id), alignItems: "center", justifyContent: "center" }}>
+                          <Text style={{ color: "#fff", fontSize: 11, fontWeight: "600" }}>⬡</Text>
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, lineHeight: 18 }}>{s().name}</Text>
+                            <If when={!s().bot}>
+                              <Text style={{ color: tc("#8fb6ff"), fontSize: 9, fontWeight: "700" }}>GLOBAL</Text>
+                            </If>
+                          </View>
+                          <Text numberOfLines={1} style={{ color: tc("#f5f5f58a"), fontSize: 11, lineHeight: 15 }}>
+                            {s().status === "connected"
+                              ? `${s().tools} tools · ${s().command} ${s().args.join(" ")}`
+                              : s().status === "error"
+                                ? `error — ${s().err || "failed to start"}`
+                                : s().status === "off"
+                                  ? `off · ${s().command} ${s().args.join(" ")}`
+                                  : `${s().command} ${s().args.join(" ")}`}
+                          </Text>
+                        </View>
+                        <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: s().status === "connected" ? "#32bb78" : s().status === "error" ? "#ff5f57" : s().status === "off" ? "#f5f5f533" : "#febc2e" }} />
+                      </View>
+                    )}
+                  </Each>
+                </View>
+
+                {/* add form */}
+                <View style={{ ...paneCard(), marginTop: 10, paddingVertical: 10, paddingHorizontal: 12, gap: 8 }}>
+                  <View onPress={() => mcpFormOpen.set(!mcpFormOpen())} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                    <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "600" }}>{mcpFormOpen() ? "− Cancel" : "＋ Connect app"}</Text>
+                    <Text style={{ color: dim(), fontSize: 11 }}>{mcpFormOpen() ? "" : "stdio MCP server"}</Text>
+                  </View>
+                  <If when={mcpFormOpen()}>
+                    <View style={{ gap: 8 }}>
+                      <Each of={["name", "command", "args", "env"]}>
+                        {(f) => (
+                          <View style={{ borderRadius: 8, borderWidth: 1, borderColor: tc("#f5f5f51a"), backgroundColor: tc("#161616"), paddingHorizontal: 9 }}>
+                            <Input
+                              value={mcpForm()[f() as "name" | "command" | "args" | "env"]}
+                              onChangeText={(t) => mcpForm.set({ ...mcpForm(), [f()]: t })}
+                              placeholder={{ name: "Name (e.g. Linear)", command: "Command (e.g. npx)", args: "Args (e.g. -y @modelcontextprotocol/server-…)", env: "Env (KEY=V; KEY2=V2) — optional" }[f() as "name" | "command" | "args" | "env"]}
+                              placeholderTextColor={tc("#f5f5f54d")}
+                              style={{ fontSize: 12, color: tc("#f5f5f5"), paddingVertical: 7 }}
+                            />
+                          </View>
+                        )}
+                      </Each>
+                      {/* scope: global vs this bot */}
+                      <View style={{ flexDirection: "row", gap: 6 }}>
+                        <Each of={["all", "bot"]}>
+                          {(sc) => (
+                            <View
+                              onPress={() => mcpForm.set({ ...mcpForm(), scope: sc() as "all" | "bot" })}
+                              activeOpacity={0.7}
+                              style={{ borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: mcpForm().scope === sc() ? tc("#f5f5f51a") : "transparent", borderWidth: 1, borderColor: mcpForm().scope === sc() ? tc("#f5f5f533") : tc("#f5f5f514") }}
+                            >
+                              <Text style={{ color: mcpForm().scope === sc() ? tc("#f5f5f5") : dim(), fontSize: 11 }}>
+                                {sc() === "all" ? "All bots" : `${activeBot()!.name} only`}
+                              </Text>
+                            </View>
+                          )}
+                        </Each>
+                      </View>
+                      <If when={!!mcpErr()}>
+                        <Text style={{ color: "#ff8f89", fontSize: 11, lineHeight: 15 }}>{mcpErr()}</Text>
+                      </If>
+                      <View onPress={addMcpServer} activeOpacity={0.8} style={{ alignSelf: "flex-start", borderRadius: 999, backgroundColor: tc("#f5f5f5"), paddingHorizontal: 14, paddingVertical: 7 }}>
+                        <Text style={{ color: tc("#121212"), fontSize: 12, fontWeight: "600" }}>{mcpBusy() ? "Connecting…" : "Connect"}</Text>
+                      </View>
+                    </View>
+                  </If>
+                </View>
+              </If>
+
               <If when={detailTab() === "computer"}>
                 <View
                   accessibilityLabel="Wake computer"
