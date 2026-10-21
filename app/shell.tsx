@@ -14,9 +14,10 @@ import { Menu } from "nsh/desktop";
 import { Markdown } from "./md";
 import { MODULES } from "../generated/index";
 
-// while the chat scrolls, hover bars stay dark — every row the pointer
-// crosses would otherwise light up mid-scroll (noise + wasted layout)
-export const chatScrolling = signal(false);
+// the scroll-idle flag lives in ./scroll (md.tsx and fileviewer.tsx read it
+// too — importing it from here would cycle); re-exported for App.tsx
+import { chatScrolling } from "./scroll";
+export { chatScrolling };
 
 // ChatGPT-style action row + chrome around every generated widget.
 //   👍 👎  persist a reaction   ·   ↻ regenerate in place (rewrites this module)
@@ -645,6 +646,11 @@ type Props = {
   children?: any;
 };
 
+// measured app heights by module key — a recycled cell frames its card at
+// the right size on the first layout instead of shrinking to the declared h
+// then growing when the app measures (the shift would jank the scroll)
+const cardHeights = new Map<string, number>();
+
 export function CardShell(props: Props) {
   const reaction = signal(props.reaction || "");
   const codeOpen = signal(false);
@@ -884,7 +890,16 @@ export function CardShell(props: Props) {
   const dw = props.art?.w || 480;
   const dh = props.art?.h || Math.round(dw * 0.75);
   const avail = signal(0); // measured column width; 0 until onLayout
-  const natH = signal(0); // measured app height at dw; 0 until onLayout
+  // seeded from the shared cache: a rebound cell frames at the app's real
+  // height immediately instead of declared-then-grow layout shift
+  const natH = signal(cardHeights.get(modKey) ?? 0);
+  // a recycled cell built mid-scroll mounts light: the app itself (a JS
+  // component eval + layout, unbounded cost) waits for the scroll to settle;
+  // once mounted it stays — a live app must not reset or vanish mid-scroll
+  const appOk = signal(!chatScrolling());
+  effect(() => {
+    if (!chatScrolling()) appOk.set(true);
+  });
   const fit = () => Math.min(1, 560 / dw, 560 / (natH() || dh), avail() ? (avail() - 24) / dw : 1);
   const iw = () => Math.max(140, Math.round(dw * fit()));
   const ih = () => Math.round((natH() || dh) * fit());
@@ -988,9 +1003,18 @@ export function CardShell(props: Props) {
           inner view measures its natural height (pop-out parity), the frame
           hugs it, and oversize scenes scale down whole, never clip */}
       <View style={{ width: iw(), height: ih(), borderRadius: 10, overflow: "hidden" }}>
-        <View style={{ width: dw, transform: [{ scale: fit() }], transformOrigin: "top left" }}>
-          <View onLayout={(e) => natH.set(e.height)}>{props.children}</View>
-        </View>
+        <If when={appOk()}>
+          <View style={{ width: dw, transform: [{ scale: fit() }], transformOrigin: "top left" }}>
+            <View
+              onLayout={(e) => {
+                natH.set(e.height);
+                cardHeights.set(modKey, e.height);
+              }}
+            >
+              {props.children}
+            </View>
+          </View>
+        </If>
       </View>
 
       <If when={codeOpen()}>

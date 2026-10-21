@@ -1,7 +1,8 @@
-import { Scroll, signal, Text, View } from "nsh";
+import { effect, Scroll, signal, Text, View } from "nsh";
 import { appearance, tc, tg } from "./theme";
 import { WebView } from "nsh/webview";
 import { mermaidUrl, openLightbox } from "./lightbox";
+import { chatScrolling } from "./scroll";
 
 // Minimal native markdown renderer — no webview, no JS libs.
 // Blocks: #/##/### headings, ``` fenced code (with copy), - / 1. lists, > quotes, paragraphs.
@@ -114,25 +115,34 @@ function Segs({ text }: { text: string }) {
 // reports it); a tap opens it in the lightbox with Grok's zoom pill
 // measured diagram sizes, so a thread opened again lays out at its final
 // height at once (a growing diagram shifts the transcript)
-const mermaidSizes = new Map<string, { w: number; h: number }>();
+const mermaidSizes = new Map<string, { w: number, h: number }>();
 function MermaidBlock({ code }: { code: string }) {
   const size = signal(mermaidSizes.get(code) ?? { w: 0, h: 60 });
+  // a recycled list cell built mid-scroll mounts light: the WebView (a full
+  // WebKit page render, ~50-150ms) waits for the scroll to settle, and once
+  // mounted never unmounts (a live diagram must not vanish mid-scroll)
+  const show = signal(!chatScrolling());
+  effect(() => {
+    if (!chatScrolling()) show.set(true);
+  });
   return (
     <View style={{ width: size().w || "100%", maxWidth: "100%", height: size().h }}>
-      <WebView
-        source={{ uri: mermaidUrl(code, "inline") }}
-        scrollEnabled={false}
-        onMessage={(e) => {
-          try {
-            const d = JSON.parse(e.data);
-            if (d.h && (d.w !== size().w || d.h !== size().h)) {
-              mermaidSizes.set(code, { w: d.w, h: d.h });
-              size.set({ w: d.w, h: d.h });
-            }
-          } catch {}
-        }}
-        style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
-      />
+      <If when={show()}>
+        <WebView
+          source={{ uri: mermaidUrl(code, "inline") }}
+          scrollEnabled={false}
+          onMessage={(e) => {
+            try {
+              const d = JSON.parse(e.data);
+              if (d.h && (d.w !== size().w || d.h !== size().h)) {
+                mermaidSizes.set(code, { w: d.w, h: d.h });
+                size.set({ w: d.w, h: d.h });
+              }
+            } catch {}
+          }}
+          style={{ width: "100%", height: "100%", backgroundColor: "transparent" }}
+        />
+      </If>
       <View
         onPress={() => openLightbox([{ kind: "diagram", code, name: "Diagram" }])}
         accessibilityLabel="Open diagram"
@@ -220,7 +230,13 @@ type Block =
   | { kind: "table"; rows: string[][] }
   | { kind: "p"; text: string };
 
+// parsed block trees by source — a recycled list cell re-mounts its markdown
+// on every rebind, and re-tokenizing a long reply each time is the kind of
+// invisible work that drops a frame
+const parseCache = new Map<string, Block[]>();
 function parse(src: string): Block[] {
+  const hit = parseCache.get(src);
+  if (hit) return hit;
   const blocks: Block[] = [];
   const fence = /```(\w*)\n?([\s\S]*?)(?:```|$)/g;
   let last = 0;
@@ -276,6 +292,9 @@ function parse(src: string): Block[] {
     }
     flush();
   }
+  // bounded: the oldest entry goes first once transcripts outgrow the map
+  if (parseCache.size >= 400) parseCache.delete(parseCache.keys().next().value!);
+  parseCache.set(src, blocks);
   return blocks;
 }
 

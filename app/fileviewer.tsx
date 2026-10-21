@@ -9,6 +9,7 @@
 //   "Preview unavailable" for the rest.
 import { cleanup, effect, Scroll, signal, Text, View } from "nsh";
 import { keymap } from "nsh/keymap";
+import { chatScrolling } from "./scroll";
 import { Image } from "nsh/image";
 import { Video } from "nsh/video";
 import { PanResponder } from "nsh/gesture";
@@ -214,25 +215,33 @@ function useAudio(f: ReplyFile) {
   const dur = signal(f.duration || 0);
   const rate = signal(1);
   const muted = signal(false);
+  // a recycled list cell built mid-scroll mounts light: the hidden player
+  // (an AVPlayerItem on the card) waits for the scroll to settle; once
+  // mounted it stays (an in-flight play must not be torn down mid-scroll)
+  const show = signal(!chatScrolling());
+  effect(() => {
+    if (!chatScrolling()) show.set(true);
+  });
   let player: any;
-  const node = () => (
-    <Video
-      ref={player}
-      source={{ uri: raw(f) }}
-      paused={paused()}
-      rate={rate()}
-      muted={muted()}
-      progressUpdateInterval={100}
-      onLoad={(e) => e.duration && dur.set(e.duration)}
-      onProgress={(e) => time.set(e.currentTime)}
-      onEnd={() => {
-        paused.set(true);
-        time.set(0);
-        player?.seek?.(0);
-      }}
-      style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
-    />
-  );
+  const node = () =>
+    show() ? (
+      <Video
+        ref={player}
+        source={{ uri: raw(f) }}
+        paused={paused()}
+        rate={rate()}
+        muted={muted()}
+        progressUpdateInterval={100}
+        onLoad={(e) => e.duration && dur.set(e.duration)}
+        onProgress={(e) => time.set(e.currentTime)}
+        onEnd={() => {
+          paused.set(true);
+          time.set(0);
+          player?.seek?.(0);
+        }}
+        style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+      />
+    ) : null;
   return {
     paused, time, dur, rate, muted, node,
     toggle: () => {
