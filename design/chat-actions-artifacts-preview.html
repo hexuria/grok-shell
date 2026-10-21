@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chat actions, artifacts &amp; metadata — before / options</title>
+<style>
+  :root { --bg:#121212; --pane:#171717; --card:#1f1f1f; --ink:#f5f5f5; --dim:rgba(245,245,245,.55); --faint:rgba(245,245,245,.35);
+          --line:rgba(255,255,255,.09); --wash:rgba(255,255,255,.07); --menu:#2a2a2a; --user:#3f8f58; --agent:#1f1f1f;
+          --accent:#5e9cff; --danger:#ff6b6b; --skel:rgba(255,255,255,.06); --skel2:rgba(255,255,255,.11); }
+  body.light { --bg:#f6f6f6; --pane:#fafafa; --card:#ffffff; --ink:#1c1c1c; --dim:rgba(0,0,0,.55); --faint:rgba(0,0,0,.35);
+          --line:rgba(0,0,0,.09); --wash:rgba(0,0,0,.05); --menu:#ffffff; --user:#4a9a5c; --agent:#efefef;
+          --danger:#d93636; --skel:rgba(0,0,0,.05); --skel2:rgba(0,0,0,.09); }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header.top { position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:14px; padding:12px 24px;
+               background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); }
+  header.top h1 { font-size:15px; margin:0; font-weight:600; flex:1; }
+  .seg { display:inline-flex; background:var(--wash); border-radius:9px; padding:2px; gap:2px; }
+  .seg button { border:0; background:transparent; color:var(--dim); font:inherit; font-size:12.5px; padding:5px 11px; border-radius:7px; cursor:pointer; }
+  .seg button.on { background:var(--card); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  main { max-width:1180px; margin:0 auto; padding:22px 24px 120px; display:flex; flex-direction:column; gap:26px; }
+  section.item { background:var(--pane); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  .itemHead { display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .itemHead h2 { font-size:14px; margin:0; font-weight:600; flex:1; min-width:240px; }
+  .itemHead h2 small { display:block; font-weight:400; color:var(--dim); font-size:12px; margin-top:2px; }
+  .pick { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
+  .pick select { font:inherit; font-size:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:7px; padding:4px 6px; }
+  .body { display:grid; grid-template-columns:minmax(0,1fr) 320px; }
+  .stage { padding:26px 30px; background:var(--bg); min-height:260px; position:relative; }
+  .notes { padding:16px 18px; border-left:1px solid var(--line); font-size:12.5px; color:var(--dim); }
+  .notes b { color:var(--ink); font-weight:600; }
+  .notes ul { padding-left:18px; margin:6px 0; }
+  .notes code { font:11.5px Menlo, monospace; background:var(--wash); padding:1px 4px; border-radius:4px; color:var(--ink); }
+  .hoverNote { position:absolute; right:12px; top:10px; font-size:11px; color:var(--faint); }
+
+  /* ---------- chat primitives ---------- */
+  .chat { max-width:600px; margin:0 auto; display:flex; flex-direction:column; gap:18px; }
+  .row { display:flex; width:100%; }
+  .row.user { justify-content:flex-end; }
+  .msg { display:flex; flex-direction:column; max-width:460px; }
+  .row.user .msg { align-items:flex-end; }
+  .bubble { border-radius:18px; padding:8px 13px; line-height:20px; }
+  .row.user .bubble { background:var(--user); color:#fff; }
+  .row.ai .bubble { background:var(--agent); border:1px solid var(--line); padding:10px 16px; }
+  .side { display:flex; align-items:center; gap:6px; }
+  .row.user .side { flex-direction:row; }
+  .bar { display:flex; align-items:center; gap:2px; opacity:0; transition:opacity .12s; }
+  .hoverable:hover .bar, .stage.pinHover .bar, .bar.always { opacity:1; }
+  .act { width:26px; height:26px; border-radius:7px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:var(--dim); position:relative; }
+  .act:hover { background:var(--wash); color:var(--ink); }
+  .act svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .below { margin-top:4px; }
+  .row.user .below { justify-content:flex-end; margin-right:2px; }
+  .row.ai .below { margin-left:2px; }
+  .badge { font-size:13px; background:var(--card); border:1px solid var(--line); border-radius:999px; padding:0 6px; line-height:20px; }
+
+  /* emoji pickers */
+  .picker { position:absolute; z-index:20; display:none; }
+  .picker.open { display:flex; }
+  .pk-native { flex-direction:column; background:var(--menu); border:1px solid var(--line); border-radius:9px; padding:5px; gap:1px;
+               box-shadow:0 10px 30px rgba(0,0,0,.35); top:30px; left:0; }
+  .pk-native span { padding:3px 10px; border-radius:5px; font-size:16px; cursor:pointer; }
+  .pk-native span:hover { background:var(--accent); }
+  .pk-row { flex-direction:row; background:var(--menu); border:1px solid var(--line); border-radius:999px; padding:5px 8px; gap:2px;
+            box-shadow:0 10px 30px rgba(0,0,0,.35); bottom:32px; left:-6px; }
+  .pk-row span { width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-size:20px; border-radius:50%; cursor:pointer; transition:transform .1s; }
+  .pk-row span:hover { background:var(--wash); transform:scale(1.18); }
+  .pk-row .plus { font-size:15px; color:var(--dim); border-left:1px solid var(--line); border-radius:0 50% 50% 0; }
+  .pk-row.downward { top:32px; bottom:auto; }
+  .pk-inline { flex-direction:row; position:static; gap:2px; background:var(--wash); border-radius:999px; padding:2px 6px; }
+  .pk-inline span { width:28px; height:26px; display:flex; align-items:center; justify-content:center; font-size:17px; cursor:pointer; border-radius:7px; }
+  .pk-inline span:hover { background:var(--wash); transform:scale(1.15); }
+
+  /* native-ish context menu */
+  .ctx { position:absolute; z-index:25; min-width:210px; background:var(--menu); border:1px solid var(--line); border-radius:10px; padding:5px;
+         box-shadow:0 14px 40px rgba(0,0,0,.4); display:none; font-size:13px; }
+  .ctx.open { display:block; }
+  .ctx div { padding:5px 10px; border-radius:6px; cursor:default; }
+  .ctx div:hover { background:var(--accent); color:#fff; }
+  .ctx hr { border:0; border-top:1px solid var(--line); margin:4px 6px; }
+  .ctx .danger { color:var(--danger); }
+  .ctx .strike { text-decoration:line-through; opacity:.45; }
+
+  /* mini app card */
+  .art { display:flex; flex-direction:column; width:100%; max-width:600px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:12px; width:100%; }
+  .cardHead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .lbl { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); font-weight:500; }
+  .ttl { font-size:14px; font-weight:600; }
+  .ver { font-size:11px; color:var(--dim); background:var(--wash); border-radius:999px; padding:1px 7px; margin-left:6px; font-weight:500; }
+  .desc { font-size:12.5px; color:var(--dim); margin-top:1px; }
+  .cap { font-size:14px; margin:6px 0 8px; }
+  .chart { display:flex; align-items:flex-end; gap:10px; height:120px; padding:4px 0 0; }
+  .chart i { flex:1; background:#4a7dff; border-radius:4px 4px 0 0; }
+  .days { display:flex; gap:10px; font-size:11px; color:var(--dim); }
+  .days span { flex:1; text-align:center; }
+  .cardFoot { display:flex; align-items:center; justify-content:space-between; margin-top:8px; min-height:26px; }
+  .xmini { color:var(--faint); font-size:11px; padding:0 4px; }
+  .ttt { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; aspect-ratio:1; max-width:220px; margin:6px auto; }
+  .ttt i { background:var(--wash); border-radius:10px; display:flex; align-items:center; justify-content:center; font:700 28px system-ui; font-style:normal; }
+
+  /* image artifact */
+  .img { border-radius:14px; overflow:hidden; background:#000; position:relative; }
+  .img .pic { width:100%; height:100%; background:radial-gradient(circle at 45% 55%, #ff8a3d 0 32%, transparent 33%),
+             radial-gradient(circle at 52% 22%, #78c04a 0 9%, transparent 10%), #050505; }
+  .img .tag { position:absolute; left:10px; bottom:10px; font-size:12px; color:#fff; background:rgba(0,0,0,.45); border-radius:8px; padding:3px 8px; }
+
+  /* skeletons */
+  .skel { background:linear-gradient(90deg, var(--skel) 0%, var(--skel2) 50%, var(--skel) 100%); background-size:200% 100%; animation:sh 1.4s linear infinite; border-radius:12px; }
+  @keyframes sh { from { background-position:200% 0; } to { background-position:-200% 0; } }
+  .loadingText { font-size:12.5px; color:var(--dim); padding:2px 4px; }
+  .dims { position:absolute; right:10px; bottom:8px; font:11px Menlo, monospace; color:var(--faint); }
+
+  /* metadata schema */
+  pre.json { font:12px/1.55 Menlo, monospace; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:0; overflow:auto; color:var(--ink); }
+  pre.json .k { color:#7cc4ff; } pre.json .s { color:#b7e08a; } pre.json .n { color:#f6b26b; } pre.json .c { color:var(--faint); }
+  body.light pre.json .k { color:#0a62c4; } body.light pre.json .s { color:#2f7d16; } body.light pre.json .n { color:#b5590c; }
+  .twoCol { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .twoCol h4 { margin:0 0 8px; font-size:12px; color:var(--dim); font-weight:500; text-transform:uppercase; letter-spacing:.05em; }
+
+  footer.sel { position:fixed; left:0; right:0; bottom:0; z-index:60; background:var(--card); border-top:1px solid var(--line);
+               padding:10px 24px; display:flex; gap:14px; align-items:center; font-size:12.5px; }
+  footer.sel #summary { flex:1; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  footer.sel button { font:inherit; font-size:12.5px; border:1px solid var(--line); background:var(--wash); color:var(--ink); border-radius:8px; padding:6px 12px; cursor:pointer; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Chat actions · artifacts · metadata — Before vs options</h1>
+  <label class="pick"><input type="checkbox" id="pinHover" checked> show hover state</label>
+  <div class="seg" id="theme"><button data-t="dark" class="on">Dark</button><button data-t="light">Light</button></div>
+</header>
+
+<main id="main"></main>
+
+<footer class="sel">
+  <div id="summary"></div>
+  <button id="copySel">Copy selections</button>
+</footer>
+
+<script>
+/* ---------- icons ---------- */
+const I = {
+  smile:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5c1.8 2 5.2 2 7 0"/><path d="M9 9.5h.01M15 9.5h.01" stroke-width="2.6"/></svg>',
+  reply:'<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+  more:'<svg viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01" stroke-width="3"/></svg>',
+  copy:'<svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8"/></svg>',
+  edit:'<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/></svg>',
+  share:'<svg viewBox="0 0 24 24"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M5 13v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>',
+  up:'<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9h3Z"/><path d="M7 11l4-7c1.5 0 2.5 1 2.2 2.6L12.6 10H18a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/></svg>',
+  down:'<svg viewBox="0 0 24 24"><path d="M7 13V4H4v9h3Z"/><path d="M7 13l4 7c1.5 0 2.5-1 2.2-2.6L12.6 14H18a2 2 0 0 0 2-2.3l-1.2-6A2 2 0 0 0 16.8 4H7"/></svg>',
+  reveal:'<svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h8a6 6 0 0 1 6 6v5"/></svg>',
+};
+const EMOJI = ['👍','❤️','😂','😮','👎'];
+const act = (k, t, extra='') => `<div class="act" title="${t}" data-act="${k}" ${extra}>${I[k]}</div>`;
+
+/* ---------- reusable message fragments ---------- */
+const userText = 'okay create me a live price tracker of xau/usd, usd/php and btc/usd';
+const aiText = 'I can’t create a <b>working live</b> tracker with the data feeds available here — there’s no feed for XAU/USD, USD/PHP or BTC/USD. A market-data connector needs to be added first.';
+
+function barHTML(kind, set='grok', cls='') {
+  // set: grok = react · reply · more ;  chatgpt-user = copy · edit · react · more ; chatgpt-ai = copy · react · reply · share · more
+  let inner;
+  if (set === 'grok') inner = act('smile','React','data-pk="1"') + act('reply','Reply') + act('more','More','data-ctx="msg"');
+  else if (set === 'cg-user') inner = act('copy','Copy') + act('edit','Edit') + act('smile','React','data-pk="1"') + act('more','More','data-ctx="msg"');
+  else inner = act('copy','Copy') + act('smile','React','data-pk="1"') + act('reply','Reply') + act('share','Share') + act('more','More','data-ctx="msg"');
+  return `<div class="bar ${cls}" style="position:relative">${inner}</div>`;
+}
+
+/* ---------- picker / context menu wiring (event delegation) ---------- */
+let pickerStyle = 'native';
+document.addEventListener('click', e => {
+  const a = e.target.closest('.act');
+  document.querySelectorAll('.picker.open,.ctx.open').forEach(p => { if (!a || !a.contains(p)) p.classList.remove('open'); });
+  if (!a) return;
+  const host = a.closest('[data-pickerstyle]');
+  if (a.dataset.pk) {
+    const style = host ? host.dataset.pickerstyle : 'native';
+    let p = a.querySelector('.picker');
+    if (!p) {
+      p = document.createElement('div');
+      p.className = 'picker ' + ({ native:'pk-native', row:'pk-row', rowdown:'pk-row downward', inline:'pk-row' })[style];
+      p.innerHTML = EMOJI.map(x => `<span>${x}</span>`).join('') + (style === 'native' ? '' : '<span class="plus">+</span>');
+      a.appendChild(p);
+      p.addEventListener('click', ev => {
+        const s = ev.target.closest('span'); if (!s || s.classList.contains('plus')) return;
+        ev.stopPropagation(); p.classList.remove('open');
+        const msg = a.closest('.msg, .art'); let b = msg.querySelector('.badge');
+        if (!b) { b = document.createElement('span'); b.className = 'badge'; a.closest('.bar').prepend(b); }
+        b.textContent = s.textContent;
+      });
+    }
+    p.classList.toggle('open');
+  }
+  if (a.dataset.ctx) {
+    let m = a.querySelector('.ctx');
+    if (!m) {
+      m = document.createElement('div'); m.className = 'ctx';
+      m.style.top = '30px'; m.style[a.closest('.row.user') ? 'right' : 'left'] = '0';
+      const variant = host?.dataset.ctxvariant || 'msg';
+      m.innerHTML = CTX[a.dataset.ctx === 'app' ? variant : 'msg'];
+      a.appendChild(m);
+    }
+    m.classList.toggle('open');
+  }
+});
+const CTX = {
+  msg: '<div>Copy</div><hr><div class="danger">Delete</div>',
+  'app-before': '<div>View Code</div><div>Copy Source</div><hr><div>Save to Mini Apps</div><div>Open in Window</div><div>Add to Desktop Widget</div><hr><div>Try Again</div><div>Reveal in Finder</div>',
+  'app-after': '<div>View Code</div><div>Copy Source</div><hr><div>Save to Mini Apps</div><div>Open in Window</div><div>Add to Desktop Widget</div><hr><div>Try Again</div><hr><div class="danger">Delete</div>',
+  'app-after-ver': '<div>View Code</div><div>Copy Source</div><div>Version history…</div><div>Rename…</div><hr><div>Save to Mini Apps</div><div>Open in Window</div><div>Add to Desktop Widget</div><hr><div>Try Again</div><hr><div class="danger">Delete</div>',
+};
+
+/* ---------- section definitions ---------- */
+const SECTIONS = [
+  {
+    id:'emoji', title:'1 · Emoji reaction picker',
+    sub:'Click ☺ on a message to open it.',
+    options:{
+      before:{ name:'Before (current)', notes:`A native <code>Menu.popup</code> — the OS draws a <b>vertical</b> list of 5 emoji, like a context menu. Hard to scan, looks like a settings menu.`,
+        html:()=>chatDemo('side','native') },
+      A:{ name:'A · Horizontal pill above', notes:`Grok-style: a rounded <b>horizontal</b> pill of emoji floating <b>above</b> the ☺ button, hover magnifies, <code>+</code> opens the full emoji panel. Picked emoji becomes a badge.`,
+        html:()=>chatDemo('below','row') },
+      B:{ name:'B · Horizontal pill below', notes:`Same horizontal pill but it drops <b>below</b> the action bar (useful when the message is at the top of the viewport). Could auto-flip like the native menu does.`,
+        html:()=>chatDemo('below','rowdown') },
+    }
+  },
+  {
+    id:'bar', title:'2 · Hover action bar position (text messages)',
+    sub:'Today the actions sit beside the bubble; ChatGPT puts them under it.',
+    options:{
+      before:{ name:'Before (current)', notes:`☺ ↩ ⋯ render <b>beside</b> the bubble — left of your bubble, right of the agent's. They steal horizontal space and shift with bubble width.`,
+        html:()=>chatDemo('side','row') },
+      A:{ name:'A · Below, same 3 actions', notes:`ChatGPT placement: the bar sits <b>under the bubble</b>, aligned to its edge (right for you, left for the agent). Same actions as today: react · reply · more. Hover-only.`,
+        html:()=>chatDemo('below','row') },
+      B:{ name:'B · Below, ChatGPT action set', notes:`Placement of A plus ChatGPT's set: <b>yours</b> copy · edit · react · more; <b>agent's</b> copy · react · reply · share · more. Copy becomes one click instead of living in ⋯.`,
+        html:()=>chatDemo('below','row','cg') },
+      C:{ name:'C · Below, latest reply always visible', notes:`Like A, but the <b>latest agent reply</b> shows its bar permanently (ChatGPT does this); older messages reveal on hover. Untick “show hover state” to see the difference.`,
+        html:()=>chatDemo('below','row','grok',true) },
+    }
+  },
+  {
+    id:'art', title:'3 · Artifact actions (mini app + image)',
+    sub:'Actions move outside and below the container; header buttons go away; Delete lives in ⋯.',
+    options:{
+      before:{ name:'Before (current)', notes:`Mini app: header has <b>⤴ Reveal in Finder</b> and <b>✕ delete</b>; react · reply · ⋯ sit <b>inside</b> the card's bottom row. ⋯ contains Reveal in Finder, no Delete. Image: actions to the right of the image.`,
+        html:()=>artifactDemo('before') },
+      A:{ name:'A · Below container, Delete in ⋯', notes:`Header buttons removed. The action bar sits <b>outside, below</b> the mini app card / image (ChatGPT). ⋯ menu: View Code · Copy Source — Save to Mini Apps · Open in Window · Add to Desktop Widget — Try Again — <b>Delete</b> (red). <b>Reveal in Finder removed.</b>`,
+        html:()=>artifactDemo('A') },
+      B:{ name:'B · A + versions in ⋯', notes:`Same as A, and ⋯ also gets <b>Version history…</b> and <b>Rename…</b> since artifacts are versioned (the server already keeps <code>versions</code> + <code>heads</code>).`,
+        html:()=>artifactDemo('B') },
+    }
+  },
+  {
+    id:'title', title:'4 · Artifact title (no file names)',
+    sub:'Today: “GENERATED · R5.TSX · GPT-6-LUNA”. The model names the app instead.',
+    options:{
+      before:{ name:'Before (current)', notes:`Label is built from internals: <code>generated · R5.tsx · v1 · gpt-6-luna</code>. <code>generate_app</code> already accepts an optional <code>title</code>/<code>slug</code> and stores them, but the chat card never shows them and the model isn't required to send one. No description field.`,
+        html:()=>titleDemo('before') },
+      A:{ name:'A · Title + “version 2.0”', notes:`Your example literally: <b>Tic Tac Toe</b> for v1, <b>Tic Tac Toe version 2.0</b> after an iteration. One-line model-written description underneath. Model and file name not shown (still in ⋯ → View Code).`,
+        html:()=>titleDemo('A') },
+      B:{ name:'B · Title + v2 chip', notes:`Title stays stable (<b>Tic Tac Toe</b>); the version is a small <b>v2</b> chip next to it — quieter, and the title doesn't change length per iteration. Description underneath.`,
+        html:()=>titleDemo('B') },
+      C:{ name:'C · Title only, details on hover', notes:`Just the title in the header; description shows as the card's caption. Version + model appear only as a tooltip on the title (and in ⋯ → Version history).`,
+        html:()=>titleDemo('C') },
+    }
+  },
+  {
+    id:'meta', title:'5 · Metadata → exact-size placeholders',
+    sub:'Know the size before content arrives, so nothing jumps or gets cropped.',
+    options:{
+      before:{ name:'Before (current)', notes:`Mini app while building: bare text “<code>app · R6 — loading…</code>”, then the card pops in at its real height (layout jump). Generated image: fixed <code>h-64 w-full</code> + <code>cover</code> → a square/portrait image gets <b>cropped</b>. (Attached images/videos already get width/height via <code>sips</code>; video also gets poster + duration.)`,
+        html:()=>metaDemo('before') },
+      A:{ name:'A · Skeleton at exact size', notes:`Placeholder is drawn at the artifact's <b>declared aspect ratio</b> (mini app: model-declared size; image: real pixel size) with a shimmer, and the <b>title</b> already shown. When content lands, nothing moves. Image keeps its true aspect ratio — no crop.`,
+        html:()=>metaDemo('A') },
+      B:{ name:'B · A + status line', notes:`Same exact-size skeleton plus the build status inside it (“Checking types…”, “Compiling…”) and the model's description, so the wait reads as progress.`,
+        html:()=>metaDemo('B') },
+    }
+  },
+  {
+    id:'schema', title:'6 · Where metadata comes from',
+    sub:'Proposed artifact metadata carried on the message turn.',
+    options:{
+      A:{ name:'A · Model declares everything', notes:`The tools (<code>generate_app</code>, <code>generate_image</code>) <b>require</b> title, description and size. Simple, but a model can be wrong about real pixel sizes.`,
+        html:()=>schemaDemo('A') },
+      B:{ name:'B · Model declares, server measures', notes:`<b>Recommended.</b> Model supplies what only it knows (title, description, intended app size / aspect ratio, version label). Server <b>measures</b> what it can (image pixels, video poster/duration, file size) and overrides the model's guess. Stored on the turn, so placeholders are exact on reload.`,
+        html:()=>schemaDemo('B') },
+      C:{ name:'C · Server measures only', notes:`No tool changes; server derives everything (title from the prompt, app size by measuring the rendered card once). Mini app size is only known <b>after</b> first render, so the first placeholder is still a guess.`,
+        html:()=>schemaDemo('C') },
+    }
+  },
+];
+
+/* ---------- demo builders ---------- */
+function chatDemo(pos, picker, set='grok', latestAlways=false) {
+  const uBar = barHTML('user', set === 'cg' ? 'cg-user' : 'grok');
+  const aBar = barHTML('ai', set === 'cg' ? 'cg-ai' : 'grok', latestAlways ? 'always' : '');
+  const user = pos === 'side'
+    ? `<div class="row user hoverable"><div class="side">${uBar}<div class="msg"><div class="bubble">${userText}</div></div></div></div>`
+    : `<div class="row user hoverable"><div class="msg"><div class="bubble">${userText}</div><div class="row user below">${uBar}</div></div></div>`;
+  const ai = pos === 'side'
+    ? `<div class="row ai hoverable"><div class="side"><div class="msg"><div class="bubble">${aiText}</div></div>${aBar}</div></div>`
+    : `<div class="row ai hoverable"><div class="msg"><div class="bubble">${aiText}</div><div class="row ai below">${aBar}</div></div></div>`;
+  return `<div class="chat" data-pickerstyle="${picker}">${user}${ai}</div>`;
+}
+
+const chart = () => `<div class="chart">${[38,62,30,85,72,18,52].map(h=>`<i style="height:${h}%"></i>`).join('')}</div>
+  <div class="days">${'MTWTFSS'.split('').map(d=>`<span>${d}</span>`).join('')}</div>`;
+
+function artifactDemo(v) {
+  if (v === 'before') {
+    return `<div class="chat" data-pickerstyle="native" data-ctxvariant="app-before">
+      <div class="row ai hoverable"><div class="art">
+        <div class="card">
+          <div class="cardHead"><span class="lbl">Generated · R5.tsx · GPT-6-Luna</span>
+            <span style="display:flex;gap:2px">${act('reveal','Reveal in Finder')}<span class="act" title="Delete">✕</span></span></div>
+          <div class="cap">Manual quote tracker · seeded with indicative reference prices.</div>
+          <b style="font-size:13px">Sessions this week</b>${chart()}
+          <div class="cardFoot"><span></span>${barHTML('ai').replace('data-ctx="msg"','data-ctx="app"')}</div>
+        </div></div></div>
+      <div class="row ai hoverable"><div class="side">
+        <div class="img" style="width:260px;height:256px"><div class="pic"></div></div>
+        ${barHTML('ai')}</div></div>
+    </div>`;
+  }
+  const variant = v === 'B' ? 'app-after-ver' : 'app-after';
+  const bar = barHTML('ai').replace('data-ctx="msg"','data-ctx="app"');
+  return `<div class="chat" data-pickerstyle="row" data-ctxvariant="${variant}">
+    <div class="row ai hoverable"><div class="art">
+      <div class="card">
+        <div class="cardHead"><span class="ttl">Rate Pad</span></div>
+        <div class="desc">Manual quote tracker seeded with reference prices</div>
+        <b style="font-size:13px;display:block;margin-top:10px">Sessions this week</b>${chart()}
+      </div>
+      <div class="row ai below">${bar}</div>
+    </div></div>
+    <div class="row ai hoverable"><div class="msg">
+      <div class="img" style="width:300px;height:300px"><div class="pic"></div><span class="tag">Edit</span></div>
+      <div class="row ai below">${barHTML('ai')}</div>
+    </div></div>
+  </div>`;
+}
+
+function titleDemo(v) {
+  const ttt = `<div class="ttt">${'X O  X O   X'.split('').slice(0,9).map(c=>`<i>${c.trim()}</i>`).join('')}</div>`;
+  const head = (ver) => {
+    if (v === 'before') return `<div class="cardHead"><span class="lbl">Generated · R${ver===1?7:7}.tsx · v${ver} · GPT-6-Luna</span><span class="xmini">⤴ ✕</span></div>`;
+    if (v === 'A') return `<div class="cardHead"><span class="ttl">${ver===1?'Tic Tac Toe':'Tic Tac Toe version 2.0'}</span></div>
+                          <div class="desc">${ver===1?'Two-player noughts and crosses':'Adds a CPU opponent and a score tally'}</div>`;
+    if (v === 'B') return `<div class="cardHead"><span class="ttl">Tic Tac Toe${ver>1?`<span class="ver">v${ver}</span>`:''}</span></div>
+                          <div class="desc">${ver===1?'Two-player noughts and crosses':'Adds a CPU opponent and a score tally'}</div>`;
+    return `<div class="cardHead"><span class="ttl" title="v${ver} · gpt-6-luna">Tic Tac Toe</span></div>`;
+  };
+  const cap = (ver) => v === 'C' ? `<div class="cap" style="color:var(--dim);font-size:12.5px">${ver===1?'Two-player noughts and crosses':'Adds a CPU opponent and a score tally'}</div>` : '';
+  const card = (ver) => `<div class="row ai"><div class="art"><div class="card">${head(ver)}${cap(ver)}${ttt}</div></div></div>`;
+  return `<div class="chat">
+    <div class="row user"><div class="msg"><div class="bubble">make me a tic tac toe game</div></div></div>${card(1)}
+    <div class="row user"><div class="msg"><div class="bubble">add a computer opponent and keep score</div></div></div>${card(2)}
+  </div>`;
+}
+
+function metaDemo(v) {
+  if (v === 'before') return `<div class="chat">
+      <div class="row ai"><div class="loadingText">app · R6 — loading…</div></div>
+      <div class="row ai"><div class="img" style="width:100%;max-width:600px;height:256px"><div class="pic" style="background-size:cover"></div>
+        <span class="dims">1024×1024 shown at 600×256 · cropped</span></div></div>
+    </div>`;
+  const status = v === 'B';
+  return `<div class="chat">
+      <div class="row ai"><div class="art"><div class="card">
+        <div class="cardHead"><span class="ttl">Breakout</span></div>
+        <div class="desc">Paddle-and-ball brick breaker</div>
+        <div class="skel" style="margin-top:10px;width:100%;max-width:480px;aspect-ratio:4/3;position:relative;display:flex;align-items:center;justify-content:center">
+          ${status ? '<span style="font-size:12.5px;color:var(--dim)">Checking types…</span>' : ''}
+          <span class="dims">declared 480×360 · 4:3</span></div>
+      </div></div></div>
+      <div class="row ai"><div class="img skel" style="width:300px;aspect-ratio:1;position:relative;background-color:transparent">
+        ${status ? '<span style="position:absolute;left:12px;top:10px;font-size:12.5px;color:var(--dim)">Generating image…</span>' : ''}
+        <span class="dims">1024×1024 · 1:1</span></div></div>
+    </div>`;
+}
+
+function schemaDemo(v) {
+  const k = s => `<span class="k">"${s}"</span>`, s = x => `<span class="s">"${x}"</span>`, n = x => `<span class="n">${x}</span>`, c = x => `<span class="c">// ${x}</span>`;
+  const by = (who) => c(who);
+  const m = v === 'A' ? 'model' : v === 'B' ? 'model' : 'server';
+  const px = v === 'C' ? 'server · measured' : v === 'B' ? 'server · measured (overrides model)' : 'model';
+  const app = `{
+  ${k('kind')}: ${s('app')},
+  ${k('title')}: ${s('Tic Tac Toe')},            ${by(v==='C'?'server · from prompt':'model')}
+  ${k('description')}: ${s('Adds a CPU opponent and a score tally')}, ${by(v==='C'?'server · from caption':'model')}
+  ${k('version')}: ${n(2)}, ${k('versionLabel')}: ${s('version 2.0')},  ${by('server · versions table')}
+  ${k('slug')}: ${s('tic-tac-toe')},            ${by(v==='C'?'server':'model')}
+  ${k('layout')}: { ${k('width')}: ${n(480)}, ${k('height')}: ${n(360)}, ${k('aspectRatio')}: ${s('4:3')}, ${k('resizable')}: ${n('true')} }
+                                         ${by(v==='C'?'server · measured after first render':'model · intended size')}
+}`;
+  const img = `{
+  ${k('kind')}: ${s('image')},
+  ${k('title')}: ${s('Potato mascot')},          ${by(v==='C'?'server · from prompt':'model')}
+  ${k('width')}: ${n(1024)}, ${k('height')}: ${n(1024)}, ${k('aspectRatio')}: ${s('1:1')}, ${by(px)}
+  ${k('bytes')}: ${n(812345)}, ${k('mime')}: ${s('image/png')}             ${by('server')}
+}
+{
+  ${k('kind')}: ${s('video')},
+  ${k('width')}: ${n(1920)}, ${k('height')}: ${n(1080)}, ${k('aspectRatio')}: ${s('16:9')}, ${by(px)}
+  ${k('durationMs')}: ${n(42300)}, ${k('poster')}: ${s('clip.mp4.png')}       ${by('server · qlmanage / afinfo')}
+}`;
+  return `<div class="twoCol"><div><h4>Mini app turn</h4><pre class="json">${app}</pre></div>
+          <div><h4>Image / video turn</h4><pre class="json">${img}</pre></div></div>`;
+}
+
+/* ---------- render sections ---------- */
+const choice = JSON.parse(localStorage.getItem('gs-choices') || '{}');
+const main = document.getElementById('main');
+for (const sec of SECTIONS) {
+  const keys = Object.keys(sec.options);
+  const el = document.createElement('section'); el.className = 'item'; el.id = sec.id;
+  el.innerHTML = `<div class="itemHead"><h2>${sec.title}<small>${sec.sub}</small></h2>
+      <div class="seg view">${keys.map((k,i)=>`<button data-k="${k}" class="${i===0?'on':''}">${sec.options[k].name}</button>`).join('')}</div>
+      <label class="pick">My pick
+        <select>${['— undecided —', ...keys.filter(k=>k!=='before').map(k=>sec.options[k].name), 'Keep current']
+          .map(o=>`<option${choice[sec.id]===o?' selected':''}>${o}</option>`).join('')}</select></label></div>
+    <div class="body"><div class="stage"><span class="hoverNote">hover messages to see actions</span><div class="demo"></div></div><div class="notes"></div></div>`;
+  main.appendChild(el);
+  const show = (k) => {
+    el.querySelectorAll('.view button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+    el.querySelector('.demo').innerHTML = sec.options[k].html();
+    el.querySelector('.notes').innerHTML = sec.options[k].notes;
+  };
+  el.querySelector('.view').addEventListener('click', e => { if (e.target.dataset.k) show(e.target.dataset.k); });
+  el.querySelector('select').addEventListener('change', e => { choice[sec.id] = e.target.value; localStorage.setItem('gs-choices', JSON.stringify(choice)); summary(); });
+  show(keys[0]);
+}
+function summary() {
+  document.getElementById('summary').textContent = 'Picks — ' + SECTIONS.map(s => `${s.title.split(' · ')[0]}: ${choice[s.id] && choice[s.id] !== '— undecided —' ? choice[s.id] : '?'}`).join('   ');
+}
+summary();
+document.getElementById('copySel').onclick = () => {
+  const txt = SECTIONS.map(s => `${s.title}: ${choice[s.id] || 'undecided'}`).join('\n');
+  navigator.clipboard.writeText(txt);
+  document.getElementById('copySel').textContent = 'Copied ✓';
+  setTimeout(() => document.getElementById('copySel').textContent = 'Copy selections', 1200);
+};
+const pin = document.getElementById('pinHover');
+const applyPin = () => document.querySelectorAll('.stage').forEach(s => s.classList.toggle('pinHover', pin.checked));
+pin.onchange = applyPin; applyPin();
+new MutationObserver(applyPin).observe(main, { childList:true, subtree:true });
+document.getElementById('theme').addEventListener('click', e => {
+  if (!e.target.dataset.t) return;
+  document.querySelectorAll('#theme button').forEach(b => b.classList.toggle('on', b === e.target));
+  document.body.classList.toggle('light', e.target.dataset.t === 'light');
+});
+if (location.hash.includes('light')) document.querySelector('#theme [data-t=light]').click();
+if (location.hash.includes('after')) document.querySelectorAll('.view button:nth-child(2)').forEach(b => b.click());
+</script>
+</body>
+</html>

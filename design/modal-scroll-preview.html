@@ -1,0 +1,620 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Connect Apps modal — before / after</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,'SF Pro Text',system-ui,sans-serif; }
+  body { background:#3a3a3c; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:28px 0 60px;
+         user-select:none; }
+  body.light { background:#b9b9be; }
+
+  .toolbar { display:flex; gap:14px; align-items:center; margin-bottom:14px; }
+  .seg { display:flex; background:rgba(255,255,255,.12); border-radius:9px; padding:3px; }
+  body.light .seg { background:rgba(0,0,0,.10); }
+  .seg button { border:0; background:transparent; color:rgba(255,255,255,.75); font-size:13px; font-weight:600;
+                padding:6px 16px; border-radius:7px; cursor:pointer; }
+  body.light .seg button { color:rgba(0,0,0,.6); }
+  .seg button.on { background:#fff; color:#000; }
+  body.light .seg button.on { background:#fff; color:#000; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .chk { color:rgba(255,255,255,.75); font-size:13px; display:flex; gap:6px; align-items:center; cursor:pointer; }
+  body.light .chk { color:rgba(0,0,0,.65); }
+
+  .legend { color:rgba(255,255,255,.65); font-size:12px; max-width:800px; margin-bottom:18px; line-height:1.7; }
+  body.light .legend { color:rgba(0,0,0,.6); }
+  .legend b { color:#ff9f9f; font-weight:600; }
+
+  /* ============ MODAL ============ */
+  .modal { position:relative; width:800px; height:660px; border-radius:14px; overflow:hidden;
+           box-shadow:0 24px 80px rgba(0,0,0,.45), 0 0 0 .5px rgba(0,0,0,.15);
+           --card:#1f1f1f; --ink:#f5f5f5; --dim:rgba(245,245,245,.55); --line:rgba(255,255,255,.09);
+           --pill:rgba(255,255,255,.06); --wash:rgba(255,255,255,.045); --pillRow:rgba(255,255,255,.10);
+           --pillBtn:rgba(255,255,255,.17); --field:rgba(255,255,255,.05); --green:#4ade80; }
+  .modal.light { --card:#ffffff; --ink:#1d1d1f; --dim:rgba(0,0,0,.55); --line:rgba(0,0,0,.09);
+           --pill:rgba(0,0,0,.045); --wash:rgba(0,0,0,.035); --pillRow:rgba(0,0,0,.075);
+           --pillBtn:rgba(0,0,0,.12); --field:rgba(0,0,0,.045); --green:#16a34a; }
+  .modal { background:var(--card); color:var(--ink); }
+
+  /* margin guides */
+  .guide { position:absolute; top:0; bottom:0; width:0; border-left:1.5px dashed #ff3b30; z-index:40; display:none; pointer-events:none; }
+  .modal.guides .guide { display:block; }
+
+  /* ============ close button ============ */
+  .xbtn { position:absolute; top:18px; width:28px; height:28px; border-radius:14px; z-index:30;
+          display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .xbtn:hover { background:var(--wash); }
+  .xbtn svg { width:15px; height:15px; fill:var(--dim); }
+  .modal.before .xbtn { right:4px; }           /* current: shares the title's band, in the gutter */
+  /* AFTER: 32px circle — same height as search + Bot templates — centered in the fixed 42px top band.
+     It never moves. */
+  /* left edge = Bot templates' right edge (67px from card edge) + the same 8px gap as search↔templates */
+  .modal.after .xbtn { right:27px; top:5px; width:32px; height:32px; border-radius:16px; }
+  .modal.after .xbtn svg { width:15px; height:15px; }
+  /* AFTER: pinned search row TELEPORTS into the empty band next to the ✕ (no sticky slide) */
+  .pinBar { display:none; }
+  .modal.after .pinBar { display:block; position:absolute; top:5px; left:33px; right:33px; height:32px; z-index:25; }
+  .modal.after .pinBar .searchRow { height:32px; }
+  .modal.after.pinned .xrow { box-shadow:0 1px 0 var(--line); }
+  /* AFTER: the ✕'s own line is a fixed band above the scroll */
+  .xrow { display:none; }
+  .modal { display:flex; flex-direction:column; }
+  .modal.after .xrow { display:block; position:absolute; top:0; left:0; right:0; height:42px; z-index:20; pointer-events:none; }
+  .modal.after.pinned .xrow { background:var(--card); }
+  .modal.after .scroll { position:relative; inset:auto; flex:1; }
+  .modal.after .drop { top:140px; }           /* under the search row: xrow 46 + title 44 + search ~54 */
+  .modal.after .xbtn { z-index:30; }          /* ✕ floats above the pinned search band */
+
+  /* ============ header (BEFORE: fixed, collapses on scroll) ============ */
+  .headBox { padding:0 33px; flex:none; }
+  .titleRow { height:44px; display:flex; align-items:center; overflow:hidden; }
+  .titleRow h1 { font-size:17px; font-weight:600; letter-spacing:-.2px; flex:1; white-space:nowrap; }
+  .searchRow { display:flex; gap:8px; align-items:center; height:48px; }
+  .modal.before .searchRow { padding-bottom:4px; }
+
+  .connChip { display:flex; align-items:center; gap:7px; height:30px; padding:0 10px 0 6px; border-radius:15px;
+              background:var(--pill); font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap; }
+  .connChip .stack { display:flex; align-items:center; }
+  .connChip .cv { font-size:11px; color:var(--dim); }
+  .chipTile { width:18px; height:18px; border-radius:5px; margin-left:-7px; border:2px solid var(--card);
+              display:flex; align-items:center; justify-content:center; }
+  .chipTile:first-child { margin-left:0; }
+  .chipTile svg { width:11px; height:11px; }
+
+  .searchField { flex:1; height:36px; border-radius:18px; background:var(--field); border:1px solid var(--line);
+                 display:flex; align-items:center; gap:9px; padding:0 14px; }
+  .searchField svg { width:14px; height:14px; fill:var(--dim); flex:none; }
+  .searchField input { border:0; background:transparent; outline:none; color:var(--ink); font-size:13px; width:100%; }
+  .searchField input::placeholder { color:var(--dim); }
+
+  .tplBtn { height:32px; border-radius:16px; border:1px solid var(--line); background:transparent; color:var(--ink);
+            display:flex; align-items:center; gap:7px; padding:0 13px; font-size:13px; font-weight:500;
+            cursor:pointer; white-space:nowrap; }
+  .tplBtn svg { width:14px; height:14px; }
+  /* BUG (before + light): bot glyph keeps dark-theme ink -> invisible on white */
+  .modal.before.light .tplBtn .botIco { fill:#f5f5f5; }
+  .tplBtn .botIco { fill:var(--ink); }
+  .tplBtn .arrow { fill:none; stroke:var(--dim); stroke-width:2; }
+
+  /* header buttons: AFTER mode ends just inside the guide line */
+  .modal.after .headItem { padding-right:34px; }
+
+  /* ============ pills ============ */
+  .pillsRow { display:flex; gap:8px; align-items:center; padding:12px 0 12px; background:var(--card); }
+  /* BEFORE: pills overflow past the right margin into the gutter zone */
+  .modal.after .pillsRow { overflow:hidden; }
+  .morePill { display:none; }
+  .modal.after .morePill { display:flex; }
+  /* AFTER: cap the visible categories, Grok-style More covers the rest */
+  .modal.after .pill.off:nth-child(n+6):not(.morePill) { display:none; }
+  .modal.after .searchRow { height:44px; }
+  /* AFTER: right content margin moves in to 48px — View all, Add pills, cards follow it.
+     Header rows compensate (48 + 19 = 67) so search / Bot templates / ✕ stay put. */
+  .modal.after .scrollInner { padding-right:48px; }
+  .modal.after .scrollInner > .headItem { padding-right:19px; }
+  .modal.after .gR { right:48px !important; }
+  /* AFTER: search, Bot templates and ✕ share one height — 32px */
+  .modal.after .searchField { height:32px; border-radius:16px; }
+  .modal.after .tplBtn { height:32px; border-radius:16px; }
+  .modal.after .pill { height:26px; padding:0 12px; border-radius:13px; font-size:12px; }
+  /* pills are NOT pinned — they scroll away with the content */
+  .pill { height:28px; padding:0 13px; border-radius:14px; border:0; font-size:12.5px; font-weight:500;
+          display:flex; align-items:center; cursor:pointer; white-space:nowrap; }
+  .pill.on { background:var(--ink); color:var(--card); }
+  .pill.off { background:var(--pill); color:var(--ink); }
+  .pill.off:hover { background:var(--pillRow); }
+
+  /* ============ scroll region ============ */
+  .scroll { position:absolute; inset:0; overflow-y:auto; overscroll-behavior:none; } /* no rubber-band bounce */
+  .scrollInner { padding:0 33px 30px; }
+  .modal.before .scrollInner { padding-top:0; }
+
+  /* BEFORE: fixed head + scroll below */
+  .modal.before .scroll { top:0; }
+  .modal.before .headBox { position:relative; z-index:20; background:var(--card); padding-top:14px; }
+  .modal.before .scrollInner > .pillsRow { padding-top:10px; }
+
+  /* BEFORE: headBox floats above, scroll starts beneath it */
+  .modal.before { display:flex; flex-direction:column; }
+  .modal.before .scroll { position:relative; inset:auto; flex:1; }
+
+  /* AFTER: single scroll, head scrolls away */
+  .modal.after .headBox { display:none; }
+  .modal.after .scrollInner > .titleRow { margin-top:0; height:42px; }   /* sits ON the ✕'s line — no wasted strip */
+
+  .secHead { display:flex; align-items:baseline; padding:22px 0 4px; }
+  .secHead h2 { font-size:13px; font-weight:600; flex:1; }
+  .secHead a { font-size:12px; color:var(--dim); cursor:pointer; }
+  .secHead a:hover { color:var(--ink); }
+
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .card { display:flex; align-items:center; gap:12px; height:72px; padding:0 12px; border-radius:16px;
+          cursor:default; min-width:0; }        /* keep the grid cell from being blown out by long text */
+  .grid > .card:nth-child(odd)  { margin-left:-12px; }
+  .grid > .card:nth-child(even) { margin-right:-12px; }
+  .card:hover { background:var(--wash); }
+
+  .tile { width:38px; height:38px; border-radius:10px; flex:none; display:flex; align-items:center; justify-content:center; }
+  .tile.brand { background:#fff; }
+  .modal.light .tile.brand { border:1px solid rgba(0,0,0,.08); }
+  .tile.letter { font-size:17px; font-weight:700; color:#fff; }
+  .tile svg { width:20px; height:20px; }
+
+  .meta { flex:1; min-width:0; }
+  .meta .nm { font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .meta .ds { font-size:11.5px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px; }
+
+  .add { height:30px; min-width:56px; padding:0 14px; border-radius:15px; border:0; font-size:13px; font-weight:500;
+         background:var(--pill); color:var(--ink); cursor:pointer; flex:none; }
+  .added { display:flex; align-items:center; gap:5px; font-size:13px; color:var(--green); font-weight:500; flex:none;
+           padding-right:6px; }
+  .added svg { width:13px; height:13px; fill:none; stroke:var(--green); stroke-width:2.4; }
+
+  /* AFTER: card box stays inside the margin guides — tiles/Add sit ON the margin */
+  .modal.after .grid > .card { margin-left:0; margin-right:0; padding:0; }
+  .modal.after .add { padding:0 22px; }        /* bigger Add pill */
+  .modal.after .meta { max-width:200px; }      /* trim descriptions — leave a gap before the Add pill */
+  .modal.after .card .add, .modal.after .card .added { margin-left:auto; }  /* Add stays pinned to the margin */
+
+  /* ---- hover tiers ---- */
+  /* BEFORE: one tier — row hover and button hover look identical */
+  .modal.before .card:hover .add,
+  .modal.before .card .add:hover { background:var(--pillRow); }
+  /* AFTER: row hover lifts the pill slightly; hovering the pill itself steps darker */
+  .modal.after .card:hover .add { background:var(--pillRow); }
+  .modal.after .card .add:hover { background:var(--pillBtn); }
+
+  .hint { font-size:12px; color:rgba(255,255,255,.5); margin-top:14px; }
+  body.light .hint { color:rgba(0,0,0,.5); }
+
+  /* ============ search dropdown ============ */
+  .drop { position:absolute; top:100px; z-index:35; border-radius:12px; border:1px solid var(--line);
+          background:var(--card); box-shadow:0 16px 48px rgba(0,0,0,.38), 0 2px 8px rgba(0,0,0,.18);
+          overflow-y:auto; overflow-x:hidden; display:none; max-height:330px; }  /* scrolls internally */
+  .modal.after  .drop { left:63px; right:63px; }      /* Grok: indented under the field, ends at margin */
+  .modal.before .drop { left:20px; right:33px; }      /* ours: overshoots the field's left edge */
+  /* BUG (before + light): translucent bg + dark-theme ink -> unreadable */
+  .modal.before.light .drop { background:rgba(255,255,255,.55); backdrop-filter:blur(10px);
+          border-color:transparent; box-shadow:0 8px 24px rgba(0,0,0,.18); }
+  .modal.before.light .drop .nm { color:#f5f5f5; }
+  .modal.before.light .drop .dtitle { color:rgba(245,245,245,.55); }
+  .dtitle { font-size:11.5px; color:var(--dim); padding:12px 14px 6px; font-weight:500; }
+  .drow { display:flex; align-items:center; gap:11px; height:44px; padding:0 14px; cursor:pointer; }
+  .drow .mini { width:22px; height:22px; border-radius:6px; flex:none; display:flex; align-items:center;
+                justify-content:center; background:#fff; }
+  .drow .mini.letter { color:#fff; font-size:11px; font-weight:700; }
+  .drow .mini svg { width:13px; height:13px; }
+  .drow .nm { font-size:13px; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .drow .gt { color:var(--dim); font-size:13px; }
+  .modal.after .drow:hover, .modal.after .drow.sel { background:var(--wash); }
+  .modal.after .drow.sel { box-shadow:inset 2px 0 0 var(--dim); }
+  /* BEFORE: no hover state at all */
+  .clr { font-size:12px; color:var(--dim); cursor:pointer; flex:none; display:none; padding:2px 4px; }
+  .clr:hover { color:var(--ink); }
+  .searchField.has .clr { display:block; }
+
+  /* ============ sidebar toggle comparison ============ */
+  .chrome { display:flex; align-items:center; gap:16px; margin-bottom:16px; padding:12px 20px;
+            border-radius:12px; background:rgba(0,0,0,.25); }
+  body.light .chrome { background:rgba(255,255,255,.45); }
+  .chromeLabel { font-size:12px; color:rgba(255,255,255,.6); }
+  body.light .chromeLabel { color:rgba(0,0,0,.55); }
+  .chromeBox { display:flex; align-items:center; gap:10px; }
+  .chromeBtn { width:34px; height:34px; border-radius:17px; display:flex; align-items:center; justify-content:center;
+               background:rgba(255,255,255,.08); }
+  body.light .chromeBtn { background:rgba(0,0,0,.06); }
+  .chromeBtn svg { width:18px; height:18px; color:rgba(255,255,255,.72); }
+  body.light .chromeBtn svg { color:rgba(0,0,0,.65); }
+  .cap { font-size:11.5px; color:rgba(255,255,255,.5); }
+  body.light .cap { color:rgba(0,0,0,.5); }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="seg" id="segMode">
+      <button data-m="before" class="on">Before (ours)</button>
+      <button data-m="after">After (Grok)</button>
+    </div>
+    <div class="seg" id="segTheme">
+      <button data-t="light">Light</button>
+      <button data-t="dark" class="on">Dark</button>
+    </div>
+    <label class="chk"><input type="checkbox" id="guides"> margin guides</label>
+  </div>
+  <div class="legend" id="legend"></div>
+
+  <!-- sidebar toggle icon: current floating-tab glyph vs ChatGPT's stroked panel-left -->
+  <div class="chrome" id="chrome">
+    <span class="chromeLabel">sidebar toggle</span>
+    <div class="chromeBox"><div class="chromeBtn" id="btnCurrent"></div><span class="cap">current (floating tab)</span></div>
+    <span class="chromeLabel">→</span>
+    <div class="chromeBox"><div class="chromeBtn" id="btnChatGpt"></div><span class="cap">ChatGPT (panel-left)</span></div>
+  </div>
+
+  <div class="modal before dark guides-off" id="modal">
+    <div class="guide" style="left:33px"></div>
+    <div class="guide gR" style="right:33px"></div>
+    <div class="guide" id="guideX" style="right:64px"></div>
+    <div class="xrow"></div>
+    <div class="pinBar" id="pinBar"></div>
+    <div class="xbtn" title="Close">
+      <svg viewBox="0 0 24 24"><path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z"/></svg>
+    </div>
+
+    <div class="headBox">
+      <div class="titleRow" id="titleRowB"><h1>Connect Apps</h1><div id="chipSlotB"></div></div>
+      <div class="searchRow headItem" id="searchRowB"></div>
+    </div>
+
+    <div class="scroll" id="scrollEl">
+      <div class="scrollInner" id="scrollInner">
+        <div class="titleRow headItem" id="titleRowA" style="display:none"><h1>Connect Apps</h1><div id="chipSlotA"></div></div>
+        <div class="searchRow headItem" id="searchRowA" style="display:none"></div>
+        <div class="pillsRow" id="pillsRow"></div>
+        <div id="sections"></div>
+      </div>
+    </div>
+    <div class="drop" id="drop"><div class="dtitle">Plugins</div><div id="dlist"></div></div>
+  </div>
+  <div class="hint" id="badge"></div>
+
+<script>
+const BRANDS = {"vercel": {"hex": "#000000", "d": "m12 1.608 12 20.784H0Z"}, "sentry": {"hex": "#362D59", "d": "M13.91 2.505c-.873-1.448-2.972-1.448-3.844 0L6.904 7.92a15.478 15.478 0 0 1 8.53 12.811h-2.221A13.301 13.301 0 0 0 5.784 9.814l-2.926 5.06a7.65 7.65 0 0 1 4.435 5.848H2.194a.365.365 0 0 1-.298-.534l1.413-2.402a5.16 5.16 0 0 0-1.614-.913L.296 19.275a2.182 2.182 0 0 0 .812 2.999 2.24 2.24 0 0 0 1.086.288h6.983a9.322 9.322 0 0 0-3.845-8.318l1.11-1.922a11.47 11.47 0 0 1 4.95 10.24h5.915a17.242 17.242 0 0 0-7.885-15.28l2.244-3.845a.37.37 0 0 1 .504-.13c.255.14 9.75 16.708 9.928 16.9a.365.365 0 0 1-.327.543h-2.287c.029.612.029 1.223 0 1.831h2.297a2.206 2.206 0 0 0 1.922-3.31z"}, "chrome-devtools": {"hex": "#4285F4", "d": "M12 0C8.21 0 4.831 1.757 2.632 4.501l3.953 6.848A5.454 5.454 0 0 1 12 6.545h10.691A12 12 0 0 0 12 0zM1.931 5.47A11.943 11.943 0 0 0 0 12c0 6.012 4.42 10.991 10.189 11.864l3.953-6.847a5.45 5.45 0 0 1-6.865-2.29zm13.342 2.166a5.446 5.446 0 0 1 1.45 7.09l.002.001h-.002l-5.344 9.257c.206.01.413.016.621.016 6.627 0 12-5.373 12-12 0-1.54-.29-3.011-.818-4.364zM12 16.364a4.364 4.364 0 1 1 0-8.728 4.364 4.364 0 0 1 0 8.728Z"}, "cloudflare": {"hex": "#F38020", "d": "M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.6045-.499-1.0615-.5205l-8.6592-.1123a.1559.1559 0 0 1-.1333-.0713c-.0283-.042-.0351-.0986-.021-.1553.0278-.084.1123-.1484.2036-.1562l8.7359-.1123c1.0351-.0489 2.1601-.8868 2.5537-1.9136l.499-1.3013c.0215-.0561.0293-.1128.0147-.168-.5625-2.5463-2.835-4.4453-5.5499-4.4453-2.5039 0-4.6284 1.6177-5.3876 3.8614-.4927-.3658-1.1187-.5625-1.794-.499-1.2026.119-2.1665 1.083-2.2861 2.2856-.0283.31-.0069.6128.0635.894C1.5683 13.171 0 14.7754 0 16.752c0 .1748.0142.3515.0352.5273.0141.083.0844.1475.1689.1475h15.9814c.0909 0 .1758-.0645.2032-.1553l.12-.4268zm2.7568-5.5634c-.0771 0-.1611 0-.2383.0112-.0566 0-.1054.0415-.127.0976l-.3378 1.1744c-.1475.5068-.0918.9707.1543 1.3164.2256.3164.6055.498 1.0625.5195l1.8437.1133c.0557 0 .1055.0263.1329.0703.0283.043.0351.1074.0214.1562-.0283.084-.1132.1485-.204.1553l-1.921.1123c-1.041.0488-2.1582.8867-2.5527 1.914l-.1406.3585c-.0283.0713.0215.1416.0986.1416h6.5977c.0771 0 .1474-.0489.169-.126.1122-.4082.1757-.837.1757-1.2803 0-2.6025-2.125-4.727-4.7344-4.727"}, "mongodb": {"hex": "#47A248", "d": "M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z"}, "mongodb-atlas": {"hex": "#47A248", "d": "M17.193 9.555c-1.264-5.58-4.252-7.414-4.573-8.115-.28-.394-.53-.954-.735-1.44-.036.495-.055.685-.523 1.184-.723.566-4.438 3.682-4.74 10.02-.282 5.912 4.27 9.435 4.888 9.884l.07.05A73.49 73.49 0 0111.91 24h.481c.114-1.032.284-2.056.51-3.07.417-.296.604-.463.85-.693a11.342 11.342 0 003.639-8.464c.01-.814-.103-1.662-.197-2.218zm-5.336 8.195s0-8.291.275-8.29c.213 0 .49 10.695.49 10.695-.381-.045-.765-1.76-.765-2.405z"}, "neon": {"hex": "#34D59A", "d": "M24 0V24l-9.365-8.045V24H0V0ZM2.942 21.087h8.751V9.563l9.365 8.204V2.919L2.942 2.914Z"}, "wix": {"hex": "#0C6EFC", "d": "m0 7.354 2.113 9.292h.801a1.54 1.54 0 0 0 1.506-1.218l1.351-6.34a.171.171 0 0 1 .167-.137c.08 0 .15.058.167.137l1.352 6.34a1.54 1.54 0 0 0 1.506 1.218h.805l2.113-9.292h-.565c-.62 0-1.159.43-1.296 1.035l-1.26 5.545-1.106-5.176a1.76 1.76 0 0 0-2.19-1.324c-.639.176-1.113.716-1.251 1.365l-1.094 5.127-1.26-5.537A1.33 1.33 0 0 0 .563 7.354H0zm13.992 0a.951.951 0 0 0-.951.95v8.342h.635a.952.952 0 0 0 .951-.95V7.353h-.635zm1.778 0 3.158 4.66-3.14 4.632h1.325c.368 0 .712-.181.918-.486l1.756-2.59a.12.12 0 0 1 .197 0l1.754 2.59c.206.305.55.486.918.486h1.326l-3.14-4.632L24 7.354h-1.326c-.368 0-.712.181-.918.486l-1.772 2.617a.12.12 0 0 1-.197 0L18.014 7.84a1.108 1.108 0 0 0-.918-.486H15.77z"}, "netlify": {"hex": "#00C7B7", "d": "M6.49 19.04h-.23L5.13 17.9v-.23l1.73-1.71h1.2l.15.15v1.2L6.5 19.04ZM5.13 6.31V6.1l1.13-1.13h.23L8.2 6.68v1.2l-.15.15h-1.2L5.13 6.31Zm9.96 9.09h-1.65l-.14-.13v-3.83c0-.68-.27-1.2-1.1-1.23-.42 0-.9 0-1.43.02l-.07.08v4.96l-.14.14H8.9l-.13-.14V8.73l.13-.14h3.7a2.6 2.6 0 0 1 2.61 2.6v4.08l-.13.14Zm-8.37-2.44H.14L0 12.82v-1.64l.14-.14h6.58l.14.14v1.64l-.14.14Zm17.14 0h-6.58l-.14-.14v-1.64l.14-.14h6.58l.14.14v1.64l-.14.14ZM11.05 6.55V1.64l.14-.14h1.65l.14.14v4.9l-.14.14h-1.65l-.14-.13Zm0 15.81v-4.9l.14-.14h1.65l.14.13v4.91l-.14.14h-1.65l-.14-.14Z"}, "figma": {"hex": "#F24E1E", "d": "M15.852 8.981h-4.588V0h4.588c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.491-4.49 4.491zM12.735 7.51h3.117c1.665 0 3.019-1.355 3.019-3.019s-1.355-3.019-3.019-3.019h-3.117V7.51zm0 1.471H8.148c-2.476 0-4.49-2.014-4.49-4.49S5.672 0 8.148 0h4.588v8.981zm-4.587-7.51c-1.665 0-3.019 1.355-3.019 3.019s1.354 3.02 3.019 3.02h3.117V1.471H8.148zm4.587 15.019H8.148c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h4.588v8.98zM8.148 8.981c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h3.117V8.981H8.148zM8.172 24c-2.489 0-4.515-2.014-4.515-4.49s2.014-4.49 4.49-4.49h4.588v4.441c0 2.503-2.047 4.539-4.563 4.539zm-.024-7.51a3.023 3.023 0 0 0-3.019 3.019c0 1.665 1.365 3.019 3.044 3.019 1.705 0 3.093-1.376 3.093-3.068v-2.97H8.148zm7.704 0h-.098c-2.476 0-4.49-2.014-4.49-4.49s2.014-4.49 4.49-4.49h.098c2.476 0 4.49 2.014 4.49 4.49s-2.014 4.49-4.49 4.49zm-.097-7.509c-1.665 0-3.019 1.355-3.019 3.019s1.355 3.019 3.019 3.019h.098c1.665 0 3.019-1.355 3.019-3.019s-1.355-3.019-3.019-3.019h-.098z"}, "railway": {"hex": "#0B0D0E", "d": "M.113 10.27A13.026 13.026 0 000 11.48h18.23c-.064-.125-.15-.237-.235-.347-3.117-4.027-4.793-3.677-7.19-3.78-.8-.034-1.34-.048-4.524-.048-1.704 0-3.555.005-5.358.01-.234.63-.459 1.24-.567 1.737h9.342v1.216H.113v.002zm18.26 2.426H.009c.02.326.05.645.094.961h16.955c.754 0 1.179-.429 1.315-.96zm-17.318 4.28s2.81 6.902 10.93 7.024c4.855 0 9.027-2.883 10.92-7.024H1.056zM11.988 0C7.5 0 3.593 2.466 1.531 6.108l4.75-.005v-.002c3.71 0 3.849.016 4.573.047l.448.016c1.563.052 3.485.22 4.996 1.364.82.621 2.007 1.99 2.712 2.965.654.902.842 1.94.396 2.934-.408.914-1.289 1.458-2.353 1.458H.391s.099.42.249.886h22.748A12.026 12.026 0 0024 12.005C24 5.377 18.621 0 11.988 0z"}, "stripe": {"hex": "#635BFF", "d": "M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.594-7.305h.003z"}, "supabase": {"hex": "#3FCF8E", "d": "M11.9 1.036c-.015-.986-1.26-1.41-1.874-.637L.764 12.05C-.33 13.427.65 15.455 2.409 15.455h9.579l.113 7.51c.014.985 1.259 1.408 1.873.636l9.262-11.653c1.093-1.375.113-3.403-1.645-3.403h-9.642z"}, "datadog": {"hex": "#632CA6", "d": "M19.57 17.04l-1.997-1.316-1.665 2.782-1.937-.567-1.706 2.604.087.82 9.274-1.71-.538-5.794zm-8.649-2.498l1.488-.204c.241.108.409.15.697.223.45.117.97.23 1.741-.16.18-.088.553-.43.704-.625l6.096-1.106.622 7.527-10.444 1.882zm11.325-2.712l-.602.115L20.488 0 .789 2.285l2.427 19.693 2.306-.334c-.184-.263-.471-.581-.96-.989-.68-.564-.44-1.522-.039-2.127.53-1.022 3.26-2.322 3.106-3.956-.056-.594-.15-1.368-.702-1.898-.02.22.017.432.017.432s-.227-.289-.34-.683c-.112-.15-.2-.199-.319-.4-.085.233-.073.503-.073.503s-.186-.437-.216-.807c-.11.166-.137.48-.137.48s-.241-.69-.186-1.062c-.11-.323-.436-.965-.343-2.424.6.421 1.924.321 2.44-.439.171-.251.288-.939-.086-2.293-.24-.868-.835-2.16-1.066-2.651l-.028.02c.122.395.374 1.223.47 1.625.293 1.218.372 1.642.234 2.204-.116.488-.397.808-1.107 1.165-.71.358-1.653-.514-1.713-.562-.69-.55-1.224-1.447-1.284-1.883-.062-.477.275-.763.445-1.153-.243.07-.514.192-.514.192s.323-.334.722-.624c.165-.109.262-.178.436-.323a9.762 9.762 0 0 0-.456.003s.42-.227.855-.392c-.318-.014-.623-.003-.623-.003s.937-.419 1.678-.727c.509-.208 1.006-.147 1.286.257.367.53.752.817 1.569.996.501-.223.653-.337 1.284-.509.554-.61.99-.688.99-.688s-.216.198-.274.51c.314-.249.66-.455.66-.455s-.134.164-.259.426l.03.043c.366-.22.797-.394.797-.394s-.123.156-.268.358c.277-.002.838.012 1.056.037 1.285.028 1.552-1.374 2.045-1.55.618-.22.894-.353 1.947.68.903.888 1.609 2.477 1.259 2.833-.294.295-.874-.115-1.516-.916a3.466 3.466 0 0 1-.716-1.562 1.533 1.533 0 0 0-.497-.85s.23.51.23.96c0 .246.03 1.165.424 1.68-.039.076-.057.374-.1.43-.458-.554-1.443-.95-1.604-1.067.544.445 1.793 1.468 2.273 2.449.453.927.186 1.777.416 1.997.065.063.976 1.197 1.15 1.767.306.994.019 2.038-.381 2.685l-1.117.174c-.163-.045-.273-.068-.42-.153.08-.143.241-.5.243-.572l-.063-.111c-.348.492-.93.97-1.414 1.245-.633.359-1.363.304-1.838.156-1.348-.415-2.623-1.327-2.93-1.566 0 0-.01.191.048.234.34.383 1.119 1.077 1.872 1.56l-1.605.177.759 5.908c-.337.048-.39.071-.757.124-.325-1.147-.946-1.895-1.624-2.332-.599-.384-1.424-.47-2.214-.314l-.05.059a2.851 2.851 0 0 1 1.863.444c.654.413 1.181 1.481 1.375 2.124.248.822.42 1.7-.248 2.632-.476.662-1.864 1.028-2.986.237.3.481.705.876 1.25.95.809.11 1.577-.03 2.106-.574.452-.464.69-1.434.628-2.456l.714-.104.258 1.834 11.827-1.424zM15.05 6.848c-.034.075-.085.125-.007.37l.004.014.013.032.032.073c.14.287.295.558.552.696.067-.011.136-.019.207-.023.242-.01.395.028.492.08.009-.048.01-.119.005-.222-.018-.364.072-.982-.626-1.308-.264-.122-.634-.084-.757.068a.302.302 0 0 1 .058.013c.186.066.06.13.027.207m1.958 3.392c-.092-.05-.52-.03-.821.005-.574.068-1.193.267-1.328.372-.247.191-.135.523.047.66.511.382.96.638 1.432.575.29-.038.546-.497.728-.914.124-.288.124-.598-.058-.698m-5.077-2.942c.162-.154-.805-.355-1.556.156-.554.378-.571 1.187-.041 1.646.053.046.096.078.137.104a4.77 4.77 0 0 1 1.396-.412c.113-.125.243-.345.21-.745-.044-.542-.455-.456-.146-.749"}, "unity": {"hex": "#FFFFFF", "d": "m12.9288 4.2939 3.7997 2.1929c.1366.077.1415.2905 0 .3675l-4.515 2.6076a.4192.4192 0 0 1-.4246 0L7.274 6.8543c-.139-.0745-.1415-.293 0-.3675l3.7972-2.193V0L1.3758 5.5977V16.793l3.7177-2.1456v-4.3858c-.0025-.1565.1813-.2682.318-.1838l4.5148 2.6076a.4252.4252 0 0 1 .2136.3676v5.2127c.0025.1565-.1813.2682-.3179.1838l-3.7996-2.1929-3.7178 2.1457L12 24l9.6954-5.5977-3.7178-2.1457-3.7996 2.1929c-.1341.082-.3229-.0248-.3179-.1838V13.053c0-.1565.087-.2956.2136-.3676l4.5149-2.6076c.134-.082.3228.0224.3179.1838v4.3858l3.7177 2.1456V5.5977L12.9288 0Z"}, "calcom": {"hex": "#292929", "d": "M2.408 14.488C1.035 14.488 0 13.4 0 12.058c0-1.346.982-2.443 2.408-2.443.758 0 1.282.233 1.691.765l-.66.55a1.343 1.343 0 0 0-1.03-.442c-.93 0-1.44.711-1.44 1.57 0 .86.559 1.557 1.44 1.557.413 0 .765-.147 1.043-.443l.651.573c-.391.51-.929.743-1.695.743zM6.948 10.913h.89v3.49h-.89v-.51c-.185.362-.493.604-1.083.604-.943 0-1.695-.82-1.695-1.826 0-1.007.752-1.825 1.695-1.825.585 0 .898.241 1.083.604zm.026 1.758c0-.546-.374-.998-.964-.998-.568 0-.938.457-.938.998 0 .528.37.998.938.998.586 0 .964-.456.964-.998zM8.467 9.503h.89v4.895h-.89zM9.752 13.937a.53.53 0 0 1 .542-.528c.313 0 .533.242.533.528a.527.527 0 0 1-.533.537.534.534 0 0 1-.542-.537zM14.23 13.839c-.33.403-.832.658-1.426.658a1.806 1.806 0 0 1-1.84-1.826c0-1.007.778-1.825 1.84-1.825.572 0 1.07.241 1.4.622l-.687.577c-.172-.215-.396-.376-.713-.376-.568 0-.938.456-.938.998 0 .541.37.997.938.997.343 0 .58-.179.757-.42zM14.305 12.671c0-1.007.78-1.825 1.84-1.825 1.061 0 1.84.818 1.84 1.825 0 1.007-.779 1.826-1.84 1.826-1.06-.005-1.84-.82-1.84-1.826zm2.778 0c0-.546-.37-.998-.938-.998-.568-.004-.937.452-.937.998 0 .542.37.998.937.998.568 0 .938-.456.938-.998zM24 12.269v2.13h-.89v-1.911c0-.604-.281-.864-.704-.864-.396 0-.678.197-.678.864v1.91h-.89v-1.91c0-.604-.285-.864-.704-.864-.396 0-.744.197-.744.864v1.91h-.89v-3.49h.89v.484c.185-.376.52-.564 1.035-.564.489 0 .898.241 1.123.649.224-.417.554-.65 1.153-.65.731.005 1.299.56 1.299 1.442z"}, "pi-security": {"hex": "#000000", "d": "M0 0v24h6v-6h6v-6H6V6h6v6h6V0Zm18 12v12h6V12Z"}, "clerk": {"hex": "#6C47FF", "d": "m21.47 20.829-2.881-2.881a.572.572 0 0 0-.7-.084 6.854 6.854 0 0 1-7.081 0 .576.576 0 0 0-.7.084l-2.881 2.881a.576.576 0 0 0-.103.69.57.57 0 0 0 .166.186 12 12 0 0 0 14.113 0 .58.58 0 0 0 .239-.423.576.576 0 0 0-.172-.453Zm.002-17.668-2.88 2.88a.569.569 0 0 1-.701.084A6.857 6.857 0 0 0 8.724 8.08a6.862 6.862 0 0 0-1.222 3.692 6.86 6.86 0 0 0 .978 3.764.573.573 0 0 1-.083.699l-2.881 2.88a.567.567 0 0 1-.864-.063A11.993 11.993 0 0 1 6.771 2.7a11.99 11.99 0 0 1 14.637-.405.566.566 0 0 1 .232.418.57.57 0 0 1-.168.448Zm-7.118 12.261a3.427 3.427 0 1 0 0-6.854 3.427 3.427 0 0 0 0 6.854Z"}, "notion": {"hex": "#000000", "d": "M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z"}, "linear": {"hex": "#5E6AD2", "d": "M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"}, "googledocs": {"hex": "#4285F4", "d": "M14.727 6.727H14V0H4.91c-.905 0-1.637.732-1.637 1.636v20.728c0 .904.732 1.636 1.636 1.636h14.182c.904 0 1.636-.732 1.636-1.636V6.727h-6zm-.545 10.455H7.09v-1.364h7.09v1.364zm2.727-3.273H7.091v-1.364h9.818v1.364zm0-3.273H7.091V9.273h9.818v1.363zM14.727 6h6l-6-6v6z"}, "gitlab": {"hex": "#FC6D26", "d": "m23.6004 9.5927-.0337-.0862L20.3.9814a.851.851 0 0 0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 0-.29-.4412.8748.8748 0 0 0-.9997-.0537.8585.8585 0 0 0-.3362.4049L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 2.0094-7.003z"}, "1password": {"hex": "#3B66BC", "d": "M12 0c6.627 0 12 5.373 12 12 0 6.628-5.373 12-12 12S0 18.628 0 12C0 5.373 5.373 0 12 0m-.893 4.86c-.485 0-.727.001-.913.095a.87.87 0 0 0-.378.379c-.094.185-.095.428-.095.912v2.747c0 .12 0 .182.016.238q.02.075.065.138a1 1 0 0 0 .175.162l.695.564c.113.092.17.139.19.194a.22.22 0 0 1 0 .15c-.02.056-.077.102-.19.194l-.695.564a1 1 0 0 0-.175.162.4.4 0 0 0-.065.138 1 1 0 0 0-.016.238v6.019c0 .485 0 .728.095.913a.87.87 0 0 0 .378.378c.186.094.428.094.913.094h1.786c.485 0 .727 0 .913-.094a.87.87 0 0 0 .378-.378c.095-.185.095-.428.095-.913v-2.747c0-.12 0-.182-.016-.238a.4.4 0 0 0-.065-.138 1 1 0 0 0-.175-.162l-.695-.564c-.113-.092-.17-.138-.191-.193a.22.22 0 0 1 0-.152c.02-.055.078-.1.19-.193l.696-.564a1 1 0 0 0 .175-.162.4.4 0 0 0 .065-.138 1 1 0 0 0 .016-.238V6.246c0-.484 0-.727-.095-.912a.87.87 0 0 0-.378-.379c-.186-.094-.428-.094-.913-.094Z"}, "atlassian": {"hex": "#0052CC", "d": "M7.12 11.084a.683.683 0 00-1.16.126L.075 22.974a.703.703 0 00.63 1.018h8.19a.678.678 0 00.63-.39c1.767-3.65.696-9.203-2.406-12.52zM11.434.386a15.515 15.515 0 00-.906 15.317l3.95 7.9a.703.703 0 00.628.388h8.19a.703.703 0 00.63-1.017L12.63.38a.664.664 0 00-1.196.006z"}, "appwrite": {"hex": "#FD366E", "d": "M24 17.291v5.29H10.557A10.58 10.58 0 0 1 0 12.715v-1.43c.048-.735.174-1.463.374-2.171C1.63 4.673 5.713 1.419 10.557 1.419c4.844 0 8.927 3.254 10.183 7.695h-5.749a5.283 5.283 0 0 0-4.434-2.404 5.282 5.282 0 0 0-4.434 2.404A5.23 5.23 0 0 0 5.267 12a5.27 5.27 0 0 0 1.66 3.848 5.27 5.27 0 0 0 3.63 1.443H24Zm0-6.734v5.291h-9.813A5.276 5.276 0 0 0 15.848 12c0-.5-.07-.984-.199-1.443H24Z"}, "github": {"hex": "#181717", "d": "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"}, "googlecalendar": {"hex": "#4285F4", "d": "M18.316 5.684H24v12.632h-5.684V5.684zM5.684 24h12.632v-5.684H5.684V24zM18.316 5.684V0H1.895A1.894 1.894 0 0 0 0 1.895v16.421h5.684V5.684h12.632zm-7.207 6.25v-.065c.272-.144.5-.349.687-.617s.279-.595.279-.982c0-.379-.099-.72-.3-1.025a2.05 2.05 0 0 0-.832-.714 2.703 2.703 0 0 0-1.197-.257c-.6 0-1.094.156-1.481.467-.386.311-.65.671-.793 1.078l1.085.452c.086-.249.224-.461.413-.633.189-.172.445-.257.767-.257.33 0 .602.088.816.264a.86.86 0 0 1 .322.703c0 .33-.12.589-.36.778-.24.19-.535.284-.886.284h-.567v1.085h.633c.407 0 .748.109 1.02.327.272.218.407.499.407.843 0 .336-.129.614-.387.832s-.565.327-.924.327c-.351 0-.651-.103-.897-.311-.248-.208-.422-.502-.521-.881l-1.096.452c.178.616.505 1.082.977 1.401.472.319.984.478 1.538.477a2.84 2.84 0 0 0 1.293-.291c.382-.193.684-.458.902-.794.218-.336.327-.72.327-1.149 0-.429-.115-.797-.344-1.105a2.067 2.067 0 0 0-.881-.689zm2.093-1.931l.602.913L15 10.045v5.744h1.187V8.446h-.827l-2.158 1.557zM22.105 0h-3.289v5.184H24V1.895A1.894 1.894 0 0 0 22.105 0zm-3.289 23.5l4.684-4.684h-4.684V23.5zM0 22.105C0 23.152.848 24 1.895 24h3.289v-5.184H0v3.289z"}, "googledrive": {"hex": "#4285F4", "d": "M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"}, "gmail": {"hex": "#EA4335", "d": "M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"}, "hubspot": {"hex": "#FF5C35", "d": "M18.164 7.93V5.084a2.198 2.198 0 001.267-1.978v-.067A2.2 2.2 0 0017.238.845h-.067a2.2 2.2 0 00-2.193 2.193v.067a2.196 2.196 0 001.252 1.973l.013.006v2.852a6.22 6.22 0 00-2.969 1.31l.012-.01-7.828-6.095A2.497 2.497 0 104.3 4.656l-.012.006 7.697 5.991a6.176 6.176 0 00-1.038 3.446c0 1.343.425 2.588 1.147 3.607l-.013-.02-2.342 2.343a1.968 1.968 0 00-.58-.095h-.002a2.033 2.033 0 102.033 2.033 1.978 1.978 0 00-.1-.595l.005.014 2.317-2.317a6.247 6.247 0 104.782-11.134l-.036-.005zm-.964 9.378a3.206 3.206 0 113.215-3.207v.002a3.206 3.206 0 01-3.207 3.207z"}};
+const SIDEBAR_CUR = ["M20 10.4004C20 9.26396 19.9996 8.47129 19.9492 7.85449C19.906 7.32513 19.8298 6.99244 19.7217 6.74121L19.6729 6.6377C19.4211 6.14381 19.0383 5.73057 18.5684 5.44238L18.3623 5.32715C18.099 5.19296 17.7507 5.10023 17.1455 5.05078C16.5287 5.00041 15.736 5 14.5996 5H9.40039C8.26396 5 7.47129 5.00041 6.85449 5.05078C6.32513 5.09403 5.99244 5.17016 5.74121 5.27832L5.6377 5.32715C5.14381 5.57888 4.73057 5.96166 4.44238 6.43164L4.32715 6.6377C4.19296 6.90105 4.10023 7.24933 4.05078 7.85449C4.00041 8.47129 4 9.26396 4 10.4004V13.5996C4 14.736 4.00041 15.5287 4.05078 16.1455C4.10023 16.7507 4.19296 17.099 4.32715 17.3623L4.44238 17.5684C4.73057 18.0383 5.14381 18.4211 5.6377 18.6729L5.74121 18.7217C5.99244 18.8298 6.32513 18.906 6.85449 18.9492C7.47129 18.9996 8.26396 19 9.40039 19H14.5996C15.736 19 16.5287 18.9996 17.1455 18.9492C17.7507 18.8998 18.099 18.807 18.3623 18.6729L18.5684 18.5576C19.0383 18.2694 19.4211 17.8562 19.6729 17.3623L19.7217 17.2588C19.8298 17.0076 19.906 16.6749 19.9492 16.1455C19.9996 15.5287 20 14.736 20 13.5996V10.4004ZM22 13.5996C22 14.7032 22.001 15.5914 21.9424 16.3086C21.8903 16.9464 21.7877 17.5166 21.5605 18.0459L21.4551 18.2695C21.0056 19.1516 20.3054 19.8798 19.4443 20.3623L19.2695 20.4551C18.6773 20.7567 18.0373 20.8828 17.3086 20.9424C16.5914 21.001 15.7032 21 14.5996 21H9.40039C8.29681 21 7.40857 21.001 6.69141 20.9424C6.05359 20.8903 5.48344 20.7877 4.9541 20.5605L4.73047 20.4551C3.84841 20.0056 3.12016 19.3054 2.6377 18.4443L2.54492 18.2695C2.24327 17.6773 2.11716 17.0373 2.05762 16.3086C1.99903 15.5914 2 14.7032 2 13.5996V10.4004C2 9.29681 1.99903 8.40857 2.05762 7.69141C2.11716 6.9627 2.24327 6.32266 2.54492 5.73047L2.6377 5.55567C3.12016 4.6946 3.84841 3.99436 4.73047 3.54492L4.9541 3.43945C5.48344 3.21233 6.05359 3.10973 6.69141 3.05762C7.40857 2.99903 8.29681 3 9.40039 3H14.5996C15.7032 3 16.5914 2.99903 17.3086 3.05762C18.0373 3.11716 18.6773 3.24327 19.2695 3.54492L19.4443 3.6377C20.3054 4.12016 21.0056 4.84841 21.4551 5.73047L21.5605 5.9541C21.7877 6.48344 21.8903 7.05359 21.9424 7.69141C22.001 8.40857 22 9.29681 22 10.4004V13.5996Z", "M6 8C6 7.44772 6.44772 7 7 7H10C10.5523 7 11 7.44772 11 8V16C11 16.5523 10.5523 17 10 17H7C6.44772 17 6 16.5523 6 16V8Z"];
+
+/* ---------- plugin catalog (names from app) ---------- */
+const SECTIONS = [
+  { name:'Recommended for you', viewAll:true, items:[
+    ['vercel','Vercel','Vercel deployment platform integration. Acce…','added'],
+    ['sentry','Sentry','Sentry error monitoring integration. Acce…','add'],
+    ['chrome-devtools','Chrome DevTools','Chrome DevTools integration. Control…','added'],
+    ['cloudflare','Cloudflare','Skills for the Cloudflare developer platfor…','add'],
+    ['superpowers','Superpowers','Core skills library for software developm…','add'],
+    ['base44','Base44','Build and deploy Base44 full-stack apps…','add'],
+  ]},
+  { name:'Deployment', viewAll:true, items:[
+    ['netlify','Netlify','Skills for the Netlify platform: serverless…','add'],
+    ['railway','Railway','Railway deployment platform integration…','add'],
+    ['vercel2','Vercel Deploy','Vercel deployment platform…','add'],
+    ['neon','Neon','Serverless Postgres platform…','add'],
+  ]},
+  { name:'Development', viewAll:true, items:[
+    ['wix','Wix','Build, manage, and deploy Wix sites an…','add'],
+    ['firecrawl','Firecrawl','Turn any website into clean, LLM-ready…','add'],
+    ['figma','Figma','Official Figma MCP server and skills for…','add'],
+    ['exa','Exa','Exa is the fastest and most accurate we…','add'],
+    ['tavily','Tavily','Web search, content extraction, websit…','add'],
+    ['octen','Octen','Live web and news search, broad multi…','add'],
+    ['stripe','Stripe','Stripe development plugin for Grok Build…','add'],
+    ['tinyfish','Tinyfish','Web search, content extraction, and go…','add'],
+  ]},
+  { name:'Productivity', viewAll:true, items:[
+    ['notion','Notion','Search Notion pages and databases,…','added'],
+    ['atlassian','Atlassian','Atlassian plugin for Cursor with M…','add'],
+    ['linear','Linear','The product development system…','add'],
+    ['canva','Canva','Create, edit, review, resize, and b…','add'],
+    ['googledocs','Google Docs','Read, create, and edit documents…','add'],
+    ['gitlab','GitLab','Connect Cursor to GitLab with th…','add'],
+  ]},
+  { name:'Password Managers', viewAll:true, items:[
+    ['1password','1Password','Share a dedicated 1Password vault…','connect'],
+  ]},
+  { name:'Monitoring', viewAll:true, items:[
+    ['datadog','Datadog','Observability and monitoring…','add'],
+    ['supabase','Supabase','Supabase platform integration…','add'],
+    ['mongodb','MongoDB','MongoDB database skills…','add'],
+    ['neon2','Neon','Serverless Postgres…','add'],
+  ]},
+];
+
+const LETTER = { superpowers:['#e5c07b','S'], base44:['#8b5cf6','B'], firecrawl:['#3b82f6','F'],
+  exa:['#ef4444','E'], tavily:['#3b82f6','T'], octen:['#22d3ee','O'], tinyfish:['#f97316','T'],
+  canva:['linear-gradient(135deg,#8b5cf6,#06b6d4)','C'], vercel2:['#000','▲'] };
+const brandOf = s => BRANDS[s.replace(/2$/,'')] || BRANDS[s];
+
+/* ---------- svg helpers ---------- */
+const NS='http://www.w3.org/2000/svg';
+function svg(d, fill, size, vb){ const s=document.createElementNS(NS,'svg');
+  s.setAttribute('viewBox', vb||'0 0 24 24'); s.setAttribute('width',size); s.setAttribute('height',size);
+  const p=document.createElementNS(NS,'path'); p.setAttribute('d',d); p.setAttribute('fill',fill);
+  s.appendChild(p); return s; }
+
+function tileEl(key){
+  const b=brandOf(key);
+  const t=document.createElement('div');
+  if(b){ t.className='tile brand'; t.appendChild(svg(b.d,b.hex,21)); }
+  else{ const L=LETTER[key]||['#555','?']; t.className='tile letter';
+        t.style.background=L[0]; t.textContent=L[1]; }
+  return t;
+}
+function luminance(hex){ const n=parseInt(hex.slice(1),16);
+  return (0.299*(n>>16&255)+0.587*(n>>8&255)+0.114*(n&255))/255; }
+function chipTile(key){
+  const b=brandOf(key);
+  const t=document.createElement('div'); t.className='chipTile';
+  if(b){ t.style.background=b.hex; t.appendChild(svg(b.d, luminance(b.hex)>0.6?'#000':'#fff',11)); }
+  else { const L=LETTER[key]||['#555','?']; t.style.background=L[0];
+         t.innerHTML='<span style="font-size:9px;font-weight:700;color:#fff">'+L[1]+'</span>'; }
+  return t;
+}
+
+/* ---------- build shared pieces ---------- */
+const CHECK='<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const MAG='M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 20 9.5 4.5 4.5 0 0 1 15.5 14z';
+const BOT='M12 2a1 1 0 0 1 1 1v1.1A6.5 6.5 0 0 1 18.5 10v7a2.5 2.5 0 0 1-2.5 2.5h-8A2.5 2.5 0 0 1 5.5 17v-7A6.5 6.5 0 0 1 11 4.1V3a1 1 0 0 1 1-1zM8.5 11a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zm7 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z';
+const NE='M7 17 17 7M9 7h8v8';
+
+function connChip(){
+  const c=document.createElement('div'); c.className='connChip';
+  const st=document.createElement('div'); st.className='stack';
+  for(const k of ['clerk','chrome-devtools','vercel','supabase']) st.appendChild(chipTile(k));
+  c.appendChild(st);
+  c.insertAdjacentHTML('beforeend','<span>6 connected</span><span class="cv">›</span>');
+  return c;
+}
+function searchRow(){
+  const r=document.createElement('div'); r.className='searchRow headItem';
+  const f=document.createElement('div'); f.className='searchField';
+  f.appendChild(svg(MAG,'var(--dim)',14));
+  const i=document.createElement('input'); i.placeholder='Search across apps and skills';
+  i.className='srch';
+  f.appendChild(i);
+  const c=document.createElement('span'); c.className='clr'; c.textContent='Clear';
+  c.onclick=ev=>{ ev.stopPropagation(); i.value=''; f.classList.remove('has'); hideDrop(); };
+  f.appendChild(c);
+  const b=document.createElement('button'); b.className='tplBtn';
+  const bi=svg(BOT,'',14); bi.firstChild.setAttribute('class','botIco'); bi.classList.add('botIco');
+  b.appendChild(bi); b.insertAdjacentHTML('beforeend','Bot templates');
+  b.appendChild(svg(NE,'none',11)); b.lastChild.firstChild.setAttribute('stroke','var(--dim)');
+  b.lastChild.firstChild.setAttribute('fill','none');
+  r.appendChild(f); r.appendChild(b);
+  return r;
+}
+function pillRow(){
+  const r=document.createElement('div');
+  ['All','Deployment','Monitoring','Development','Database','Observability','Productivity','Security']
+    .forEach((n,i)=>{ const p=document.createElement('button');
+      p.className='pill '+(i?'off':'on'); p.textContent=n; r.appendChild(p); });
+  const m=document.createElement('button'); m.className='pill off morePill';
+  m.textContent='More ⌄'; r.appendChild(m);
+  return r;
+}
+function cardEl(it){
+  const [key,name,desc,state]=it;
+  const c=document.createElement('div'); c.className='card';
+  c.appendChild(tileEl(key));
+  const m=document.createElement('div'); m.className='meta';
+  m.innerHTML='<div class="nm">'+name+'</div><div class="ds">'+desc+'</div>';
+  c.appendChild(m);
+  if(state==='added'){ const a=document.createElement('div'); a.className='added';
+    a.innerHTML=CHECK+'Added'; c.appendChild(a); }
+  else { const b=document.createElement('button'); b.className='add';
+    b.textContent = state==='connect'?'Connect':'Add'; c.appendChild(b); }
+  return c;
+}
+
+/* ---------- populate ---------- */
+const modal=document.getElementById('modal');
+const scrollInner=document.getElementById('scrollInner');
+const scrollEl=document.getElementById('scrollEl');
+const pillsRow=document.getElementById('pillsRow');
+pillsRow.replaceChildren(...pillRow().childNodes);
+document.getElementById('chipSlotB').replaceWith(connChip());
+document.getElementById('chipSlotA').replaceWith(connChip());
+const searchA=searchRow(), searchB=searchRow();
+document.getElementById('searchRowA').replaceWith(searchA);
+document.getElementById('searchRowB').replaceWith(searchB);
+
+const sections=document.getElementById('sections');
+for(const s of SECTIONS){
+  const h=document.createElement('div'); h.className='secHead';
+  h.innerHTML='<h2>'+s.name+'</h2>'+(s.viewAll?'<a>View all</a>':'');
+  const g=document.createElement('div'); g.className='grid';
+  for(const it of s.items) g.appendChild(cardEl(it));
+  sections.appendChild(h); sections.appendChild(g);
+}
+
+/* ---------- search dropdown ---------- */
+const DROWS = [
+  ['chrome-devtools','Chrome DevTools for Agents'],
+  ['chrome-devtools','Modern Web Guidance'],
+  ['browseruse','Browser Use'],
+  ['chainguard','Chainguard'],
+  ['tuist','Tuist'],
+  ['pascal','Pascal'],
+  ['clerk','Clerk'],
+  ['aws-agents','AWS Agents'],
+  ['quo','Quo'],
+  ['helena','Helena'],
+  ['calcom','Calcom'],
+];
+Object.assign(LETTER, { browseruse:['#7c5c3f','B'], chainguard:['#7c3aed','C'], tuist:['#8b5cf6','T'],
+  pascal:['#1f2937','P'], 'aws-agents':['#f5f5f5','aws'], quo:['#0ea5e9','Q'], helena:['#3b82f6','H'] });
+
+/* ---------- sidebar toggle comparison ---------- */
+(function(){
+  const cur=document.getElementById('btnCurrent');
+  const s=document.createElementNS(NS,'svg'); s.setAttribute('viewBox','0 0 24 24');
+  for(const d of SIDEBAR_CUR){ const p=document.createElementNS(NS,'path');
+    p.setAttribute('d',d); p.setAttribute('fill','currentColor'); s.appendChild(p); }
+  cur.appendChild(s);
+  document.getElementById('btnChatGpt').innerHTML =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><line x1="9.5" y1="4.5" x2="9.5" y2="19.5"/></svg>';
+})();
+
+const drop=document.getElementById('drop'), dlist=document.getElementById('dlist');
+let selIdx=-1, dropItems=[];
+function miniTile(key){
+  const b=brandOf(key), t=document.createElement('div'); t.className='mini';
+  if(b){ t.appendChild(svg(b.d,b.hex,13)); }
+  else { const L=LETTER[key]||['#555','?']; t.classList.add('letter'); t.style.background=L[0];
+         t.style.fontSize= L[1].length>1 ? '8px':'11px'; t.textContent=L[1]; }
+  return t;
+}
+function markSel(){ [...dlist.children].forEach((r,i)=>r.classList.toggle('sel', mode==='after'&&i===selIdx));
+  const s=dlist.children[selIdx]; if(mode==='after'&&s) s.scrollIntoView({block:'nearest'}); }
+function renderDrop(q){
+  dropItems = DROWS.filter(it=>!q || it[1].toLowerCase().includes(q.toLowerCase()));
+  dlist.innerHTML='';
+  dropItems.forEach((it,i)=>{
+    const r=document.createElement('div'); r.className='drow';
+    r.appendChild(miniTile(it[0]));
+    r.insertAdjacentHTML('beforeend','<span class="nm">'+it[1]+'</span><span class="gt">›</span>');
+    r.onmouseenter=()=>{ if(mode==='after'){ selIdx=i; markSel(); } };
+    r.onclick=()=>choose(it);
+    dlist.appendChild(r);
+  });
+  selIdx = mode==='after' && dropItems.length ? 0 : -1; markSel();
+  placeDrop();
+  drop.style.display = dropItems.length ? 'block' : 'none';
+}
+function placeDrop(){
+  if(mode!=='after') return;
+  const mr=modal.getBoundingClientRect(), fr=searchA.querySelector('.searchField').getBoundingClientRect();
+  drop.style.left  = (fr.left   - mr.left)+'px';   /* same left edge as the field */
+  drop.style.right = (mr.right  - fr.right)+'px';  /* same width/right edge */
+  drop.style.top   = (fr.bottom - mr.top + 4)+'px';
+}
+function hideDrop(){ drop.style.display='none'; drop.style.left=drop.style.right=drop.style.top=''; selIdx=-1; }
+function choose(it){
+  document.querySelectorAll('.srch').forEach(inp=>{ inp.value=it[1]; inp.closest('.searchField').classList.add('has'); });
+  hideDrop();
+}
+document.querySelectorAll('.srch').forEach(inp=>{
+  inp.addEventListener('input', ()=>{
+    inp.closest('.searchField').classList.toggle('has', !!inp.value);
+    if(inp.value) renderDrop(inp.value); else hideDrop();
+  });
+  inp.addEventListener('keydown', e=>{
+    if(drop.style.display!=='block' || mode!=='after') return;
+    if(e.key==='ArrowDown'){ selIdx=Math.min(selIdx+1, dropItems.length-1); markSel(); e.preventDefault(); }
+    else if(e.key==='ArrowUp'){ selIdx=Math.max(selIdx-1, 0); markSel(); e.preventDefault(); }
+    else if(e.key==='Enter' && dropItems[selIdx]) choose(dropItems[selIdx]);
+    else if(e.key==='Escape') hideDrop();
+  });
+});
+
+/* ---------- mode wiring ---------- */
+const titleRowB=document.getElementById('titleRowB');
+const chipA=document.getElementById('chipSlotA'), chipB=document.getElementById('chipSlotB');
+let mode='before';
+
+const LEGEND = {
+  before:`<b>BEFORE — current Grok Shell:</b> scrolling collapses the "Connect Apps" row (it gets visibly
+          clipped mid-scroll) while the search row stays pinned and the category pills scroll away.
+          The ✕ hugs the corner (4px) so header buttons crowd it. Hovering a card row vs its Add button
+          looks identical — one hover tier. Type in the search field: the results list overshoots the
+          field's left edge, rows have no hover, ↑/↓ do nothing. In light theme the Bot templates glyph
+          keeps dark-theme ink (invisible) and the dropdown goes translucent/unreadable.
+          The strip above compares the sidebar toggle: our floating-tab glyph vs ChatGPT's
+          stroked panel-left — the swap is part of the fix set.`,
+  after:`<b>AFTER — Grok behavior:</b> the ✕ owns a fixed top band and never moves. Scroll down: the
+          title and pills scroll away, and the moment the search row reaches the top it jumps straight
+          into the empty band next to the ✕ — no sticky slide, no animation, no bounce (overscroll off).
+          Search field, Bot templates and the ✕ hover circle all share one 32px height. Bot templates
+          ends inside the margin, clear of the ✕ column. Cards stay inside the guides; Add pills get
+          22px side padding. Two hover tiers: row hover lifts the pill lightly, hovering the pill itself
+          steps darker. Type in search: the combo box matches the field's width, scrolls internally,
+          rows highlight on hover, and ↑/↓ + Enter + Esc work. Everything re-tints in light theme.`};
+
+function setMode(m){
+  if(typeof setPinned==='function') setPinned(false);
+  mode=m;
+  hideDrop();
+  modal.classList.toggle('before', m==='before');
+  modal.classList.toggle('after', m==='after');
+  const inScroll = m==='after';
+  const titleEl = document.querySelector(m==='after' ? '#titleRowA' : '#titleRowB');
+  const searchEl = m==='after' ? searchA : searchB;
+  if(inScroll){
+    titleEl.style.display='flex'; searchEl.style.display='flex';
+    scrollInner.insertBefore(searchEl, pillsRow);
+    scrollInner.insertBefore(titleEl, searchEl);
+    titleEl.style.marginTop='';
+    document.querySelector('.headBox').style.display='none';
+  } else {
+    document.querySelector('.headBox').style.display='';
+    titleEl.style.display=''; searchEl.style.display='';
+    document.getElementById('titleRowA').style.display='none'; searchA.style.display='none';
+    const hb=document.querySelector('.headBox');
+    hb.appendChild(titleEl); hb.appendChild(searchEl);
+    hb.insertBefore(titleEl, hb.firstChild.nextSibling);
+    hb.insertBefore(searchEl, titleEl.nextSibling);
+    titleEl.style.height='44px';
+    scrollEl.scrollTop=0;
+  }
+  document.getElementById('legend').innerHTML=LEGEND[m];
+  document.getElementById('badge').textContent =
+    m==='before' ? 'scroll ↓ — title clips, pills leave' : 'scroll ↓ — search jumps into the band next to ✕';
+}
+
+scrollEl.addEventListener('scroll', ()=>{
+  const s=scrollEl.scrollTop;
+  if(mode==='before'){
+    /* current behavior: collapse the title row height -> text visibly clips */
+    titleRowB.style.height=Math.max(0,44-s*1.3)+'px';
+  } else {
+    /* jump into the ✕ band only once the row's BOTTOM edge has scrolled past the top —
+       its slot is already off-screen, so no empty gap is left behind */
+    const anchor = pinned ? pinSpacer : searchA;
+    setPinned(s >= anchor.offsetTop + anchor.offsetHeight - 42);   /* bottom edge passes under the 42px band */
+  }
+});
+
+const pinBar=document.getElementById('pinBar'), pinSpacer=document.createElement('div');
+let pinned=false;
+function setPinned(p){
+  if(p===pinned) return;
+  pinned=p;
+  const focused = searchA.contains(document.activeElement);
+  if(p){ pinSpacer.style.height=searchA.offsetHeight+'px'; searchA.replaceWith(pinSpacer); pinBar.appendChild(searchA); }
+  else  { pinSpacer.replaceWith(searchA); }
+  modal.classList.toggle('pinned', p);
+  if(focused) searchA.querySelector('input').focus();
+  if(drop.style.display==='block') placeDrop();
+}
+
+document.getElementById('segMode').addEventListener('click',e=>{
+  if(e.target.dataset.m){ [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));
+    setMode(e.target.dataset.m); }
+});
+document.getElementById('segTheme').addEventListener('click',e=>{
+  if(e.target.dataset.t){ [...e.currentTarget.children].forEach(b=>b.classList.toggle('on',b===e.target));
+    modal.classList.toggle('light', e.target.dataset.t==='light');
+    modal.classList.toggle('dark',  e.target.dataset.t==='dark');
+    document.body.classList.toggle('light', e.target.dataset.t==='light'); }
+});
+document.getElementById('guides').addEventListener('change',e=>{
+  modal.classList.toggle('guides', e.target.checked);
+  document.getElementById('guideX').style.right = mode==='after' ? '64px' : '33px';
+});
+
+const boot = location.hash.includes('after') ? 'after' : 'before';
+if(boot==='after') [...document.getElementById('segMode').children].forEach(b=>b.classList.toggle('on',b.dataset.m==='after'));
+if(location.hash.includes('light')){ [...document.getElementById('segTheme').children].forEach(b=>b.classList.toggle('on',b.dataset.t==='light'));
+  modal.classList.add('light'); modal.classList.remove('dark'); document.body.classList.add('light'); }
+setMode(boot);
+if(location.hash.includes('scrolled')){ scrollEl.scrollTop=260; scrollEl.dispatchEvent(new Event('scroll')); }
+if(location.hash.includes('drop')){ const i=document.querySelector('.scrollInner .srch')||document.querySelector('.srch'); i.value='a'; i.closest('.searchField').classList.add('has'); renderDrop('a'); }
+</script>
+</body>
+</html>
