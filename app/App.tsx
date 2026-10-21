@@ -715,7 +715,7 @@ function App() {
   // under a gradient, and this much space at the top holds the controls.
   const TOP = 60;
   const pillHover = signal(false);
-  const panelGlyph = (right: boolean) => <Icon name="sidebar" size={18} color="#f5f5f585" />;
+  const panelGlyph = (right: boolean) => <Icon name="panelLeft" size={18} color="#f5f5f585" />;
   const iconBtn = { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" } as const;
   const sideToggle = () => (
     <View onPress={toggleSide} onContextMenu={toggleSideMode} activeOpacity={0.7} accessibilityLabel="toggle sidebar" style={iconBtn}>
@@ -1311,8 +1311,21 @@ function App() {
     }).catch(() => {});
   const plugins = signal<{ name: string; description: string; category: string; homepage: string | null; domains: string[]; keywords: string[]; installed: boolean }[]>([]);
   const pluginBusy = signal("");
-  const hdrT = signal(0); // market header collapse progress 0..1, scrubbed by onScroll
-  const hdrCollapsed = () => hdrT() >= 1;
+  // Market header (approved preview design/modal-scroll-preview.html): the ✕
+  // owns a fixed 42px band; "Connect Apps" sits on that line at rest. The
+  // search row scrolls with the content and, once its bottom edge passes
+  // under the band, jumps into the band next to the ✕ — no slide, no bounce.
+  const MK = { band: 42, title: 42, search: 44, left: 33, right: 48, head: 67 };
+  const mktY = signal(0); // market scroll offset
+  const mktPinned = signal(false);
+  const searchFocus = signal(false);
+  const fieldW = signal(0); // search field width — the dropdown matches it
+  const dropSel = signal(0);
+  const dropHidden = signal(false); // Esc hides the dropdown until the query changes
+  const catsMore = signal(false);
+  let mktSearchInput!: YNode;
+  let pinSearchInput!: YNode;
+  let dropScroll!: YNode;
   const hoverTpl = signal(false); // Bot templates pill
   const hoverChip = signal(false); // "N connected" chip
   const hoverX = signal(false); // modal close
@@ -1320,10 +1333,11 @@ function App() {
   const pluginQuery = signal("");
   const fetchPlugins = async () => {
     const d = await fetch(`${GEN}/plugins/catalog`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-    if (d?.plugins) plugins.set(d.plugins);
+    // the catalog is polled every 3s — only a real change may touch the signal
+    if (d?.plugins && JSON.stringify(d.plugins) !== JSON.stringify(plugins())) plugins.set(d.plugins);
   };
   effect(() => {
-    if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); return; }
+    if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); mktY.set(0); mktPinned.set(false); catsMore.set(false); return; }
     fetchPlugins();
     fetchMcp();
     fetchSkills();
@@ -1415,39 +1429,91 @@ function App() {
     for (let i = 0; i < list.length; i += 2) out.push(list.slice(i, i + 2));
     return out;
   };
-  // Marketplace row (Grok's metrics): 12px padding, 12 gap, 64 tall,
-  // radius-16 hover wash, 40px icon w/ hairline border, 13/500 name over
-  // 12/420 .66 desc. Row navigates; the Add pill installs (inner press wins).
+  // Marketplace row: 72 tall, stays inside the content margins (no bleed),
+  // 38px tile, description trimmed so the action keeps a clear gap, Add pill
+  // pinned to the row's right edge with 22px side padding. Two hover tiers:
+  // hovering the row lifts the pill lightly, hovering the pill steps darker.
   const hoverPlugin = signal("");
-  const pluginRow = (p: { name: string; description: string; installed: boolean }, side: "l" | "r" = "l") => (
+  const hoverAdd = signal("");
+  const pluginRow = (p: { name: string; description: string; installed: boolean }) => (
     <View
       onPress={() => pushNav({ page: "plugin", name: p.name })}
       onHoverIn={() => hoverPlugin.set(p.name)}
       onHoverOut={() => hoverPlugin() === p.name && hoverPlugin.set("")}
       activeOpacity={1}
-      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 64, paddingHorizontal: 12, marginLeft: side === "l" ? -12 : 0, marginRight: side === "r" ? -12 : 0, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f50a") : "transparent" }}
+      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 72, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f50b") : "transparent" }}
     >
-      {plugTile(p.name, 40)}
-      <View style={{ flex: 1, minWidth: 0 }}>
+      {plugTile(p.name, 38)}
+      <View style={{ flexShrink: 1, minWidth: 0, maxWidth: 200 }}>
         <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500", lineHeight: 18 }}>{pluginTitle(p.name)}</Text>
         <Text numberOfLines={1} style={{ color: tc("#f5f5f5a8"), fontSize: 12, lineHeight: 18 }}>{p.description}</Text>
       </View>
+      <View style={{ flex: 1 }} />
       {p.installed ? (
-        <Text style={{ fontSize: 12, paddingHorizontal: 8 }}>
+        <Text style={{ fontSize: 12, paddingLeft: 8 }}>
           <Icon name="check" size={13} color="#32bb78" />
           <Text style={{ color: tc("#f5f5f5a8") }}> Added</Text>
         </Text>
       ) : (
         <View
           onPress={() => installPlugin(p.name)}
+          onHoverIn={() => hoverAdd.set(p.name)}
+          onHoverOut={() => hoverAdd() === p.name && hoverAdd.set("")}
           activeOpacity={0.7}
-          style={{ height: 30, minWidth: 56, paddingHorizontal: 14, borderRadius: 15, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f51f") : tc("#f5f5f50a"), alignItems: "center", justifyContent: "center" }}
+          style={{ height: 30, minWidth: 56, paddingHorizontal: 22, borderRadius: 15, backgroundColor: hoverAdd() === p.name ? tc("#f5f5f52b") : hoverPlugin() === p.name ? tc("#f5f5f51a") : tc("#f5f5f50f"), alignItems: "center", justifyContent: "center" }}
         >
           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{pluginBusy() === p.name ? "Adding…" : "Add"}</Text>
         </View>
       )}
     </View>
   );
+  // Search combo box: matches the field's width, scrolls internally, rows
+  // highlight on hover, ↑/↓ move the selection, Enter opens it, Esc hides.
+  const DROP_ROW = 40, DROP_HEAD = 30, DROP_MAX = 330;
+  const dropOpen = () => pluginsOpen() && pluginPage() === "market" && pluginQuery() !== "" && !dropHidden() && pluginList().length > 0;
+  const dropChoose = () => {
+    const p = pluginList()[dropSel()];
+    if (p) pushNav({ page: "plugin", name: p.name });
+  };
+  const dropMove = (d: number) => {
+    const n = pluginList().length;
+    const i = Math.max(0, Math.min(n - 1, dropSel() + d));
+    dropSel.set(i);
+    const viewH = Math.min(DROP_MAX, DROP_HEAD + n * DROP_ROW + 8) - DROP_HEAD - 8;
+    const top = i * DROP_ROW;
+    if (dropScroll && (top < dropY || top + DROP_ROW > dropY + viewH)) {
+      dropY = top < dropY ? top : top + DROP_ROW - viewH;
+      dropScroll.scrollTo({ y: dropY, animated: false });
+    }
+  };
+  let dropY = 0;
+  // the market page (and its scroll) remounts when you come back to it — start unpinned
+  effect(() => {
+    if (pluginPage() === "market") return;
+    mktPinned.set(false);
+    mktY.set(0);
+  });
+  effect(() => {
+    pluginQuery();
+    dropHidden.set(false);
+    dropSel.set(0);
+    dropY = 0;
+  });
+  effect(() => {
+    if (!dropOpen()) return;
+    const off = keymap.bind({ up: () => dropMove(-1), down: () => dropMove(1), escape: () => dropHidden.set(true) }, { when: "always", repeat: true });
+    cleanup(off);
+  });
+  // The search row teleports between the scroll content and the ✕ band; a
+  // focused field keeps the keyboard focus across the jump.
+  const setMktScroll = (y: number) => {
+    mktY.set(y);
+    const pin = y >= MK.title + MK.search - MK.band;
+    if (pin === mktPinned()) return;
+    const hadFocus = searchFocus();
+    mktPinned.set(pin);
+    if (hadFocus) setTimeout(() => (pin ? pinSearchInput : mktSearchInput)?.focus(), 0);
+  };
   // Tools — "N of M enabled" collapsible with per-tool switches (Grok's
   // blue pill toggles). Used on plugin and connector detail pages.
   const toolSwitch = (on: boolean, onToggle: () => void) => (
@@ -3339,28 +3405,32 @@ function App() {
                 overflow: "hidden",
               }}
             >
-              {/* close */}
+              {/* close — on the market page it owns the fixed top band: 32px
+                  (same height as search + Bot templates), 8px after Bot templates */}
               <View
                 onPress={() => pluginsOpen.set(false)}
                 onHoverIn={() => hoverX.set(true)}
                 onHoverOut={() => hoverX.set(false)}
                 activeOpacity={1}
                 accessibilityLabel="Close plugins"
-                style={{ position: "absolute", top: 18, right: 4, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
+                style={pluginPage() === "market"
+                  ? { position: "absolute", top: (MK.band - 32) / 2, right: MK.head - 8 - 32, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50b") : "transparent" }
+                  : { position: "absolute", top: 18, right: 4, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
               >
-                <Icon name="close" size={17} color="#f5f5f5d9" />
+                <Icon name="close" size={15} color="#f5f5f5d9" />
               </View>
 
-              {/* ═══ MARKET page ═══
-                  Header (Grok's metrics): row1 = "Connect Apps" 17/500 ·
-                  icon-stack + "N connected" › chip · ✕; row2 = 28px search
-                  (radius 9999, hairline .5px, ⌕ 14px/.54, input 14) +
-                  32px "Bot templates ↗" (grok-bot-mark 18px). On scroll the
-                  title row + pills scroll away and row2 pins at the ✕ line. */}
+              {/* ═══ MARKET page ═══ (approved: design/modal-scroll-preview.html, After)
+                  At rest: "Connect Apps" + "N connected ›" on the ✕'s line, search
+                  row, pills, sections — one scroll, no bounce. Once the search
+                  row's bottom edge passes under the ✕ band it jumps into the band
+                  next to the ✕; title, pills and cards scroll away under it.
+                  Content margins 33 left / 48 right; header controls end at 67. */}
               <If when={pluginPage() === "market"}>
                 {(() => {
-                  const installedTiles = plugins().filter((p) => p.installed).slice(0, 4);
-                  const connCount = mcpServers().length + plugins().filter((p) => p.installed).length;
+                  // getters, read inside JSX — a direct read here would rebuild the whole page on every change
+                  const installedTiles = () => plugins().filter((p) => p.installed).slice(0, 4);
+                  const connCount = () => mcpServers().length + plugins().filter((p) => p.installed).length;
                   const connChip = (
                     <View
                       onPress={() => pushNav({ page: "connected" })}
@@ -3370,23 +3440,30 @@ function App() {
                       style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8, backgroundColor: hoverChip() ? tc("#f5f5f50a") : "transparent" }}
                     >
                       <View style={{ flexDirection: "row", paddingLeft: 2 }}>
-                        <Each of={installedTiles}>
+                        <Each of={installedTiles()}>
                           {(p, i) => (
                             <View style={{ marginLeft: i() === 0 ? 0 : -7 }}>{chipTile(p().name, 18)}</View>
                           )}
                         </Each>
                       </View>
-                      <Text style={{ color: tc("#f5f5f5a8"), fontSize: 13, lineHeight: 16 }}>{connCount} connected</Text>
+                      <Text style={{ color: tc("#f5f5f5a8"), fontSize: 13, lineHeight: 16 }}>{connCount()} connected</Text>
                       <Icon name="chevronSmRight" size={13} color="#f5f5f5a8" />
                     </View>
                   );
-                  const searchAndTpl = (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <View style={{ flex: 1, height: 28, borderRadius: 9999, borderWidth: 0.5, borderColor: tc("#f5f5f50f"), flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}>
+                  const searchRow = (pinned: boolean) => (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 32 }}>
+                      <View
+                        onLayout={(e) => fieldW.set(e.width)}
+                        style={{ flex: 1, height: 32, borderRadius: 16, borderWidth: 0.5, borderColor: tc("#f5f5f517"), backgroundColor: tc("#f5f5f50d"), flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}
+                      >
                         <Icon name="search" size={16} color="#f5f5f58a" />
                         <Input
+                          ref={(n) => { if (pinned) pinSearchInput = n; else mktSearchInput = n; }}
                           value={pluginQuery()}
                           onChangeText={(t) => pluginQuery.set(t)}
+                          onFocus={() => searchFocus.set(true)}
+                          onBlur={() => searchFocus.set(false)}
+                          onSubmitEditing={dropChoose}
                           placeholder="Search across apps and skills"
                           placeholderTextColor={tc("#f5f5f56e")}
                           style={{ flex: 1, fontSize: 14, color: tc("#f5f5f5") }}
@@ -3399,111 +3476,152 @@ function App() {
                         onHoverIn={() => hoverTpl.set(true)}
                         onHoverOut={() => hoverTpl.set(false)}
                         activeOpacity={1}
-                        style={{ height: 32, borderRadius: 9999, borderWidth: 0.5, borderColor: tc("#f5f5f50f"), backgroundColor: hoverTpl() ? tc("#f5f5f50a") : "transparent", paddingLeft: 6, paddingRight: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
+                        style={{ height: 32, borderRadius: 16, borderWidth: 0.5, borderColor: tc("#f5f5f517"), backgroundColor: hoverTpl() ? tc("#f5f5f50a") : "transparent", paddingLeft: 8, paddingRight: 12, flexDirection: "row", alignItems: "center", gap: 6 }}
                       >
-                        <BotBlob shape="blob" color="#f5f5f5" size={18} paused />
+                        <BotBlob shape="blob" color={tc("#f5f5f5")} size={18} paused />
                         <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates</Text>
                         <Icon name="arrowUpRight" size={12} color="#f5f5f5a8" />
                       </View>
                     </View>
                   );
-                  return (
-                    <View style={{ paddingTop: 14, paddingHorizontal: 21, paddingBottom: 4 }}>
-                      {/* title row scrubs away (height+opacity follow scroll),
-                          leaving search pinned under ✕ */}
-                      <View style={{ height: 44 * (1 - hdrT()), opacity: 1 - hdrT(), overflow: "hidden" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", height: 44 }}>
-                          <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "500", letterSpacing: -0.14 }}>Connect Apps</Text>
-                          <View style={{ flex: 1 }} />
-                          {connChip}
-                        </View>
-                      </View>
-                      <View style={{ paddingBottom: 10 }}>
-                        {searchAndTpl}
-                      </View>
+                  // Grok caps the visible categories and folds the rest into "More ⌄"
+                  const CAT_CAP = 5;
+                  const visibleCats = () => {
+                    const all = pluginCats();
+                    if (catsMore() || all.length <= CAT_CAP + 1) return all;
+                    const head = all.slice(0, CAT_CAP);
+                    return head.includes(pluginCat()) ? head : [...head, pluginCat()];
+                  };
+                  const catPill = (label: string, on: boolean, onPress: () => void) => (
+                    <View
+                      onPress={onPress}
+                      activeOpacity={0.7}
+                      style={{ height: 26, borderRadius: 13, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: on ? tc("#f5f5f5") : tc("#f5f5f50f") }}
+                    >
+                      <Text style={{ color: on ? tc("#121212") : tc("#f5f5f5"), fontSize: 12, fontWeight: "500" }}>{label}</Text>
                     </View>
                   );
-                })()}
-                <Scroll
-                  style={{ flex: 1 }}
-                  onScroll={(e) => hdrT.set(Math.min(1, Math.max(0, e.y / 44)))}
-                  scrollEventThrottle={16}
-                  contentContainerStyle={{ paddingTop: 2, paddingHorizontal: 21, paddingBottom: 24 }}
-                >
-                  <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", paddingBottom: 6 }}>
-                    <Each of={pluginCats()}>
-                      {(c) => (
-                        <View
-                          onPress={() => pluginCat.set(c())}
-                          activeOpacity={0.7}
-                          style={{ height: 28, borderRadius: 9999, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", backgroundColor: pluginCat() === c() ? tc("#f5f5f5") : tc("#f5f5f50a") }}
-                        >
-                          <Text style={{ color: pluginCat() === c() ? tc("#121212") : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
-                        </View>
-                      )}
-                    </Each>
-                  </View>
-                  <If when={pluginQuery() !== "" && pluginList().length === 0}>
-                    <Text style={{ color: dim(), fontSize: 13, paddingVertical: 24, textAlign: "center" }}>No plugins match</Text>
-                  </If>
-                  <If when={pluginQuery() === "" && pluginCat() === "All" && pluginList().length > 0}>
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 8 }}>
-                      <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500", lineHeight: 20 }}>Recommended for you</Text>
-                      <View onPress={() => pluginCat.set("All")} activeOpacity={0.7} style={{ height: 20, borderRadius: 9999, paddingHorizontal: 8, justifyContent: "center" }}>
+                  const sectionHead = (label: string, onViewAll: () => void, top: number) => (
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: top, paddingBottom: 4 }}>
+                      <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "600", lineHeight: 20 }}>{label}</Text>
+                      <View onPress={onViewAll} activeOpacity={0.7} style={{ height: 20, justifyContent: "center" }}>
                         <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>View all</Text>
                       </View>
                     </View>
-                    <Each of={pluginPairs(pluginList().slice(0, 6))}>
+                  );
+                  const grid = (items: { name: string; description: string; installed: boolean }[]) => (
+                    <Each of={pluginPairs(items)}>
                       {(pair) => (
-                        <View style={{ flexDirection: "row", gap: 8, marginBottom: 2 }}>
-                          <Each of={pair()}>{(p, i) => pluginRow(p(), i() === 1 ? "r" : "l")}</Each>
+                        <View style={{ flexDirection: "row", gap: 8 }}>
+                          <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                          <If when={pair().length === 1}>
+                            <View style={{ flex: 1 }} />
+                          </If>
                         </View>
                       )}
                     </Each>
-                  </If>
-                  <Each of={pluginCats().filter((c) => c !== "All" && (pluginCat() === "All" || pluginCat() === c))}>
-                    {(cat) => {
-                      const items = pluginList().filter((p) => p.category.toLowerCase() === cat().toLowerCase() && !(pluginQuery() === "" && pluginCat() === "All" && pluginList().slice(0, 6).includes(p)));
-                      return (
-                        <If when={items.length > 0}>
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 22, paddingBottom: 8 }}>
-                            <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500", lineHeight: 20 }}>{cat()}</Text>
-                            <View onPress={() => pluginCat.set(cat())} activeOpacity={0.7} style={{ height: 20, borderRadius: 9999, paddingHorizontal: 8, justifyContent: "center" }}>
-                              <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>View all</Text>
-                            </View>
-                          </View>
-                          <Each of={pluginPairs(items)}>
-                            {(pair) => (
-                              <View style={{ flexDirection: "row", gap: 8, marginBottom: 2 }}>
-                                <Each of={pair()}>{(p, i) => pluginRow(p(), i() === 1 ? "r" : "l")}</Each>
-                              </View>
-                            )}
+                  );
+                  return (
+                    <View style={{ flex: 1 }}>
+                      <Scroll
+                        style={{ flex: 1 }}
+                        bounces={false}
+                        onScroll={(e) => setMktScroll(e.y)}
+                        onScrollEndDrag={(e) => setMktScroll(e.y)}
+                        onMomentumScrollEnd={(e) => setMktScroll(e.y)}
+                        scrollEventThrottle={16}
+                        contentContainerStyle={{ paddingLeft: MK.left, paddingRight: MK.right, paddingBottom: 24 }}
+                      >
+                        {/* title sits ON the ✕'s line */}
+                        <View style={{ flexDirection: "row", alignItems: "center", height: MK.title, paddingRight: MK.head - MK.right }}>
+                          <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "600", letterSpacing: -0.2 }}>Connect Apps</Text>
+                          <View style={{ flex: 1 }} />
+                          {connChip}
+                        </View>
+                        <View style={{ height: MK.search, justifyContent: "center", paddingRight: MK.head - MK.right }}>
+                          {searchRow(false)}
+                        </View>
+                        {/* category pills scroll away with the content */}
+                        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", paddingTop: 12, paddingBottom: 12 }}>
+                          <Each of={visibleCats()}>
+                            {(c) => catPill(c(), pluginCat() === c(), () => pluginCat.set(c()))}
                           </Each>
-                        </If>
-                      );
-                    }}
-                  </Each>
-                </Scroll>
-                {/* search dropdown — Grok shows matched rows over the grid */}
-                <If when={pluginQuery() !== "" && pluginList().length > 0}>
-                  <View style={{ position: "absolute", left: 21, top: 56 + 44 * (1 - hdrT()), right: 21, maxHeight: 400, borderRadius: 12, backgroundColor: tc("#262626"), borderWidth: 1, borderColor: tc("#f5f5f51f"), shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
-                    <Text style={{ color: dim(), fontSize: 12, paddingLeft: 14, paddingTop: 10, paddingBottom: 4 }}>Plugins</Text>
-                    <Each of={pluginList().slice(0, 10)}>
-                      {(p) => (
-                        <View
-                          onPress={() => { pushNav({ page: "plugin", name: p().name }); }}
-                          activeOpacity={0.6}
-                          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, height: 40 }}
-                        >
-                          {plugTile(p().name, 24)}
-                          <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{pluginTitle(p().name)}</Text>
-                          <Icon name="chevronSmRight" size={13} color={dim} />
+                          <If when={pluginCats().length > CAT_CAP + 1}>
+                            {catPill(catsMore() ? "Less ⌃" : "More ⌄", false, () => catsMore.set(!catsMore()))}
+                          </If>
                         </View>
-                      )}
-                    </Each>
-                    <View style={{ height: 8 }} />
-                  </View>
-                </If>
+                        <If when={pluginQuery() !== "" && pluginList().length === 0}>
+                          <Text style={{ color: dim(), fontSize: 13, paddingVertical: 24, textAlign: "center" }}>No plugins match</Text>
+                        </If>
+                        <If when={pluginQuery() === "" && pluginCat() === "All" && pluginList().length > 0}>
+                          {sectionHead("Recommended for you", () => pluginCat.set("All"), 10)}
+                          {grid(pluginList().slice(0, 6))}
+                        </If>
+                        <Each of={pluginCats().filter((c) => c !== "All" && (pluginCat() === "All" || pluginCat() === c))}>
+                          {(cat) => {
+                            const items = pluginList().filter((p) => p.category.toLowerCase() === cat().toLowerCase() && !(pluginQuery() === "" && pluginCat() === "All" && pluginList().slice(0, 6).includes(p)));
+                            return (
+                              <If when={items.length > 0}>
+                                {sectionHead(cat(), () => pluginCat.set(cat()), 22)}
+                                {grid(items)}
+                              </If>
+                            );
+                          }}
+                        </Each>
+                      </Scroll>
+                      {/* pinned: the search row lives in the ✕ band — it appears there
+                          the instant its in-flow slot has scrolled under the band */}
+                      <If when={mktPinned()}>
+                        <View style={{ position: "absolute", left: 0, top: 0, right: 0, height: MK.band, zIndex: 3, backgroundColor: tc("#1f1f1f"), paddingTop: (MK.band - 32) / 2, paddingLeft: MK.left, paddingRight: MK.head }}>
+                          {searchRow(true)}
+                          <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 0.5, backgroundColor: tc("#f5f5f517") }} />
+                        </View>
+                      </If>
+                      {/* search combo box — same left edge and width as the field */}
+                      <If when={dropOpen()}>
+                        <View
+                          style={{
+                            position: "absolute",
+                            left: MK.left,
+                            width: fieldW(),
+                            top: mktPinned() ? (MK.band + 32) / 2 + 4 : MK.title + (MK.search + 32) / 2 + 4 - mktY(),
+                            height: Math.min(DROP_MAX, DROP_HEAD + pluginList().length * DROP_ROW + 8),
+                            zIndex: 5,
+                            borderRadius: 12,
+                            // solid in both themes — tc("#262626") is a translucent wash on light
+                            backgroundColor: appearance() === "dark" ? "#262626" : "#ffffff",
+                            borderWidth: 1,
+                            borderColor: tc("#f5f5f51f"),
+                            shadowColor: "#000",
+                            shadowOpacity: 0.4,
+                            shadowRadius: 24,
+                            shadowOffset: { width: 0, height: 8 },
+                            overflow: "hidden",
+                          }}
+                        >
+                          <Text style={{ color: dim(), fontSize: 12, height: DROP_HEAD, paddingLeft: 14, paddingTop: 10 }}>Plugins</Text>
+                          <Scroll ref={dropScroll} style={{ flex: 1 }} bounces={false} onScroll={(e) => { dropY = e.y; }} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: 8 }}>
+                            <Each of={pluginList()}>
+                              {(p, i) => (
+                                <View
+                                  onPress={() => pushNav({ page: "plugin", name: p().name })}
+                                  onHoverIn={() => dropSel.set(i())}
+                                  activeOpacity={0.6}
+                                  style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, height: DROP_ROW, backgroundColor: dropSel() === i() ? tc("#f5f5f50f") : "transparent" }}
+                                >
+                                  <View style={{ position: "absolute", left: 0, top: 6, bottom: 6, width: 2, borderRadius: 1, backgroundColor: dropSel() === i() ? tc("#f5f5f58a") : "transparent" }} />
+                                  {plugTile(p().name, 24)}
+                                  <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{pluginTitle(p().name)}</Text>
+                                  <Icon name="chevronSmRight" size={13} color={dim} />
+                                </View>
+                              )}
+                            </Each>
+                          </Scroll>
+                        </View>
+                      </If>
+                    </View>
+                  );
+                })()}
               </If>
 
               {/* ═══ CONNECTED page — "Manage plugins and skills" ═══ */}
