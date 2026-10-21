@@ -19,7 +19,7 @@ import { PanResponder } from "nsh/gesture";
 import { KeyboardAvoidingView, SafeAreaView } from "nsh/ui/mobile";
 import { Animated, createAnimatedValue, Easing } from "nsh/animated";
 import { BotAvatar, BotBlob, BOT_COLORS, BOT_SHAPES, blobEdit, blobGaze, CroppedImage, inkOf, normColor, SleepingBlob, type AvatarCrop, type BlobGaze } from "./blob";
-import { Conversation, chatScrolling } from "./shell";
+import { Conversation, chatScrolling, pickerClose, pillGuard } from "./shell";
 import { loadModels, ModelPill, ModelPopover, type Choice } from "./modelpicker";
 import { Palette, paletteOpen, type PaletteItem } from "./palette";
 import { FileTile, type Attachment } from "./filetile";
@@ -84,6 +84,8 @@ type ThreadMeta = {
   title: string;
   count: number;
   lastApp: string;
+  hidden?: boolean;
+  archived?: boolean;
   bot?: { id: string; name: string; shape: string; color: string } | null;
 };
 type DetailMeta = {
@@ -729,7 +731,7 @@ function App() {
   const SIDE_W = 240;
   const RAIL_W = 88;
   const dim = () => tc("#f5f5f5a8");
-  const collapsedSecs = signal<Record<string, boolean>>({ __hidden: true });
+  const collapsedSecs = signal<Record<string, boolean>>({ __hidden: true, __hiddenChats: true, __archived: true });
   const toggleSec = (k: string) => collapsedSecs.update((m) => ({ ...m, [k]: !m[k] }));
   const hoverSec = signal("");
   const railPop = signal<{ bot: BotMeta; cy: number; x: number } | null>(null);
@@ -746,7 +748,11 @@ function App() {
     const un = vis.filter((b) => !b.section || !known.has(b.section));
     return un.length ? [...named, { key: "__un", title: "Unassigned", items: un }] : named;
   };
-  const chats = () => threads().filter((t) => !t.bot);
+  // plain chats list is the visible ones; hidden/archived sit in their own
+  // collapsed sections below (same pattern as Hidden Bots)
+  const chats = () => threads().filter((t) => !t.bot && !t.hidden && !t.archived);
+  const hiddenChats = () => threads().filter((t) => !t.bot && t.hidden);
+  const archivedChats = () => threads().filter((t) => !t.bot && t.archived);
   effect(() => {
     if (!viewing()) return;
     const off = keymap.bind("escape", () => viewing.set(null));
@@ -843,6 +849,34 @@ function App() {
     { label: "Delete", icon: "trash", red: true, onSelect: () => deleteBot(b) },
   ];
   const botMenu = (b: BotMeta, e: { pageX?: number; pageY?: number }) => openCtx(e, botItems(b));
+  const updateThread = (id: string, patch: { hidden?: boolean; archived?: boolean; title?: string }) => {
+    // optimistic, like updateBot: the section refilters at once
+    threads.set(threads().map((t) => (t.id === id ? { ...t, ...patch } : t)));
+    post("/thread/update", { id, ...patch });
+  };
+  const deleteThread = async (t: ThreadMeta) => {
+    const r = await post("/thread/delete", { id: t.id });
+    const d = r?.ok ? await r.json().catch(() => null) : null;
+    await refreshThreads();
+    if (t.id === activeId() && d?.active) selectThread(d.active);
+    else refreshTurns();
+  };
+  // chat rows get Grok's chat actions only — no Pin, no Move to
+  const chatItems = (t: ThreadMeta): CtxItem[] => [
+    {
+      label: t.hidden ? "Show chat" : "Hide chat",
+      icon: t.hidden ? "eye" : "eyeOff",
+      onSelect: () => updateThread(t.id, { hidden: !t.hidden }),
+    },
+    {
+      label: t.archived ? "Unarchive chat" : "Archive chat",
+      icon: "archive",
+      onSelect: () => updateThread(t.id, { archived: !t.archived }),
+    },
+    { sep: true },
+    { label: "Delete", icon: "trash", red: true, onSelect: () => deleteThread(t) },
+  ];
+  const chatMenu = (t: ThreadMeta, e: { pageX?: number; pageY?: number }) => openCtx(e, chatItems(t));
 
   // Grok's context menus are a styled card, not the native popup: icons per
   // row, hairline separators, red destructive rows, flyout submenus.
@@ -1048,6 +1082,7 @@ function App() {
   const chatRow = (t: () => ThreadMeta) => (
     <View
       onPress={() => selectThread(t().id)}
+      onContextMenu={(e) => chatMenu(t(), e)}
       activeOpacity={0.7}
       accessibilityLabel={t().title}
       style={rowBase(t().id === activeId())}
@@ -1823,6 +1858,7 @@ function App() {
                   selectThread(t().id);
                   if (flyout) sidePeek.set(false);
                 }}
+                onContextMenu={(e) => chatMenu(t(), e)}
                 activeOpacity={0.7}
                 accessibilityLabel={t().title}
                 style={{
@@ -1882,7 +1918,20 @@ function App() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: tc("#121212") }}>
-      <View style={{ flex: 1 }}>
+      {/* click-away for the emoji pill, done the native-menu way: capture
+          resets the guard, a touch inside the pill marks it, and this
+          bubble-phase handler (runs after the deepest view's) closes the
+          picker only when the touch landed anywhere else — no overlay, so
+          hovers and presses reach the sidebar, composer and panes too */}
+      <View
+        style={{ flex: 1 }}
+        onTouchStartCapture={() => {
+          pillGuard.touch = false;
+        }}
+        onTouchStart={() => {
+          if (!pillGuard.touch) pickerClose()?.();
+        }}
+      >
         <View style={{ flex: 1, flexDirection: "row" }}>
         {/* ————— mini rail: icon column when the full sidebar is tucked away ————— */}
         <If when={sideEff() === "rail"}>{railView(false)}</If>
@@ -1950,6 +1999,22 @@ function App() {
                 {secHeader("__hidden", "Hidden Bots", () => hiddenBots().length)}
                 <If when={!collapsedSecs().__hidden}>
                   <Each of={hiddenBots()}>{(b) => botRow(b)}</Each>
+                </If>
+              </View>
+            </If>
+            <If when={hiddenChats().length > 0}>
+              <View>
+                {secHeader("__hiddenChats", "Hidden Chats", () => hiddenChats().length)}
+                <If when={!collapsedSecs().__hiddenChats}>
+                  <Each of={hiddenChats()}>{(t) => chatRow(t)}</Each>
+                </If>
+              </View>
+            </If>
+            <If when={archivedChats().length > 0}>
+              <View>
+                {secHeader("__archived", "Archived", () => archivedChats().length)}
+                <If when={!collapsedSecs().__archived}>
+                  <Each of={archivedChats()}>{(t) => chatRow(t)}</Each>
                 </If>
               </View>
             </If>

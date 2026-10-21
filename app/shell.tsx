@@ -245,10 +245,12 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
   const picker = signal("");
   // reports open/close up to Conversation: the row's wrapper elevates (the
   // pill is this row's absolute child, so the wrapper's zIndex paints it
-  // above later rows) and a backdrop there eats the next click to dismiss —
-  // same open-until-click-away behavior as the native ⋯ menu
+  // above later rows) and the shared pickerClose dismisses on click-away —
+  // same open-until-click-away behavior as the native ⋯ menu. The close fn
+  // is stable: Conversation only clears pickerClose when it still owns it.
+  const closeP = () => picker.set("");
   effect(() => {
-    onPicker?.(!!picker(), () => picker.set(""));
+    onPicker?.(!!picker(), closeP);
   });
   // the pill floats (never in-flow, so nothing shifts when it opens) and
   // flips above its bar when there is no room below — same edge rule the
@@ -283,6 +285,9 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
   // so the pointer can cross without firing the row's hover-out
   const float = (right: boolean) => (
     <View
+      onTouchStart={() => {
+        pillGuard.touch = true;
+      }}
       style={{
         position: "absolute",
         zIndex: 30,
@@ -511,35 +516,52 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
   // is frozen at build time while the server keeps numbering new modules —
   // a name collision (data-dir R17 vs bundled R17) must render the fresh
   // chunk, not the stale bundled module.
+  // The moduleOf read must live inside `when` — a signal read in the body
+  // evaluates once and the row would hold "loading" after the chunk lands.
   const key = t.v ? `${t.name}@v${t.v}` : t.widget ? t.name + "w" : t.name;
-  const d = moduleOf(key);
-  if (d === "loading") return <ArtPlaceholder t={t} />;
-  let C = (typeof d === "function" ? d : null) ?? MODULES[key];
-  if (!C)
-    return (
-      <View class="self-start px-1 py-1 flex-row items-center gap-2">
-        <Text style={{ color: tc("#f5f5f566"), fontSize: 12 }}>
-          {`${t.art?.title || "app"} — module missing`}
-        </Text>
-        <DelBtn k={"idx:" + t.i} />
-      </View>
-    );
   return (
-    <CardShell
-      name={t.name}
-      v={t.v}
-      title={t.art?.title || (t.label === "image" ? "Image" : "Mini app")}
-      desc={t.art?.desc || ""}
-      caption={t.caption}
-      reaction={t.reaction}
-      i={t.i}
-      onReply={onReply}
-      onPicker={onPicker}
-    >
-      <C />
-    </CardShell>
+    <If when={moduleOf(key) !== "loading"} else={<ArtPlaceholder t={t} />}>
+      {(() => {
+        const d = moduleOf(key);
+        const C = (typeof d === "function" ? d : null) ?? MODULES[key];
+        if (!C)
+          return (
+            <View class="self-start px-1 py-1 flex-row items-center gap-2">
+              <Text style={{ color: tc("#f5f5f566"), fontSize: 12 }}>
+                {`${t.art?.title || "app"} — module missing`}
+              </Text>
+              <DelBtn k={"idx:" + t.i} />
+            </View>
+          );
+        return (
+          <CardShell
+            name={t.name}
+            v={t.v}
+            title={t.art?.title || (t.label === "image" ? "Image" : "Mini app")}
+            desc={t.art?.desc || ""}
+            art={t.art}
+            caption={t.caption}
+            reaction={t.reaction}
+            i={t.i}
+            onReply={onReply}
+            onPicker={onPicker}
+          >
+            <C />
+          </CardShell>
+        );
+      })()}
+    </If>
   );
 }
+
+// The open emoji pill's close fn — owned by whichever row opened last and
+// cleared only by that owner (a sibling row reporting "closed" must not wipe
+// it). The window root dismisses on any touch that didn't land on the pill:
+// capture resets the guard, the pill's own touch marks it, and the root's
+// bubble-phase handler closes only when unmarked — no overlay, so hovers and
+// clicks reach every surface (sidebar, details, composer) like a native menu.
+export const pickerClose = signal<(() => void) | null>(null);
+export const pillGuard = { touch: false };
 
 // The transcript rows (inside the app's native Scroll). Turn objects are kept
 // stable by the app, so <Each> builds a row once and keeps it.
@@ -550,9 +572,7 @@ export function Conversation(props: {
   onJump?: (y: number) => void;
 }) {
   const rowY = new Map<number, number>();
-  // whichever row opened its picker last owns this close — the backdrop's
-  // first click runs it, exactly like dismissing a native menu
-  const closePicker = signal<(() => void) | null>(null);
+  cleanup(() => pickerClose.set(null));
   return (
     <View class="gap-5 py-4">
       <Each of={props.turns}>
@@ -567,7 +587,14 @@ export function Conversation(props: {
                 onReply={props.onReply}
                 onPicker={(o, close) => {
                   open.set(o);
-                  closePicker.set(o ? close : null);
+                  if (o) {
+                    // a new owner dismisses whatever pill was open before it;
+                    // the displaced row's "closed" report sees the new owner
+                    // and leaves it alone
+                    const prev = pickerClose();
+                    pickerClose.set(close);
+                    if (prev && prev !== close) prev();
+                  } else if (pickerClose() === close) pickerClose.set(null);
                 }}
                 onJump={(i) => {
                   const y = rowY.get(i);
@@ -578,21 +605,6 @@ export function Conversation(props: {
           );
         }}
       </Each>
-      {/* click-away layer: invisible while no picker is open; the open row
-          floats above it (zIndex 30), everything else clicks here */}
-      <If when={!!closePicker()}>
-        <View
-          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 20, backgroundColor: "#00000001" }}
-          onPress={() => {
-            const c = closePicker();
-            if (c) c();
-          }}
-          onContextMenu={() => {
-            const c = closePicker();
-            if (c) c();
-          }}
-        />
-      </If>
     </View>
   );
 }
@@ -605,6 +617,8 @@ type Props = {
   title: string;
   /** model-declared one-line description under the title */
   desc?: string;
+  /** model-declared card geometry: the size the app was designed for */
+  art?: { w?: number; h?: number } | null;
   caption?: string;
   reaction?: string;
   i?: number;
@@ -625,8 +639,9 @@ export function CardShell(props: Props) {
   const extra = signal("");
   const hov = signal(false);
   const pickerOpen = signal(false);
+  const closeP = () => pickerOpen.set(false);
   effect(() => {
-    props.onPicker?.(pickerOpen(), () => pickerOpen.set(false));
+    props.onPicker?.(pickerOpen(), closeP);
   });
   // floating pill (see TurnRow): overlays, flips up near the surface bottom
   const flip = signal(false);
@@ -840,10 +855,18 @@ export function CardShell(props: Props) {
     work.set("");
   };
 
+  // The card honors the geometry the model declared for its app (the same
+  // numbers ArtPlaceholder previews): declared width, capped at the chat's
+  // card limit, and the matching aspect height, capped so a card can never
+  // own the pane — the pop-out window is where it goes big.
+  const cw = Math.min(props.art?.w || 480, 560);
+  // the frame is inside the card's p-3 padding — same math the placeholder
+  // uses, so the swap from skeleton to app doesn't change size
+  const ch = Math.min((cw - 24) / (props.art?.w && props.art?.h ? props.art.w / props.art.h : 4 / 3), 560);
   return (
     <View
-      class="self-stretch"
-      style={{ zIndex: pickerOpen() ? 30 : 0 }}
+      class="self-start"
+      style={{ zIndex: pickerOpen() ? 30 : 0, width: cw, maxWidth: "100%" }}
       onHoverIn={() => hov.set(true)}
       onHoverOut={() => hov.set(false)}
     >
@@ -935,7 +958,11 @@ export function CardShell(props: Props) {
         </View>
       </If>
 
-      {props.children}
+      {/* the app itself mounts inside a declared-size frame — modules were
+          written for this size, so they render as designed (not stretched) */}
+      <View style={{ width: "100%", height: ch, borderRadius: 10, overflow: "hidden" }}>
+        {props.children}
+      </View>
 
       <If when={codeOpen()}>
         <View
@@ -1052,6 +1079,9 @@ export function CardShell(props: Props) {
           <Act glyph="⋯" title="more" onPress={() => { pickerOpen.set(false); more(); }} />
           <If when={pickerOpen()}>
             <View
+              onTouchStart={() => {
+                pillGuard.touch = true;
+              }}
               style={{
                 position: "absolute",
                 zIndex: 30,
