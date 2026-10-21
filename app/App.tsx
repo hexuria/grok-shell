@@ -10,7 +10,7 @@ import {
   type YNode,
 } from "nsh";
 import { appearance, bubbleColor, bubbleFill, nextTheme, tc, tg, themePref, type ThemePref } from "./theme";
-import { Icon, ICONS } from "./icons";
+import { Icon, ICONS, BrandTile, BrandChip, BRANDS } from "./icons";
 import { isAvailable, Menu, titleBar, Window } from "nsh/desktop";
 import { windowSize } from "nsh/device";
 import { keymap } from "nsh/keymap";
@@ -715,7 +715,7 @@ function App() {
   // under a gradient, and this much space at the top holds the controls.
   const TOP = 60;
   const pillHover = signal(false);
-  const panelGlyph = (right: boolean) => <Icon name="sidebar" size={18} color={tc("#f5f5f585")} />;
+  const panelGlyph = (right: boolean) => <Icon name="sidebar" size={18} color="#f5f5f585" />;
   const iconBtn = { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" } as const;
   const sideToggle = () => (
     <View onPress={toggleSide} onContextMenu={toggleSideMode} activeOpacity={0.7} accessibilityLabel="toggle sidebar" style={iconBtn}>
@@ -875,15 +875,15 @@ function App() {
       <Text style={{ color: c, fontSize: fs }}>{ch}</Text>
     </View>
   );
-  const ctxIco = (icon: any, c: string): any => {
+  const ctxIco = (icon: any, c: any): any => {
     if (typeof icon === "string" && ICONS[icon])
       return <View style={{ width: 16, alignItems: "center" }}><Icon name={icon} size={15} color={c} /></View>;
-    if (typeof icon === "string") return icoT(icon, c);
+    if (typeof icon === "string") return icoT(icon, typeof c === "function" ? c() : c);
     return icon || <View style={{ width: 16 }} />;
   };
   const ctxRow = (it: Exclude<CtxItem, { sep: true }>, key: string, subIdx = -1, parentX = 0, parentY = 0) => {
     const c = it.red ? (appearance() === "dark" ? "#ff6961" : "#d70015") : tc("#f5f5f5");
-    const dc = it.red ? (appearance() === "dark" ? "#ff6961" : "#d70015") : dim();
+    const dc = it.red ? () => (appearance() === "dark" ? "#ff6961" : "#d70015") : dim;
     return (
       <View
         onPress={() => { if (it.submenu) { ctxSub.set(subIdx); return; } it.onSelect?.(); closeCtx(); }}
@@ -896,7 +896,7 @@ function App() {
           ? icoT(it.checked ? "✓" : "", c)
           : ctxIco(it.icon, dc)}
         <Text style={{ flex: 1, fontSize: 13, color: c }}>{it.label}</Text>
-        {it.submenu ? <Icon name="chevronSmRight" size={14} color={dim()} /> : null}
+        {it.submenu ? <Icon name="chevronSmRight" size={14} color={dim} /> : null}
       </View>
     );
   };
@@ -919,11 +919,19 @@ function App() {
       )}
     </View>
   );
-  const newMenu = (e?: { pageX?: number; pageY?: number }) =>
-    openCtx(e ?? { pageX: 20, pageY: windowSize().height - 150 }, [
+  let newChatBtn!: YNode;
+  let railNewBtn!: YNode;
+  const newMenu = async (btn?: YNode) => {
+    let at = null as { pageX: number; pageY: number } | null;
+    if (btn) {
+      const m = await btn.measure();
+      if (m) at = { pageX: m.pageX, pageY: m.pageY + (m.height || 36) + 6 };
+    }
+    openCtx(at ?? { pageX: 20, pageY: windowSize().height - 150 }, [
       { label: "New bot", icon: "newChat", onSelect: () => botModal.set(true) },
       { label: "New chat", icon: "edit", onSelect: newThread },
     ]);
+  };
   const circleBtn = () => ({
     width: 36,
     height: 36,
@@ -932,9 +940,9 @@ function App() {
     alignItems: "center",
     justifyContent: "center",
   }) as const;
-  const gridGlyph = (sz: number) => <Icon name="gpts" size={sz} color={dim()} />;
+  const gridGlyph = (sz: number) => <Icon name="gpts" size={sz} color={dim} />;
   // Puzzle piece: square with a knob on top (the marketplace glyph).
-  const pluginGlyph = (sz: number) => <Icon name="plugins" size={sz} color={dim()} />;
+  const pluginGlyph = (sz: number) => <Icon name="plugins" size={sz} color={dim} />;
   const secHeader = (key: string, title: string, count?: () => number) => (
     <View
       onPress={() => toggleSec(key)}
@@ -1384,6 +1392,23 @@ function App() {
     return list;
   };
   const pluginTitle = (n: string) => n.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  // connector tile: real brand logo when we have it, else the hue letter tile
+  const plugTile = (name: string, size: number) =>
+    BRANDS[name] ? (
+      <BrandTile name={name} size={size} />
+    ) : (
+      <View style={{ width: size, height: size, borderRadius: size * 0.25, backgroundColor: hue(name), borderWidth: 0.5, borderColor: tc("#f5f5f50f"), alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: "#fff", fontSize: Math.round(size * 0.42), fontWeight: "600" }}>{name[0].toUpperCase()}</Text>
+      </View>
+    );
+  const chipTile = (name: string, size: number) =>
+    BRANDS[name] ? (
+      <BrandChip name={name} size={size} ring={tc("#1f1f1f")} />
+    ) : (
+      <View style={{ width: size, height: size, borderRadius: size * 0.3, backgroundColor: hue(name), borderWidth: 1.5, borderColor: tc("#1f1f1f"), alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: "#fff", fontSize: Math.round(size * 0.45), fontWeight: "700" }}>{name[0].toUpperCase()}</Text>
+      </View>
+    );
   // pairs for the 2-column marketplace grid
   const pluginPairs = <T,>(list: T[]) => {
     const out: T[][] = [];
@@ -1394,17 +1419,15 @@ function App() {
   // radius-16 hover wash, 40px icon w/ hairline border, 13/500 name over
   // 12/420 .66 desc. Row navigates; the Add pill installs (inner press wins).
   const hoverPlugin = signal("");
-  const pluginRow = (p: { name: string; description: string; installed: boolean }) => (
+  const pluginRow = (p: { name: string; description: string; installed: boolean }, side: "l" | "r" = "l") => (
     <View
       onPress={() => pushNav({ page: "plugin", name: p.name })}
       onHoverIn={() => hoverPlugin.set(p.name)}
       onHoverOut={() => hoverPlugin() === p.name && hoverPlugin.set("")}
       activeOpacity={1}
-      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 64, paddingHorizontal: 12, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f50a") : "transparent" }}
+      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 64, paddingHorizontal: 12, marginLeft: side === "l" ? -12 : 0, marginRight: side === "r" ? -12 : 0, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f50a") : "transparent" }}
     >
-      <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: hue(p.name), borderWidth: 0.5, borderColor: tc("#f5f5f50f"), alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{p.name[0].toUpperCase()}</Text>
-      </View>
+      {plugTile(p.name, 40)}
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500", lineHeight: 18 }}>{pluginTitle(p.name)}</Text>
         <Text numberOfLines={1} style={{ color: tc("#f5f5f5a8"), fontSize: 12, lineHeight: 18 }}>{p.description}</Text>
@@ -1418,9 +1441,9 @@ function App() {
         <View
           onPress={() => installPlugin(p.name)}
           activeOpacity={0.7}
-          style={{ height: 26, paddingHorizontal: 10, borderRadius: 13, backgroundColor: tc("#f5f5f50a"), alignItems: "center", justifyContent: "center" }}
+          style={{ height: 30, minWidth: 56, paddingHorizontal: 14, borderRadius: 15, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f51f") : tc("#f5f5f50a"), alignItems: "center", justifyContent: "center" }}
         >
-          <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>{pluginBusy() === p.name ? "Adding…" : "Add"}</Text>
+          <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{pluginBusy() === p.name ? "Adding…" : "Add"}</Text>
         </View>
       )}
     </View>
@@ -1456,7 +1479,7 @@ function App() {
             <Each of={tools}>
               {(t) => (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
-                  <Icon name="tool" size={13} color={dim()} />
+                  <Icon name="tool" size={13} color={dim} />
                   <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{t().name}</Text>
                   {toolSwitch(t().enabled, () => toggleMcpTool(serverId, t().name, !t().enabled))}
                 </View>
@@ -1777,8 +1800,8 @@ function App() {
       </View>
       </View>
       <View style={{ alignItems: "center", gap: 2, paddingTop: 6 }}>
-        <View onPress={newMenu} {...railHov("new")} activeOpacity={0.7} accessibilityLabel="New Bot" style={railPlate("new", 36)}>
-          <Icon name="newChat" size={17} color={dim()} />
+        <View ref={railNewBtn} onPress={() => newMenu(railNewBtn)} {...railHov("new")} activeOpacity={0.7} accessibilityLabel="New Bot" style={railPlate("new", 36)}>
+          <Icon name="newChat" size={17} color={dim} />
         </View>
         <View onPress={() => pluginsOpen.set(true)} {...railHov("plugins")} activeOpacity={0.7} accessibilityLabel="Plugins" style={railPlate("plugins", 36)}>
           {pluginGlyph(13)}
@@ -1818,8 +1841,8 @@ function App() {
             <View onPress={toggleSide} onContextMenu={toggleSideMode} activeOpacity={0.7} accessibilityLabel="toggle sidebar" style={circleBtn()}>
               {panelGlyph(false)}
             </View>
-            <View onPress={newMenu} activeOpacity={0.7} accessibilityLabel="New Bot" style={circleBtn()}>
-              <Icon name="newChat" size={18} color={tc("#f5f5f5")} />
+            <View ref={newChatBtn} onPress={() => newMenu(newChatBtn)} activeOpacity={0.7} accessibilityLabel="New Bot" style={circleBtn()}>
+              <Icon name="newChat" size={18} color={dim} />
             </View>
           </View>
           <View style={{ flex: 1 }}>
@@ -1844,7 +1867,7 @@ function App() {
             <If when={bots().length === 0}>
               <View onPress={() => botModal.set(true)} activeOpacity={0.7} style={rowBase(false)}>
                 <View style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: tc("#f5f5f53d"), alignItems: "center", justifyContent: "center" }}>
-                  <Icon name="newChat" size={16} color={dim()} />
+                  <Icon name="newChat" size={16} color={dim} />
                 </View>
                 {rowText("New Bot", "Create a named agent")}
               </View>
@@ -2022,7 +2045,7 @@ function App() {
               <ShimmerText
                 text={agent()!.label}
                 size={11}
-                color={tc("#f5f5f58a")}
+                color="#f5f5f58a"
                 hi={tc("#f5f5f5")}
               />
             </View>
@@ -2047,7 +2070,7 @@ function App() {
                       {`“${(replyTo()?.text || "").replace(/\s+/g, " ").slice(0, 120)}”`}
                     </Text>
                     <View onPress={() => replyTo.set(null)} activeOpacity={0.6} accessibilityLabel="Cancel reply" style={{ padding: 4 }}>
-                      <Icon name="close" size={13} color={tc("#f5f5f5a3")} />
+                      <Icon name="close" size={13} color="#f5f5f5a3" />
                     </View>
                   </View>
                 </If>
@@ -2079,7 +2102,7 @@ function App() {
                                 justifyContent: "center",
                               }}
                             >
-                              <Icon name="close" size={10} color={tc("#121212")} />
+                              <Icon name="close" size={10} color="#121212" />
                             </View>
                           </If>
                         </View>
@@ -2160,7 +2183,7 @@ function App() {
                     accessibilityLabel="Composer actions"
                     style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: tc("#f5f5f50f"), alignItems: "center", justifyContent: "center" }}
                   >
-                    <Icon name="plus" size={16} color={tc("#f5f5f58f")} />
+                    <Icon name="plus" size={16} color="#f5f5f58f" />
                   </View>
                   </View>
                   <View
@@ -2174,7 +2197,7 @@ function App() {
                     accessibilityLabel="Dictate"
                     style={{ width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" }}
                   >
-                    <Icon name="mic" size={15} color={tc("#f5f5f58f")} />
+                    <Icon name="mic" size={15} color="#f5f5f58f" />
                     <If when={attachHover() === "__dictate"}>{composerTip("Click or hold ⌘D to dictate")}</If>
                   </View>
                   <If when={!!draft().trim() || attachments().length > 0}>
@@ -2184,7 +2207,7 @@ function App() {
                       accessibilityLabel="Send message"
                       style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: sendFill(), alignItems: "center", justifyContent: "center" }}
                     >
-                      <Icon name="arrowUp" size={15} color={sendInk()} />
+                      <Icon name="arrowUp" size={15} color={sendInk} />
                     </View>
                   </If>
                   <If when={!draft().trim() && attachments().length === 0}>
@@ -2194,7 +2217,12 @@ function App() {
                       accessibilityLabel="Start voice chat"
                       style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: sendFill(), alignItems: "center", justifyContent: "center" }}
                     >
-                      <Icon name="voice" size={16} color={sendInk()} />
+                      {/* waveform glyph */}
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 1.5 }}>
+                        {[5, 9, 13, 9, 5].map((h) => (
+                          <View style={{ width: 1.8, height: h, borderRadius: 1, backgroundColor: sendInk() }} />
+                        ))}
+                      </View>
                       <If when={attachHover() === "__voice"}>{composerTip("Start voice chat")}</If>
                     </View>
                   </If>
@@ -2271,7 +2299,7 @@ function App() {
                   {activeBot()?.name ?? "Grok Shell"}
                 </Text>
                 <If when={pillHover() && !rightEff()}>
-                  <Icon name="chevronSmRight" size={14} color={tc("#f5f5f5a8")} />
+                  <Icon name="chevronSmRight" size={14} color="#f5f5f5a8" />
                 </If>
               </View>
             </View>
@@ -2328,7 +2356,7 @@ function App() {
               accessibilityLabel={`Theme: ${themePref()}`}
               style={{ ...circleBtn(), borderWidth: 1, borderColor: tc("#f5f5f50f"), backgroundColor: paneBtnHover() === "theme" ? tc("#262626") : circleBtn().backgroundColor }}
             >
-              <Icon name={themePref() === "light" ? "sun" : themePref() === "dark" ? "moon" : "systemTheme"} size={15} color={tc("#f5f5f5e6")} />
+              <Icon name={themePref() === "light" ? "sun" : themePref() === "dark" ? "moon" : "systemTheme"} size={15} color="#f5f5f5e6" />
             </View>
             <View
               onPress={() => rightOpen.set(false)}
@@ -2338,7 +2366,7 @@ function App() {
               accessibilityLabel="Close"
               style={{ ...circleBtn(), borderWidth: 1, borderColor: tc("#f5f5f50f"), backgroundColor: paneBtnHover() === "close" ? tc("#262626") : circleBtn().backgroundColor }}
             >
-              <Icon name="close" size={15} color={tc("#f5f5f5e6")} />
+              <Icon name="close" size={15} color="#f5f5f5e6" />
             </View>
           </View>
 
@@ -2392,7 +2420,7 @@ function App() {
                 >
                   {/* always white — it sits on the avatar darkened to
                       brightness(0.3), in both themes (Grok's hover pen) */}
-                  <Icon name="edit" size={22} color={tc("#f5f5f5")} />
+                  <Icon name="edit" size={22} color="#f5f5f5" />
                 </View>
               </View>
               <Input
@@ -2548,7 +2576,7 @@ function App() {
                                         activeOpacity={0.6}
                                         style={{ borderRadius: 5, paddingHorizontal: 3 }}
                                       >
-                                        <Icon name="edit" size={10} color={tc("#f5f5f54d")} />
+                                        <Icon name="edit" size={10} color="#f5f5f54d" />
                                       </View>
                                       <If when={vr().v === a().v}>
                                         <Text style={{ color: "#32bb78", fontSize: 11 }}>current</Text>
@@ -3225,7 +3253,7 @@ function App() {
                       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: "#e72e3b" }} />
                     </View>
                   ) : (
-                    ICONS[it.icon] ? <Icon name={it.icon} size={14} color={tc("#f5f5f5a8")} /> : <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>{it.icon}</Text>
+                    ICONS[it.icon] ? <Icon name={it.icon} size={14} color="#f5f5f5a8" /> : <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>{it.icon}</Text>
                   )}
                 </View>
                 <Text style={{ color: tc("#f5f5f5"), fontSize: 13, lineHeight: 18 }}>{it.label}</Text>
@@ -3318,9 +3346,9 @@ function App() {
                 onHoverOut={() => hoverX.set(false)}
                 activeOpacity={1}
                 accessibilityLabel="Close plugins"
-                style={{ position: "absolute", top: 18, right: 16, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
+                style={{ position: "absolute", top: 18, right: 4, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
               >
-                <Icon name="close" size={15} color={tc("#f5f5f5d9")} />
+                <Icon name="close" size={17} color="#f5f5f5d9" />
               </View>
 
               {/* ═══ MARKET page ═══
@@ -3341,23 +3369,21 @@ function App() {
                       activeOpacity={1}
                       style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8, backgroundColor: hoverChip() ? tc("#f5f5f50a") : "transparent" }}
                     >
-                      <View style={{ flexDirection: "row" }}>
+                      <View style={{ flexDirection: "row", paddingLeft: 2 }}>
                         <Each of={installedTiles}>
                           {(p, i) => (
-                            <View style={{ width: 18, height: 18, borderRadius: 5, backgroundColor: hue(p().name), borderWidth: 0.5, borderColor: tc("#f5f5f50f"), alignItems: "center", justifyContent: "center", marginLeft: i() === 0 ? 0 : -6 }}>
-                              <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>{p().name[0].toUpperCase()}</Text>
-                            </View>
+                            <View style={{ marginLeft: i() === 0 ? 0 : -7 }}>{chipTile(p().name, 18)}</View>
                           )}
                         </Each>
                       </View>
-                      <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12, lineHeight: 16 }}>{connCount} connected</Text>
-                      <Icon name="chevronSmRight" size={12} color={tc("#f5f5f5a8")} />
+                      <Text style={{ color: tc("#f5f5f5a8"), fontSize: 13, lineHeight: 16 }}>{connCount} connected</Text>
+                      <Icon name="chevronSmRight" size={13} color="#f5f5f5a8" />
                     </View>
                   );
                   const searchAndTpl = (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                       <View style={{ flex: 1, height: 28, borderRadius: 9999, borderWidth: 0.5, borderColor: tc("#f5f5f50f"), flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}>
-                        <Icon name="search" size={16} color={tc("#f5f5f58a")} />
+                        <Icon name="search" size={16} color="#f5f5f58a" />
                         <Input
                           value={pluginQuery()}
                           onChangeText={(t) => pluginQuery.set(t)}
@@ -3375,24 +3401,24 @@ function App() {
                         activeOpacity={1}
                         style={{ height: 32, borderRadius: 9999, borderWidth: 0.5, borderColor: tc("#f5f5f50f"), backgroundColor: hoverTpl() ? tc("#f5f5f50a") : "transparent", paddingLeft: 6, paddingRight: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
                       >
-                        <BotBlob shape="blob" color={tc("#f5f5f5")} size={18} paused />
+                        <BotBlob shape="blob" color="#f5f5f5" size={18} paused />
                         <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates</Text>
-                        <Icon name="arrowUpRight" size={12} color={tc("#f5f5f5a8")} />
+                        <Icon name="arrowUpRight" size={12} color="#f5f5f5a8" />
                       </View>
                     </View>
                   );
                   return (
-                    <View style={{ paddingTop: 14, paddingHorizontal: 20, paddingBottom: 4 }}>
+                    <View style={{ paddingTop: 14, paddingHorizontal: 21, paddingBottom: 4 }}>
                       {/* title row scrubs away (height+opacity follow scroll),
                           leaving search pinned under ✕ */}
                       <View style={{ height: 44 * (1 - hdrT()), opacity: 1 - hdrT(), overflow: "hidden" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", height: 44, paddingRight: 30 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", height: 44 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "500", letterSpacing: -0.14 }}>Connect Apps</Text>
                           <View style={{ flex: 1 }} />
                           {connChip}
                         </View>
                       </View>
-                      <View style={{ paddingBottom: 10, paddingRight: 30 }}>
+                      <View style={{ paddingBottom: 10 }}>
                         {searchAndTpl}
                       </View>
                     </View>
@@ -3402,7 +3428,7 @@ function App() {
                   style={{ flex: 1 }}
                   onScroll={(e) => hdrT.set(Math.min(1, Math.max(0, e.y / 44)))}
                   scrollEventThrottle={16}
-                  contentContainerStyle={{ paddingTop: 2, paddingHorizontal: 20, paddingBottom: 24 }}
+                  contentContainerStyle={{ paddingTop: 2, paddingHorizontal: 21, paddingBottom: 24 }}
                 >
                   <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap", paddingBottom: 6 }}>
                     <Each of={pluginCats()}>
@@ -3421,13 +3447,16 @@ function App() {
                     <Text style={{ color: dim(), fontSize: 13, paddingVertical: 24, textAlign: "center" }}>No plugins match</Text>
                   </If>
                   <If when={pluginQuery() === "" && pluginCat() === "All" && pluginList().length > 0}>
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 8, paddingLeft: 12, paddingRight: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 10, paddingBottom: 8 }}>
                       <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500", lineHeight: 20 }}>Recommended for you</Text>
+                      <View onPress={() => pluginCat.set("All")} activeOpacity={0.7} style={{ height: 20, borderRadius: 9999, paddingHorizontal: 8, justifyContent: "center" }}>
+                        <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>View all</Text>
+                      </View>
                     </View>
                     <Each of={pluginPairs(pluginList().slice(0, 6))}>
                       {(pair) => (
                         <View style={{ flexDirection: "row", gap: 8, marginBottom: 2 }}>
-                          <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                          <Each of={pair()}>{(p, i) => pluginRow(p(), i() === 1 ? "r" : "l")}</Each>
                         </View>
                       )}
                     </Each>
@@ -3437,7 +3466,7 @@ function App() {
                       const items = pluginList().filter((p) => p.category.toLowerCase() === cat().toLowerCase() && !(pluginQuery() === "" && pluginCat() === "All" && pluginList().slice(0, 6).includes(p)));
                       return (
                         <If when={items.length > 0}>
-                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 22, paddingBottom: 8, paddingLeft: 12, paddingRight: 8 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 22, paddingBottom: 8 }}>
                             <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500", lineHeight: 20 }}>{cat()}</Text>
                             <View onPress={() => pluginCat.set(cat())} activeOpacity={0.7} style={{ height: 20, borderRadius: 9999, paddingHorizontal: 8, justifyContent: "center" }}>
                               <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>View all</Text>
@@ -3446,7 +3475,7 @@ function App() {
                           <Each of={pluginPairs(items)}>
                             {(pair) => (
                               <View style={{ flexDirection: "row", gap: 8, marginBottom: 2 }}>
-                                <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                                <Each of={pair()}>{(p, i) => pluginRow(p(), i() === 1 ? "r" : "l")}</Each>
                               </View>
                             )}
                           </Each>
@@ -3457,7 +3486,7 @@ function App() {
                 </Scroll>
                 {/* search dropdown — Grok shows matched rows over the grid */}
                 <If when={pluginQuery() !== "" && pluginList().length > 0}>
-                  <View style={{ position: "absolute", left: 20, top: 56 + 44 * (1 - hdrT()), right: 50, maxHeight: 400, borderRadius: 12, backgroundColor: tc("#262626"), borderWidth: 1, borderColor: tc("#f5f5f51f"), shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
+                  <View style={{ position: "absolute", left: 21, top: 56 + 44 * (1 - hdrT()), right: 21, maxHeight: 400, borderRadius: 12, backgroundColor: tc("#262626"), borderWidth: 1, borderColor: tc("#f5f5f51f"), shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
                     <Text style={{ color: dim(), fontSize: 12, paddingLeft: 14, paddingTop: 10, paddingBottom: 4 }}>Plugins</Text>
                     <Each of={pluginList().slice(0, 10)}>
                       {(p) => (
@@ -3466,11 +3495,9 @@ function App() {
                           activeOpacity={0.6}
                           style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 12, height: 40 }}
                         >
-                          <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: hue(p().name), alignItems: "center", justifyContent: "center" }}>
-                            <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{p().name.slice(0, 3).toLowerCase()}</Text>
-                          </View>
+                          {plugTile(p().name, 24)}
                           <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{pluginTitle(p().name)}</Text>
-                          <Icon name="chevronSmRight" size={13} color={dim()} />
+                          <Icon name="chevronSmRight" size={13} color={dim} />
                         </View>
                       )}
                     </Each>
@@ -3483,11 +3510,11 @@ function App() {
               <If when={pluginPage() === "connected"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Icon name="chevronBack" size={17} color={dim()} />
+                    <Icon name="chevronBack" size={17} color={dim} />
                     <Text style={{ color: dim(), fontSize: 14 }}>Connect Apps</Text>
                   </View>
                 </View>
-                <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}>
+                <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 21, paddingBottom: 24 }}>
                   <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "600", paddingTop: 4, paddingBottom: 14 }}>Manage plugins and skills</Text>
                   <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 8 }}>Installed</Text>
                   <Each of={pluginPairs((() => {
@@ -3509,9 +3536,7 @@ function App() {
                               activeOpacity={0.6}
                               style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}
                             >
-                              <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: hue(it.p.name), alignItems: "center", justifyContent: "center" }}>
-                                <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{it.p.name[0].toUpperCase()}</Text>
-                              </View>
+                              {plugTile(it.p.name, 36)}
                               <View style={{ flex: 1, minWidth: 0 }}>
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{pluginTitle(it.p.name)}</Text>
                                 <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>
@@ -3528,9 +3553,7 @@ function App() {
                               activeOpacity={0.6}
                               style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}
                             >
-                              <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: hue(it.s.id), alignItems: "center", justifyContent: "center" }}>
-                                <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{(it.s.name || it.s.id)[0].toUpperCase()}</Text>
-                              </View>
+                              {plugTile(it.s.name || it.s.id, 36)}
                               <View style={{ flex: 1, minWidth: 0 }}>
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{it.s.name || it.s.id}</Text>
                                 <Text numberOfLines={1} style={{ color: dim(), fontSize: 11 }}>1 connector</Text>
@@ -3553,7 +3576,7 @@ function App() {
                       tools or this editor), never plugin-shipped ones */}
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 18, paddingBottom: 8, paddingRight: 4 }}>
                     <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2 }}>Private skills</Text>
-                    <Text onPress={() => pushNav({ page: "skill" })} style={{ paddingHorizontal: 6 }}><Icon name="plus" size={15} color={dim()} /></Text>
+                    <Text onPress={() => pushNav({ page: "skill" })} style={{ paddingHorizontal: 6 }}><Icon name="plus" size={15} color={dim} /></Text>
                   </View>
                   <If when={privateSkills().length === 0}>
                     <Text style={{ color: tc("#f5f5f54d"), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>
@@ -3587,7 +3610,7 @@ function App() {
               <If when={pluginPage() === "plugin"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Icon name="chevronBack" size={19} color={dim()} />
+                    <Icon name="chevronBack" size={19} color={dim} />
                   </View>
                 </View>
                 {(() => {
@@ -3598,12 +3621,10 @@ function App() {
                   const skillList: any[] = d.skills || [];
                   const shownSkills = skillsExpanded() ? skillList : skillList.slice(0, 5);
                   return (
-                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 21, paddingBottom: 28 }}>
                       {/* header: icon + name + View Source ↗  ···  Add/Uninstall */}
                       <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14, paddingBottom: 14 }}>
-                        <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: hue(name), alignItems: "center", justifyContent: "center" }}>
-                          <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>{name[0].toUpperCase()}</Text>
-                        </View>
+                        {plugTile(name, 56)}
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 16, fontWeight: "600" }}>{pluginTitle(name)}</Text>
                           <Text style={{ color: tc("#f5f5f58f"), fontSize: 12, paddingTop: 2 }}>View Source ↗</Text>
@@ -3708,7 +3729,7 @@ function App() {
                           <Each of={cmdL}>
                             {(c) => (
                               <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
-                                <Icon name="command" size={13} color={dim()} />
+                                <Icon name="command" size={13} color={dim} />
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{c().name}</Text>
                               </View>
                             )}
@@ -3748,7 +3769,7 @@ function App() {
               <If when={pluginPage() === "mcp"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Icon name="chevronBack" size={19} color={dim()} />
+                    <Icon name="chevronBack" size={19} color={dim} />
                   </View>
                   <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
                     {mcpServers().find((s) => s.id === pluginNav()[pluginNav().length - 1]?.id)?.name || ""}
@@ -3758,11 +3779,9 @@ function App() {
                   const s = mcpServers().find((x) => x.id === pluginNav()[pluginNav().length - 1]?.id);
                   if (!s) return <View />;
                   return (
-                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                    <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 21, paddingBottom: 28 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 16 }}>
-                        <View style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: hue(s.id), alignItems: "center", justifyContent: "center" }}>
-                          <Text style={{ color: "#fff", fontSize: 20, fontWeight: "700" }}>{(s.name || s.id)[0].toUpperCase()}</Text>
-                        </View>
+                        {plugTile(s.name || s.id, 56)}
                         <Text style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 16, fontWeight: "600" }}>{s.name}</Text>
                         <View
                           onPress={() => { post("/mcp/server/delete", { id: s.id }).then(() => { fetchMcp(); popNav(); }); }}
@@ -3826,7 +3845,7 @@ function App() {
               <If when={pluginPage() === "skill"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Icon name="chevronBack" size={19} color={dim()} />
+                    <Icon name="chevronBack" size={19} color={dim} />
                   </View>
                   <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
                     {pluginNav()[pluginNav().length - 1]?.id || "New Skill"}
@@ -3838,7 +3857,7 @@ function App() {
                   if (nav.name) {
                     const sk = skillBodies()[`${nav.name}/${nav.id}`] || null;
                     return (
-                      <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                      <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 21, paddingBottom: 28 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
                           <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: tc("#f5f5f512"), alignItems: "center", justifyContent: "center" }}>
                             <Text style={{ color: dim(), fontSize: 18 }}>📦</Text>
@@ -3868,7 +3887,7 @@ function App() {
                   // Delete Skill, Name/Description/Instructions, Save).
                   return (
                     <View style={{ flex: 1 }}>
-                      <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
+                      <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 21, paddingBottom: 28 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
                           <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: tc("#f5f5f512"), alignItems: "center", justifyContent: "center" }}>
                             <Text style={{ color: dim(), fontSize: 18 }}>📦</Text>
@@ -4005,7 +4024,7 @@ function App() {
                   accessibilityLabel="Close dialog"
                   style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: botHover() === "close" ? tc("#f5f5f50f") : "transparent" }}
                 >
-                  <Icon name="close" size={14} color={tc("#f5f5f5ad")} />
+                  <Icon name="close" size={14} color="#f5f5f5ad" />
                 </View>
               </View>
 

@@ -27,3 +27,5 @@ tools/*.dylib
 # signing keys for `just publish-signed` — keep offline, never commit
 keys/
 *.secret
+
+.stage/
