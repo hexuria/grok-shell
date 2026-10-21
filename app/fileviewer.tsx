@@ -21,6 +21,8 @@ const GEN = "http://127.0.0.1:8787";
 export type ReplyFile = {
   path: string; name: string; ext: string; size: number; kind: string; variant: string;
   duration?: number; peaks?: number[]; width?: number; height?: number; poster?: string;
+  // ≤1120px derivative — the feed decodes this, the lightbox the original
+  feed?: string;
 };
 
 // Grok: "506B", "1.4kB", "11kB", "2.3MB"
@@ -334,7 +336,7 @@ function ImageUnavailable(props: { w: number; h: number }) {
 function MediaTile(props: { f: ReplyFile; w: number; h: number; more?: number; onOpen: () => void }) {
   const failed = signal(!props.f.size && props.f.kind === "image");
   const f = props.f;
-  const pic = f.kind === "video" ? (f.poster ? fileUrl(f.poster) : "") : raw(f);
+  const pic = f.kind === "video" ? (f.poster ? fileUrl(f.poster) : "") : f.feed ? fileUrl(f.feed) : raw(f);
   return (
     <View onPress={failed() ? undefined : props.onOpen} activeOpacity={0.9} accessibilityLabel={`Open ${f.name}`} style={{ width: props.w, height: props.h, borderRadius: 10, overflow: "hidden", backgroundColor: tc("#f5f5f50a") }}>
       <If when={failed()}>

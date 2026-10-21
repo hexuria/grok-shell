@@ -12,7 +12,7 @@ export const mediaUrl = (uri: string) => {
   return uri.startsWith("file://") && m ? `http://127.0.0.1:8787/files/${m[1]}/${encodeURIComponent(decodeURIComponent(m[2]))}` : uri;
 };
 
-export type Attachment = { uri: string; thumb?: string; name: string; ext?: string; kind: "image" | "video" | "file" };
+export type Attachment = { uri: string; thumb?: string; feed?: string; name: string; ext?: string; kind: "image" | "video" | "file"; size?: number; width?: number; height?: number };
 
 // Grok's icon colors (iconXPrimary) and its icons, drawn as glyphs
 const C = {
