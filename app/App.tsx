@@ -1332,8 +1332,8 @@ function App() {
   const fieldW = signal(0); // search field width — the dropdown matches it
   const dropSel = signal(0);
   const dropHidden = signal(false); // Esc hides the dropdown until the query changes
-  const catsMore = signal(false);
   let dropScroll!: YNode;
+  let moreCatsBtn!: YNode;
   const hoverTpl = signal(false); // Bot templates pill
   const hoverChip = signal(false); // "N connected" chip
   const hoverX = signal(false); // modal close
@@ -1342,10 +1342,16 @@ function App() {
   const fetchPlugins = async () => {
     const d = await fetch(`${GEN}/plugins/catalog`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     // the catalog is polled every 3s — only a real change may touch the signal
-    if (d?.plugins && JSON.stringify(d.plugins) !== JSON.stringify(plugins())) plugins.set(d.plugins);
+    if (d?.plugins && JSON.stringify(d.plugins) !== JSON.stringify(plugins())) {
+      plugins.set(d.plugins);
+      // installed plugins' details drive the connected-chip dedupe — fetch
+      // once (the guard keeps the 3s poll from refetching)
+      for (const pl of d.plugins.filter((x: any) => x.installed))
+        if (!pluginDetails()[pl.name]) fetchPluginDetail(pl.name);
+    }
   };
   effect(() => {
-    if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); catsMore.set(false); return; }
+    if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); return; }
     fetchPlugins();
     fetchMcp();
     fetchSkills();
@@ -1443,6 +1449,7 @@ function App() {
   // hovering the row lifts the pill lightly, hovering the pill steps darker.
   const hoverPlugin = signal("");
   const hoverAdd = signal("");
+  const hoverInst = signal(""); // Manage page tiles — Grok: flat, hover raises the box
   const pluginRow = (p: { name: string; description: string; installed: boolean }) => (
     <View
       onPress={() => pushNav({ page: "plugin", name: p.name })}
@@ -3401,19 +3408,18 @@ function App() {
                 overflow: "hidden",
               }}
             >
-              {/* close — on the market page it sits in the fixed header,
-                  centered on the search row, 8px after Bot templates */}
+              {/* close — same spot on every page: the market header's
+                  position (centered on the search row, 8px after Bot
+                  templates) — Grok keeps one close position across pages */}
               <View
                 onPress={() => pluginsOpen.set(false)}
                 onHoverIn={() => hoverX.set(true)}
                 onHoverOut={() => hoverX.set(false)}
                 activeOpacity={1}
                 accessibilityLabel="Close plugins"
-                style={pluginPage() === "market"
-                  ? { position: "absolute", top: (MK.band - 34) / 2, right: MK.head - 8 - 34, width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50b") : "transparent" }
-                  : { position: "absolute", top: 18, right: 4, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
+                style={{ position: "absolute", top: (MK.band - 34) / 2, right: MK.head - 8 - 34, width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50b") : "transparent" }}
               >
-                <Icon name="close" size={16} color="#f5f5f5d9" />
+                <Icon name="close" size={20} color="#f5f5f5d9" />
               </View>
 
               {/* ═══ MARKET page ═══ — Grok's Connect-apps dialog: the search row
@@ -3424,8 +3430,20 @@ function App() {
               <If when={pluginPage() === "market"}>
                 {(() => {
                   // getters, read inside JSX — a direct read here would rebuild the whole page on every change
-                  const installedTiles = () => plugins().filter((p) => p.installed).slice(0, 4);
-                  const connCount = () => mcpServers().length + plugins().filter((p) => p.installed).length;
+                  // "N Connected" = installed plugins + standalone MCP servers —
+                  // the exact set the Installed list shows (plugin-shipped
+                  // servers deduped through meta.mcp, not counted twice).
+                  const connItems = () => {
+                    const inst = plugins().filter((p) => p.installed);
+                    const pluginIds = new Set(inst.flatMap((p) => pluginDetails()[p.name]?.meta?.mcp || []));
+                    const standalone = mcpServers().filter((s) => !pluginIds.has(s.id));
+                    return { inst, standalone };
+                  };
+                  const connCount = () => connItems().inst.length + connItems().standalone.length;
+                  const installedTiles = () => [
+                    ...connItems().inst.map((p) => p.name),
+                    ...connItems().standalone.map((s) => s.name || s.id),
+                  ].slice(0, 4);
                   const connChip = (
                     <View
                       onPress={() => pushNav({ page: "connected" })}
@@ -3436,12 +3454,14 @@ function App() {
                     >
                       <View style={{ flexDirection: "row", paddingLeft: 2 }}>
                         <Each of={installedTiles()}>
-                          {(p, i) => (
-                            <View style={{ marginLeft: i() === 0 ? 0 : -7 }}>{chipTile(p().name, 18)}</View>
+                          {(n, i) => (
+                            <View style={{ marginLeft: i() === 0 ? 0 : -7 }}>{chipTile(n(), 18)}</View>
                           )}
                         </Each>
                       </View>
-                      <Text style={{ color: tc("#f5f5f5a8"), fontSize: 13, lineHeight: 16 }}>{connCount()} connected</Text>
+                      <Text style={{ color: tc("#f5f5f5a8"), fontSize: 13, lineHeight: 16 }}>
+                        {connCount()} Connected <Text style={{ color: tc("#f5f5f566") }}>/</Text> {privateSkills().length} Skills
+                      </Text>
                       <Icon name="chevronSmRight" size={13} color="#f5f5f5a8" />
                     </View>
                   );
@@ -3472,17 +3492,29 @@ function App() {
                       >
                         <BotBlob shape="blob" color={tc("#f5f5f5")} size={20} paused />
                         <Text style={{ color: tc("#f5f5f5"), fontSize: 13.5 }}>Bot templates</Text>
-                        <Icon name="arrowUpRight" size={13} color="#f5f5f5a8" />
+                        <Icon name="arrowUpRight" size={16} color="#f5f5f5a8" />
                       </View>
                     </View>
                   );
-                  // Grok caps the visible categories and folds the rest into "More ⌄"
+                  // Grok caps the visible categories and folds the rest into a
+                  // "More ⌄" dropdown (a flyout menu, not an inline expansion)
                   const CAT_CAP = 5;
                   const visibleCats = () => {
                     const all = pluginCats();
-                    if (catsMore() || all.length <= CAT_CAP + 1) return all;
+                    if (all.length <= CAT_CAP + 1) return all;
                     const head = all.slice(0, CAT_CAP);
                     return head.includes(pluginCat()) ? head : [...head, pluginCat()];
+                  };
+                  const moreCatsMenu = async () => {
+                    const m = await moreCatsBtn.measure();
+                    openCtx(
+                      { pageX: m?.pageX ?? 0, pageY: (m?.pageY ?? 0) + (m?.height ?? 26) + 6 },
+                      pluginCats().slice(CAT_CAP).map((c) => ({
+                        label: c,
+                        checked: pluginCat() === c,
+                        onSelect: () => pluginCat.set(c),
+                      })),
+                    );
                   };
                   const catPill = (label: string, on: boolean, onPress: () => void) => (
                     <View
@@ -3549,7 +3581,15 @@ function App() {
                             {(c) => catPill(c(), pluginCat() === c(), () => pluginCat.set(c()))}
                           </Each>
                           <If when={pluginCats().length > CAT_CAP + 1}>
-                            {catPill(catsMore() ? "Less ⌃" : "More ⌄", false, () => catsMore.set(!catsMore()))}
+                            <View
+                              ref={moreCatsBtn}
+                              onPress={moreCatsMenu}
+                              activeOpacity={0.7}
+                              style={{ height: 26, borderRadius: 13, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: tc("#f5f5f50f") }}
+                            >
+                              <Text style={{ color: tc("#f5f5f5"), fontSize: 12, fontWeight: "500" }}>More</Text>
+                              <Icon name="chevronDown" size={13} color="#f5f5f5a8" />
+                            </View>
                           </If>
                         </View>
                         <If when={pluginQuery() !== "" && pluginList().length === 0}>
@@ -3645,8 +3685,10 @@ function App() {
                           {(item) => { const it = item() as any; return it.kind === "plugin" ? (
                             <View
                               onPress={() => pushNav({ page: "plugin", name: it.p.name })}
+                              onHoverIn={() => hoverInst.set("p:" + it.p.name)}
+                              onHoverOut={() => hoverInst() === "p:" + it.p.name && hoverInst.set("")}
                               activeOpacity={0.6}
-                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}
+                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: hoverInst() === "p:" + it.p.name ? tc("#f5f5f50f") : "transparent" }}
                             >
                               {plugTile(it.p.name, 36)}
                               <View style={{ flex: 1, minWidth: 0 }}>
@@ -3662,8 +3704,10 @@ function App() {
                           ) : (
                             <View
                               onPress={() => pushNav({ page: "mcp", id: it.s.id })}
+                              onHoverIn={() => hoverInst.set("m:" + it.s.id)}
+                              onHoverOut={() => hoverInst() === "m:" + it.s.id && hoverInst.set("")}
                               activeOpacity={0.6}
-                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}
+                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: hoverInst() === "m:" + it.s.id ? tc("#f5f5f50f") : "transparent" }}
                             >
                               {plugTile(it.s.name || it.s.id, 36)}
                               <View style={{ flex: 1, minWidth: 0 }}>
@@ -3676,6 +3720,9 @@ function App() {
                             </View>
                           ); }}
                         </Each>
+                        <If when={pair().length === 1}>
+                          <View style={{ flex: 1 }} />
+                        </If>
                       </View>
                     )}
                   </Each>
