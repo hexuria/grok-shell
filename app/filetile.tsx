@@ -51,7 +51,7 @@ export const iconOf = (a: Attachment): [string, string] => {
 /** A square tile (`size` pt): thumbnail, or icon + name. */
 export function FileTile(props: { a: Attachment; size: number; radius?: number }) {
   const a = props.a;
-  const pic = a.thumb || (a.kind === "image" ? a.uri : "");
+  const pic = a.thumb || a.feed || (a.kind === "image" ? a.uri : "");
   const [glyph, color] = iconOf(a);
   return (
     <View

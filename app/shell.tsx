@@ -112,7 +112,7 @@ const EMOJI_GRID = [
   "👍","👎","👏","🙌","🙏","🤝","💪","🫶","👌","✌️","🤞","🫰","🤙","👋","✋","🖐️","🖖","👆","👇","☝️",
   "👽","🤖","💀","🎃","🚀","🎮","🎯","🏆","🥇","🍕","🍔","🍩","☕","🍺","⚡","🌈","☀️","🌙","❄️","🐛",
 ];
-function EmojiPill(props: { current: string; onPick: (e: string) => void }) {
+export function EmojiPill(props: { current: string; onPick: (e: string) => void }) {
   const grid = signal(false);
   const dot = (e: string) => {
     const h = signal(false);
@@ -230,12 +230,14 @@ function ArtPlaceholder({ t, status }: { t: any; status?: string }) {
   );
 }
 
-// One conversation row: user bubble / markdown reply / app card. Turns arrive
-// as plain JSON from GET /turns — switching threads swaps data, no rebuild.
+// One conversation row: user bubble / markdown reply / app card. `t` is the
+// list cell's item memo — the row's whole content is one tracked computation
+// over `t()`, so a rebound cell rebuilds the subtree for the new turn while
+// cell-scoped state (hover, picker, bar refs) lives outside it.
 // Hovering a bubble reveals the action pill (react / reply / more); ⋯ opens
 // the native context menu, which the OS flips up or down to stay on screen.
 function TurnRow({ t, onReply, onJump, onPicker }: {
-  t: any;
+  t: () => any;
   onReply?: (i: number, text: string, files?: string[]) => void;
   onJump?: (i: number) => void;
   onPicker?: (open: boolean, close: () => void) => void;
@@ -243,65 +245,59 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
   const hov = signal(false);
   // which bar opened the emoji pill: "msg" or "art:<file path>"
   const picker = signal("");
-  // reports open/close up to Conversation: the row's wrapper elevates (the
-  // pill is this row's absolute child, so the wrapper's zIndex paints it
-  // above later rows) and the shared pickerClose dismisses on click-away —
-  // same open-until-click-away behavior as the native ⋯ menu. The close fn
-  // is stable: Conversation only clears pickerClose when it still owns it.
-  const closeP = () => picker.set("");
+  // the anchor this row put into the shared pill overlay — cleared only if
+  // still ours (a newer owner already replaced it)
+  let myAnchor: PillAnchor | null = null;
+  // reports open/close up to the cell: the shared pickerClose dismisses on
+  // click-away — same open-until-click-away behavior as the native ⋯ menu.
+  const closeP = () => {
+    picker.set("");
+    if (myAnchor && pillAnchor() === myAnchor) pillAnchor.set(null);
+    myAnchor = null;
+  };
   effect(() => {
     onPicker?.(!!picker(), closeP);
   });
-  // the pill floats (never in-flow, so nothing shifts when it opens) and
-  // flips above its bar when there is no room below — same edge rule the
-  // native Menu.popup applies
-  const flip = signal(false);
+  // rebind: the recycled cell drops the previous turn's transient state
+  let lastI = -1;
+  effect(() => {
+    const i = t()?.i ?? -1;
+    if (i !== lastI) {
+      lastI = i;
+      hov.set(false);
+      if (picker()) closeP();
+    }
+  });
   let msgBar!: YNode;
-  const openPicker = async (slot: string, el: YNode) => {
+  const openPicker = async (slot: string, el: YNode, right: boolean) => {
     if (picker() === slot) {
-      picker.set("");
+      closeP();
       return;
     }
-    const m = await el?.measure();
-    flip.set(!!m && m.pageY + m.height + 205 > windowSize().height - 80);
-    picker.set(slot);
+    const a = await openPill(el, right, t().reaction || "", (e) => {
+      react(e);
+      closeP();
+    });
+    if (a) {
+      myAnchor = a;
+      picker.set(slot);
+    }
   };
   const hover = {
     onHoverIn: () => hov.set(true),
     onHoverOut: () => hov.set(false),
   };
   const react = (emoji: string) =>
-    post("/react", { key: "idx:" + t.i, r: emoji });
+    post("/react", { key: "idx:" + t().i, r: emoji });
   const more = () =>
     Menu.popup([
-      { label: "Copy", onSelect: () => post("/copy", { text: t.text }) },
+      { label: "Copy", onSelect: () => post("/copy", { text: t().text }) },
       { type: "separator" },
       {
         label: "Delete",
-        onSelect: () => post("/turn/delete", { key: "idx:" + t.i }),
+        onSelect: () => post("/turn/delete", { key: "idx:" + t().i }),
       },
     ]);
-  // the pill hangs 6pt off its bar; the wrapper's padding bridges that gap
-  // so the pointer can cross without firing the row's hover-out
-  const float = (right: boolean) => (
-    <View
-      onTouchStart={() => {
-        pillGuard.touch = true;
-      }}
-      style={{
-        position: "absolute",
-        zIndex: 30,
-        right: right ? 0 : undefined,
-        left: right ? undefined : 0,
-        top: flip() ? undefined : 24,
-        bottom: flip() ? 24 : undefined,
-        paddingTop: flip() ? 0 : 6,
-        paddingBottom: flip() ? 6 : 0,
-      }}
-    >
-      <EmojiPill current={t.reaction || ""} onPick={(e) => { react(e); picker.set(""); }} />
-    </View>
-  );
   // canReact=false on our own bubbles — reacting to yourself is nonsense;
   // the agent reacts to them through its react tool instead
   const bar = (right: boolean, canReact: boolean) => (
@@ -315,11 +311,10 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
       }}
     >
       <If when={canReact}>
-        <Act glyph="☺" title="react" onPress={() => void openPicker("msg", msgBar)} />
+        <Act glyph="☺" title="react" onPress={() => void openPicker("msg", msgBar, right)} />
       </If>
-      <Act glyph="↩" title="reply" onPress={() => { picker.set(""); onReply?.(t.i, t.text || t.caption || t.name); }} />
-      <Act glyph="⋯" title="more" onPress={() => { picker.set(""); more(); }} />
-      <If when={picker() === "msg"}>{float(right)}</If>
+      <Act glyph="↩" title="reply" onPress={() => { closeP(); onReply?.(t().i, t().text || t().caption || t().name); }} />
+      <Act glyph="⋯" title="more" onPress={() => { closeP(); more(); }} />
     </View>
   );
   // ChatGPT placement: the action bar sits below the artifact (image, file,
@@ -339,29 +334,28 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
         {node}
         {badge("right")}
         <View ref={artBar} style={{ opacity: (h() && !chatScrolling()) || picker() === slot ? 1 : 0, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 2 }}>
-          <Act glyph="☺" title="react" onPress={() => void openPicker(slot, artBar)} />
+          <Act glyph="☺" title="react" onPress={() => void openPicker(slot, artBar, true)} />
           <Act
             glyph="↩"
             title="reply"
             onPress={() => {
-              picker.set("");
+              closeP();
               // the file(s) travel with the reply, so the model gets their contents
-              const media = (t.files || []).filter((x: any) => x.kind === "image" || x.kind === "video");
-              onReply?.(t.i, f ? `📎 ${f.name}` : `📎 ${media.map((x: any) => x.name).join(", ")}`, f ? [f.path] : media.map((x: any) => x.path));
+              const media = (t().files || []).filter((x: any) => x.kind === "image" || x.kind === "video");
+              onReply?.(t().i, f ? `📎 ${f.name}` : `📎 ${media.map((x: any) => x.name).join(", ")}`, f ? [f.path] : media.map((x: any) => x.path));
             }}
           />
           <Act
             glyph="⋯"
             title="more"
             onPress={() => {
-              picker.set("");
+              closeP();
               Menu.popup([
                 ...(f ? [{ label: "Open", onSelect: () => openFile(f) }, { label: "Copy file name", onSelect: () => post("/copy", { text: f.name }) }] : []),
-                { label: "Copy message", onSelect: () => post("/copy", { text: t.text }) },
+                { label: "Copy message", onSelect: () => post("/copy", { text: t().text }) },
               ]);
             }}
           />
-          <If when={picker() === slot}>{float(true)}</If>
         </View>
       </View>
     );
@@ -372,7 +366,7 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
   // badge — a knockout hole — so we paint a concentric page-colored disc
   // under it (invisible over the page, cuts the bubble where they overlap).
   const badge = (side: "left" | "right") =>
-    t.reaction ? (
+    t().reaction ? (
       <View
         style={{
           position: "absolute",
@@ -389,7 +383,7 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
         }}
       >
         <View
-          onPress={() => post("/react", { key: "idx:" + t.i, r: "" })}
+          onPress={() => post("/react", { key: "idx:" + t().i, r: "" })}
           activeOpacity={0.7}
           style={{
             width: 30,
@@ -402,155 +396,158 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
             borderColor: appearance() === "dark" ? "#353535" : "#d4d4d8",
           }}
         >
-          <Text style={{ fontSize: 14 }}>{t.reaction}</Text>
+          <Text style={{ fontSize: 14 }}>{t().reaction}</Text>
         </View>
       </View>
     ) : null;
   // Rows are full-width so the text inside a bubble is measured against a
   // definite width and wraps; a shrink-to-fit row would let the text run to
   // its unwrapped width and get clipped at the pane edge. Bubbles hug their
-  // content up to 540pt via maxWidth.
-  if (t.role === "user")
-    return (
-      <View style={{ alignItems: "flex-end", gap: 4, width: "100%" }} {...hover}>
-      {/* attached images sit above the bubble (Grok), files as chips */}
-      <If when={(t.attachments || []).length > 0}>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, maxWidth: 560 }}>
-          {(t.attachments || []).map((a: any) => (
-            <FileTile a={a} size={a.kind === "file" ? 72 : 120} />
-          ))}
-        </View>
-      </If>
-      <View
-        class="flex-row w-full"
-        style={{ justifyContent: "flex-end" }}
-      >
-        {/* Sand: radius 18, padding 7×12, 14/20, the bot's bubble fill */}
-        <View
-          style={{
-            backgroundColor: bubbleFill(),
-            borderRadius: 18,
-            paddingVertical: 7,
-            paddingHorizontal: 12,
-            maxWidth: 560,
-            flexShrink: 1,
-          }}
-        >
-          {badge("left")}
-          <OnFill.Provider value={true}>
-            {/* replying: the quoted message heads the bubble; it jumps there */}
-            <If when={!!t.reply}>
-              <View
-                onPress={() => onJump?.(t.reply.i)}
-                activeOpacity={0.7}
-                style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}
-              >
-                <Text style={{ color: "#ffffffb3", fontSize: 12 }}>💬︎</Text>
-                <Text numberOfLines={1} style={{ flexShrink: 1, color: "#ffffffcc", fontSize: 13, lineHeight: 18 }}>
-                  {`“${String(t.reply?.text || "").replace(/\s+/g, " ").slice(0, 80)}”`}
-                </Text>
+  // content up to 540pt via maxWidth. The branch pick, the file maps and the
+  // module resolution all read `t()` inside the dynamic child, so a rebound
+  // cell swaps the whole subtree — no stale turn can survive a recycle.
+  return (
+    <View style={{ width: "100%" }}>
+      {() => {
+        const tt = t();
+        if (!tt) return null;
+        if (tt.role === "user")
+          return (
+            <View style={{ alignItems: "flex-end", gap: 4, width: "100%" }} {...hover}>
+            {/* attached images sit above the bubble (Grok), files as chips */}
+            <If when={(tt.attachments || []).length > 0}>
+              <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, maxWidth: 560 }}>
+                {(tt.attachments || []).map((a: any) => (
+                  <FileTile a={a} size={a.kind === "file" ? 72 : 120} />
+                ))}
               </View>
             </If>
-            <If when={!!t.text}>
-              <Markdown text={t.text} />
+            <View
+              class="flex-row w-full"
+              style={{ justifyContent: "flex-end" }}
+            >
+              {/* Sand: radius 18, padding 7×12, 14/20, the bot's bubble fill */}
+              <View
+                style={{
+                  backgroundColor: bubbleFill(),
+                  borderRadius: 18,
+                  paddingVertical: 7,
+                  paddingHorizontal: 12,
+                  maxWidth: 560,
+                  flexShrink: 1,
+                }}
+              >
+                {badge("left")}
+                <OnFill.Provider value={true}>
+                  {/* replying: the quoted message heads the bubble; it jumps there */}
+                  <If when={!!tt.reply}>
+                    <View
+                      onPress={() => onJump?.(tt.reply.i)}
+                      activeOpacity={0.7}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}
+                    >
+                      <Text style={{ color: "#ffffffb3", fontSize: 12 }}>💬︎</Text>
+                      <Text numberOfLines={1} style={{ flexShrink: 1, color: "#ffffffcc", fontSize: 13, lineHeight: 18 }}>
+                        {`“${String(tt.reply?.text || "").replace(/\s+/g, " ").slice(0, 80)}”`}
+                      </Text>
+                    </View>
+                  </If>
+                  <If when={!!tt.text}>
+                    <Markdown text={tt.text} />
+                  </If>
+                </OnFill.Provider>
+              </View>
+            </View>
+            {/* ChatGPT: the action bar sits under the bubble, aligned to its edge */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+              {bar(true, false)}
+            </View>
+            </View>
+          );
+        // a building artifact renders its declared placeholder — before the
+        // module exists, possibly before it even has a name
+        if (tt.building) return <ArtPlaceholder t={tt} />;
+        if (!tt.name)
+          return (
+            <View style={{ gap: 4, width: "100%" }} {...hover}>
+            <View
+              class="flex-row w-full"
+              style={{ justifyContent: "flex-start" }}
+            >
+              <View
+                style={{
+                  backgroundColor: agentFill(),
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: tc("#f5f5f50f"),
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  maxWidth: 560,
+                  flexShrink: 1,
+                }}
+              >
+                {badge("right")}
+                <Markdown text={tt.text} />
+              </View>
+            </View>
+            {/* ChatGPT: action bar under the bubble, aligned to its left edge */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              {bar(false, true)}
+            </View>
+            {/* files the reply produced: Grok's file cards, in the reply flow → fullscreen viewer */}
+            <If when={(tt.files || []).length > 0}>
+              <View style={{ gap: 8, width: "100%", maxWidth: 560 }}>
+                <If when={(tt.files || []).some((f: any) => f.kind === "image" || f.kind === "video")}>
+                  {artifact(<MediaGallery files={(tt.files || []).filter((f: any) => f.kind === "image" || f.kind === "video")} />, null)}
+                </If>
+                {(tt.files || []).filter((f: any) => f.kind !== "image" && f.kind !== "video").map((f: any) =>
+                  f.kind === "audio" ? (
+                    artifact(<AudioCard f={f} onOpen={openFile} tint={bubbleFill() || tc("#f5f5f5")} />, f)
+                  ) : (
+                    artifact(<FileCard f={f} onOpen={openFile} />, f)
+                  ),
+                )}
+              </View>
             </If>
-          </OnFill.Provider>
-        </View>
-      </View>
-      {/* ChatGPT: the action bar sits under the bubble, aligned to its edge */}
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-        {bar(true, false)}
-      </View>
-      </View>
-    );
-  // a building artifact renders its declared placeholder — before the
-  // module exists, possibly before it even has a name
-  if (t.building) return <ArtPlaceholder t={t} />;
-  if (!t.name)
-    return (
-      <View style={{ gap: 4, width: "100%" }} {...hover}>
-      <View
-        class="flex-row w-full"
-        style={{ justifyContent: "flex-start" }}
-      >
-        <View
-          style={{
-            backgroundColor: agentFill(),
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: tc("#f5f5f50f"),
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            maxWidth: 560,
-            flexShrink: 1,
-          }}
-        >
-          {badge("right")}
-          <Markdown text={t.text} />
-        </View>
-      </View>
-      {/* ChatGPT: action bar under the bubble, aligned to its left edge */}
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        {bar(false, true)}
-      </View>
-      {/* files the reply produced: Grok's file cards, in the reply flow → fullscreen viewer */}
-      <If when={(t.files || []).length > 0}>
-        <View style={{ gap: 8, width: "100%", maxWidth: 560 }}>
-          <If when={(t.files || []).some((f: any) => f.kind === "image" || f.kind === "video")}>
-            {artifact(<MediaGallery files={(t.files || []).filter((f: any) => f.kind === "image" || f.kind === "video")} />, null)}
-          </If>
-          {(t.files || []).filter((f: any) => f.kind !== "image" && f.kind !== "video").map((f: any) =>
-            f.kind === "audio" ? (
-              artifact(<AudioCard f={f} onOpen={openFile} tint={bubbleFill() || tc("#f5f5f5")} />, f)
-            ) : (
-              artifact(<FileCard f={f} onOpen={openFile} />, f)
-            ),
-          )}
-        </View>
-      </If>
-      </View>
-    );
-  // A card pins the version it rendered: "R6@v3" resolves that exact module;
-  // cards from before versions (no t.v) resolve the bare name = current.
-  // Runtime chunks win over the bundled MODULES: the packaged app's registry
-  // is frozen at build time while the server keeps numbering new modules —
-  // a name collision (data-dir R17 vs bundled R17) must render the fresh
-  // chunk, not the stale bundled module.
-  // The moduleOf read must live inside `when` — a signal read in the body
-  // evaluates once and the row would hold "loading" after the chunk lands.
-  const key = t.v ? `${t.name}@v${t.v}` : t.widget ? t.name + "w" : t.name;
-  return (
-    <If when={moduleOf(key) !== "loading"} else={<ArtPlaceholder t={t} />}>
-      {(() => {
+            </View>
+          );
+        // A card pins the version it rendered: "R6@v3" resolves that exact
+        // module; cards from before versions (no t.v) resolve the bare name =
+        // current. Runtime chunks win over the bundled MODULES: the packaged
+        // app's registry is frozen at build time while the server keeps
+        // numbering new modules — a name collision (data-dir R17 vs bundled
+        // R17) must render the fresh chunk, not the stale bundled module.
+        const key = tt.v ? `${tt.name}@v${tt.v}` : tt.widget ? tt.name + "w" : tt.name;
         const d = moduleOf(key);
+        if (d === "loading") return <ArtPlaceholder t={tt} />;
         const C = (typeof d === "function" ? d : null) ?? MODULES[key];
         if (!C)
           return (
             <View class="self-start px-1 py-1 flex-row items-center gap-2">
               <Text style={{ color: tc("#f5f5f566"), fontSize: 12 }}>
-                {`${t.art?.title || "app"} — module missing`}
+                {`${tt.art?.title || "app"} — module missing`}
               </Text>
-              <DelBtn k={"idx:" + t.i} />
+              <DelBtn k={"idx:" + tt.i} />
             </View>
           );
         return (
           <CardShell
-            name={t.name}
-            v={t.v}
-            title={t.art?.title || (t.label === "image" ? "Image" : "Mini app")}
-            desc={t.art?.desc || ""}
-            art={t.art}
-            caption={t.caption}
-            reaction={t.reaction}
-            i={t.i}
+            name={tt.name}
+            v={tt.v}
+            title={tt.art?.title || (tt.label === "image" ? "Image" : "Mini app")}
+            desc={tt.art?.desc || ""}
+            art={tt.art}
+            caption={tt.caption}
+            reaction={tt.reaction}
+            i={tt.i}
             onReply={onReply}
             onPicker={onPicker}
           >
             <C />
           </CardShell>
         );
-      })()}
-    </If>
+      }}
+    </View>
   );
 }
 
@@ -563,48 +560,68 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
 export const pickerClose = signal<(() => void) | null>(null);
 export const pillGuard = { touch: false };
 
-// The transcript rows (inside the app's native Scroll). Turn objects are kept
-// stable by the app, so <Each> builds a row once and keeps it.
-export function Conversation(props: {
-  turns: any[];
+// The pill itself renders above the whole list as one app-level overlay —
+// list cells recycle, so an in-cell pill could be covered by a later cell.
+// `pillAnchor` carries the measured bar rect (page coords), the flip, the
+// row's emoji state and its pick handler; identity-compared so a stale owner
+// can't clear a newer anchor.
+export type PillAnchor = {
+  x: number; y: number; w: number; h: number;
+  flip: boolean; right: boolean;
+  current: string; onPick: (e: string) => void;
+};
+export const pillAnchor = signal<PillAnchor | null>(null);
+
+/** Measure `el` and open the shared pill anchored to it; returns the anchor
+ * (null when the bar isn't in the tree). */
+export async function openPill(
+  el: YNode | undefined,
+  right: boolean,
+  current: string,
+  onPick: (e: string) => void,
+): Promise<PillAnchor | null> {
+  const m = await el?.measure();
+  if (!m) return null;
+  const flip = m.pageY + m.height + 205 > windowSize().height - 80;
+  const anchor = { x: m.pageX, y: m.pageY, w: m.width, h: m.height, flip, right, current, onPick };
+  pillAnchor.set(anchor);
+  return anchor;
+}
+
+// One transcript cell inside the app's virtualized <List>. Cells recycle:
+// `t` is the list's item memo — every read goes through `t()` so a rebound
+// cell draws the new turn, and picker ownership is released only when this
+// cell still owns it (a recycled cell must not clear a newer owner's state).
+export function TurnCell(props: {
+  t: () => any;
   onReply?: (i: number, text: string, files?: string[]) => void;
-  /** scroll to a content y (a quoted message's row) */
-  onJump?: (y: number) => void;
+  onJump?: (i: number) => void;
 }) {
-  const rowY = new Map<number, number>();
-  cleanup(() => pickerClose.set(null));
+  let owned: (() => void) | null = null;
+  cleanup(() => {
+    if (owned && pickerClose() === owned) {
+      pickerClose.set(null);
+      pillAnchor.set(null);
+    }
+  });
   return (
-    <View class="gap-5 py-4">
-      <Each of={props.turns}>
-        {(t) => {
-          // an open emoji pill must paint above later rows — the wrapper is
-          // the sibling unit, so it carries the zIndex
-          const open = signal(false);
-          return (
-            <View onLayout={(e) => rowY.set(t().i, e.y)} style={{ zIndex: open() ? 30 : 0 }}>
-              <TurnRow
-                t={t()}
-                onReply={props.onReply}
-                onPicker={(o, close) => {
-                  open.set(o);
-                  if (o) {
-                    // a new owner dismisses whatever pill was open before it;
-                    // the displaced row's "closed" report sees the new owner
-                    // and leaves it alone
-                    const prev = pickerClose();
-                    pickerClose.set(close);
-                    if (prev && prev !== close) prev();
-                  } else if (pickerClose() === close) pickerClose.set(null);
-                }}
-                onJump={(i) => {
-                  const y = rowY.get(i);
-                  if (y != null) props.onJump?.(y);
-                }}
-              />
-            </View>
-          );
+    <View style={{ alignSelf: "center", width: "100%", maxWidth: 992, paddingHorizontal: 16 }}>
+      <TurnRow
+        t={props.t}
+        onReply={props.onReply}
+        onPicker={(o, close) => {
+          if (o) {
+            // a new owner dismisses whatever pill was open before it;
+            // the displaced row's "closed" report sees the new owner
+            // and leaves it alone
+            owned = close;
+            const prev = pickerClose();
+            pickerClose.set(close);
+            if (prev && prev !== close) prev();
+          } else if (pickerClose() === close) pickerClose.set(null);
         }}
-      </Each>
+        onJump={props.onJump}
+      />
     </View>
   );
 }
@@ -639,12 +656,15 @@ export function CardShell(props: Props) {
   const extra = signal("");
   const hov = signal(false);
   const pickerOpen = signal(false);
-  const closeP = () => pickerOpen.set(false);
+  let myAnchor: PillAnchor | null = null;
+  const closeP = () => {
+    pickerOpen.set(false);
+    if (myAnchor && pillAnchor() === myAnchor) pillAnchor.set(null);
+    myAnchor = null;
+  };
   effect(() => {
     props.onPicker?.(pickerOpen(), closeP);
   });
-  // floating pill (see TurnRow): overlays, flips up near the surface bottom
-  const flip = signal(false);
   let actBar!: YNode;
   const toks = signal<[string, string, string][][] | null>(null);
   const renaming = signal(false);
@@ -872,7 +892,7 @@ export function CardShell(props: Props) {
     <View class="self-stretch" onLayout={(e) => avail.set(e.width)}>
     <View
       class="self-start"
-      style={{ zIndex: pickerOpen() ? 30 : 0, width: iw() + 24, maxWidth: "100%" }}
+      style={{ width: iw() + 24, maxWidth: "100%" }}
       onHoverIn={() => hov.set(true)}
       onHoverOut={() => hov.set(false)}
     >
@@ -1066,12 +1086,17 @@ export function CardShell(props: Props) {
             title="react"
             onPress={() => {
               if (pickerOpen()) {
-                pickerOpen.set(false);
+                closeP();
                 return;
               }
-              void actBar?.measure().then((m) => {
-                flip.set(!!m && m.pageY + m.height + 205 > windowSize().height - 80);
-                pickerOpen.set(true);
+              void openPill(actBar, true, reaction(), (e) => {
+                react(e);
+                closeP();
+              }).then((a) => {
+                if (a) {
+                  myAnchor = a;
+                  pickerOpen.set(true);
+                }
               });
             }}
           />
@@ -1079,31 +1104,13 @@ export function CardShell(props: Props) {
             glyph="↩"
             title="reply"
             onPress={() => {
-              pickerOpen.set(false);
+              closeP();
               props.onReply?.(props.i ?? 0, `app · ${titleSig() || props.name}${props.v ? ` v${props.v}` : ""}`, [
                 `module://${modKey}`,
               ]);
             }}
           />
-          <Act glyph="⋯" title="more" onPress={() => { pickerOpen.set(false); more(); }} />
-          <If when={pickerOpen()}>
-            <View
-              onTouchStart={() => {
-                pillGuard.touch = true;
-              }}
-              style={{
-                position: "absolute",
-                zIndex: 30,
-                right: 0,
-                top: flip() ? undefined : 24,
-                bottom: flip() ? 24 : undefined,
-                paddingTop: flip() ? 0 : 6,
-                paddingBottom: flip() ? 6 : 0,
-              }}
-            >
-              <EmojiPill current={reaction()} onPick={(e) => { react(e); pickerOpen.set(false); }} />
-            </View>
-          </If>
+          <Act glyph="⋯" title="more" onPress={() => { closeP(); more(); }} />
         </View>
       </View>
     </View>

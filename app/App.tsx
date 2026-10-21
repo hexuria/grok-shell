@@ -9,6 +9,7 @@ import {
   View,
   type YNode,
 } from "nsh";
+import { List } from "nsh/list";
 import { appearance, bubbleColor, bubbleFill, nextTheme, tc, tg, themePref, type ThemePref } from "./theme";
 import { Icon, ICONS, BrandTile, BrandChip, BRANDS } from "./icons";
 import { isAvailable, Menu, titleBar, Window } from "nsh/desktop";
@@ -19,7 +20,7 @@ import { PanResponder } from "nsh/gesture";
 import { KeyboardAvoidingView, SafeAreaView } from "nsh/ui/mobile";
 import { Animated, createAnimatedValue, Easing } from "nsh/animated";
 import { BotAvatar, BotBlob, BOT_COLORS, BOT_SHAPES, blobEdit, blobGaze, CroppedImage, inkOf, normColor, SleepingBlob, type AvatarCrop, type BlobGaze } from "./blob";
-import { Conversation, chatScrolling, pickerClose, pillGuard } from "./shell";
+import { TurnCell, chatScrolling, pickerClose, pillAnchor, pillGuard, EmojiPill } from "./shell";
 import { loadModels, ModelPill, ModelPopover, type Choice } from "./modelpicker";
 import { Palette, paletteOpen, type PaletteItem } from "./palette";
 import { FileTile, type Attachment } from "./filetile";
@@ -2104,43 +2105,41 @@ function App() {
             </View>
           </If>
           <If when={tab() === "chat" && turns().length !== 0}>
-            <Scroll
+            {/* virtualized transcript — only rows near the viewport exist, so
+                heavy media/WebViews in off-screen turns cost nothing. The
+                native side pins the bottom while within the threshold; cells
+                recycle, so TurnCell rebinds through the item memo. */}
+            <List
               ref={scroller}
+              each={turns()}
+              keyExtractor={(t: any, i: number) => String(t.i ?? i)}
+              estimatedItemSize={140}
+              maintainVisibleContentPosition={{ autoscrollToBottomThreshold: 160 }}
               keyboardShouldPersistTaps="handled"
               scrollEventThrottle={50}
-              onScroll={(e) => {
-                // content growing (a diagram or image loading above) also
-                // fires scroll events: only a moved offset means the user
-                // scrolled, so only then may it unpin from the bottom
+              onScroll={(e: any) => {
+                // rows under the pointer don't light their action bars
+                // mid-scroll — hover lights them again once it settles; an
+                // anchored pill would float off its bar, so it dismisses
                 const moved = e.y !== lastScrollY;
                 lastScrollY = e.y;
-                if (revealed() && moved) pinned = e.contentHeight - (e.y + e.height) < 120;
-                // rows under the pointer don't light their action bars
-                // mid-scroll — hover lights them again once it settles
+                if (moved) pickerClose()?.();
                 chatScrolling.set(true);
                 clearTimeout(scrollIdleT);
                 scrollIdleT = setTimeout(() => chatScrolling.set(false), 140);
               }}
+              // Sand: padding-inline max(16px, 50% − 480px) → a min(960, width − 32) column
+              contentContainerStyle={{ paddingTop: TOP + 16, paddingBottom: dockH() + 24, gap: 20 }}
               style={{ flex: 1, opacity: revealed() ? 1 : 0 }}
             >
-              <View
-                onLayout={(e) => {
-                  console.log(`DBGS ${Date.now() % 100000} content h=${Math.round(e.height)} pinned=${pinned} rev=${revealed()}`);
-                  // hidden: keep jumping to the end until the height settles;
-                  // shown and at the bottom: follow growth at once
-                  if (pinned) scroller?.scrollToEnd({ animated: false });
-                  if (!revealed()) settleSoon();
-                }}
-                // Sand: padding-inline max(16px, 50% − 480px) → a min(960, width − 32) column
-                style={{ alignSelf: "center", width: "100%", maxWidth: 960 + 32, paddingHorizontal: 16, paddingTop: TOP, paddingBottom: dockH() + 8 }}
-              >
-                <Conversation
-                  turns={turns()}
+              {(t: () => any, _i: () => number) => (
+                <TurnCell
+                  t={t}
                   onReply={(i, txt, files) => replyTo.set({ i, text: txt, ...(files?.length ? { files } : {}) })}
-                  onJump={(y) => scroller?.scrollTo({ y: Math.max(0, y + TOP - 24), animated: true })}
+                  onJump={(i) => scroller?.scrollToIndex({ index: i, animated: true, viewPosition: 0, viewOffset: TOP - 24 })}
                 />
-              </View>
-            </Scroll>
+              )}
+            </List>
           </If>
           <If when={tab() === "work"}>
             <Scroll style={{ flex: 1 }}>
@@ -3049,6 +3048,34 @@ function App() {
               {railPop()!.bot.preview || "No messages yet"}
             </Text>
           </View>
+        </If>
+
+        {/* ————— the one emoji pill — a floating overlay anchored to the
+            measured bar rect. It cannot live inside a row anymore: list cells
+            recycle and a later cell would cover an in-cell pill. ————— */}
+        <If when={!!pillAnchor()}>
+          {(() => {
+            const a = pillAnchor()!;
+            const win = windowSize();
+            return (
+              <View
+                pointerEvents="box-none"
+                onTouchStart={() => {
+                  pillGuard.touch = true;
+                }}
+                style={{
+                  position: "absolute",
+                  zIndex: 49,
+                  left: a.right ? undefined : a.x,
+                  right: a.right ? Math.max(0, win.width - a.x - a.w) : undefined,
+                  top: a.flip ? undefined : a.y + a.h + 6,
+                  bottom: a.flip ? win.height - a.y + 6 : undefined,
+                }}
+              >
+                <EmojiPill current={a.current} onPick={a.onPick} />
+              </View>
+            );
+          })()}
         </If>
 
         {/* ————— custom context menu (Grok-style card, replaces native popup) ————— */}

@@ -23,6 +23,8 @@ export type ReplyFile = {
   duration?: number; peaks?: number[]; width?: number; height?: number; poster?: string;
   // ≤1120px derivative — the feed decodes this, the lightbox the original
   feed?: string;
+  // multi-frame source (gif / animated webp / apng): `feed` is its first frame
+  animated?: boolean;
 };
 
 // Grok: "506B", "1.4kB", "11kB", "2.3MB"
@@ -347,6 +349,12 @@ function MediaTile(props: { f: ReplyFile; w: number; h: number; more?: number; o
       </If>
       <If when={!failed() && !!pic && !isSvg(pic)}>
         <Image src={{ uri: pic }} resizeMode="cover" fadeDuration={0} onError={() => failed.set(true)} style={{ position: "absolute", left: 0, top: 0, width: props.w, height: props.h }} />
+      </If>
+      {/* a still for animated media carries Grok's GIF badge */}
+      <If when={!!f.animated && !failed()}>
+        <View style={{ position: "absolute", left: 6, bottom: 6, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: "#00000099" }}>
+          <Text style={{ color: "#ffffff", fontSize: 11, fontWeight: "700" }}>{f.ext === "gif" ? "GIF" : f.ext.toUpperCase()}</Text>
+        </View>
       </If>
       <If when={f.kind === "video" && !failed()}>
         <View style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
