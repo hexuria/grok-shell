@@ -904,7 +904,7 @@ function App() {
     <View
       style={{
         position: "absolute", left: x, top: y, minWidth: sub ? 190 : CTX_W, zIndex: 52,
-        backgroundColor: (appearance() === "dark" ? "#2a2a2a" : "#ffffff"), borderRadius: 10,
+        backgroundColor: (appearance() === "dark" ? tc("#2a2a2a") : "#ffffff"), borderRadius: 10,
         borderWidth: 0.5, borderColor: tc("#f5f5f51f"),
         padding: CTX_PAD,
         boxShadow: "0 8px 24px -4px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
@@ -1400,25 +1400,25 @@ function App() {
       onHoverIn={() => hoverPlugin.set(p.name)}
       onHoverOut={() => hoverPlugin() === p.name && hoverPlugin.set("")}
       activeOpacity={1}
-      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 64, paddingHorizontal: 12, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? "#f5f5f50a" : "transparent" }}
+      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 64, paddingHorizontal: 12, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f50a") : "transparent" }}
     >
-      <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: hue(p.name), borderWidth: 0.5, borderColor: "#f5f5f50f", alignItems: "center", justifyContent: "center" }}>
+      <View style={{ width: 40, height: 40, borderRadius: 11, backgroundColor: hue(p.name), borderWidth: 0.5, borderColor: tc("#f5f5f50f"), alignItems: "center", justifyContent: "center" }}>
         <Text style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}>{p.name[0].toUpperCase()}</Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
         <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500", lineHeight: 18 }}>{pluginTitle(p.name)}</Text>
-        <Text numberOfLines={1} style={{ color: "#f5f5f5a8", fontSize: 12, lineHeight: 18 }}>{p.description}</Text>
+        <Text numberOfLines={1} style={{ color: tc("#f5f5f5a8"), fontSize: 12, lineHeight: 18 }}>{p.description}</Text>
       </View>
       {p.installed ? (
         <Text style={{ fontSize: 12, paddingHorizontal: 8 }}>
           <Icon name="check" size={13} color="#32bb78" />
-          <Text style={{ color: "#f5f5f5a8" }}> Added</Text>
+          <Text style={{ color: tc("#f5f5f5a8") }}> Added</Text>
         </Text>
       ) : (
         <View
           onPress={() => installPlugin(p.name)}
           activeOpacity={0.7}
-          style={{ height: 26, paddingHorizontal: 10, borderRadius: 13, backgroundColor: "#f5f5f50a", alignItems: "center", justifyContent: "center" }}
+          style={{ height: 26, paddingHorizontal: 10, borderRadius: 13, backgroundColor: tc("#f5f5f50a"), alignItems: "center", justifyContent: "center" }}
         >
           <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>{pluginBusy() === p.name ? "Adding…" : "Add"}</Text>
         </View>
@@ -1431,7 +1431,7 @@ function App() {
     <View
       onPress={onToggle}
       activeOpacity={0.8}
-      style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: on ? "#0a84ff" : "#f5f5f51f", justifyContent: "center", paddingHorizontal: 2 }}
+      style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: on ? "#0a84ff" : tc("#f5f5f51f"), justifyContent: "center", paddingHorizontal: 2 }}
     >
       <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff", alignSelf: on ? "flex-end" : "flex-start" }} />
     </View>
@@ -1452,7 +1452,7 @@ function App() {
           <Text style={{ color: dim(), fontSize: 12 }}>{on} of {tools.length} enabled {open ? "⌃" : "⌄"}</Text>
         </View>
         <If when={open}>
-          <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+          <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}>
             <Each of={tools}>
               {(t) => (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
@@ -2249,7 +2249,7 @@ function App() {
                   borderRadius: 19,
                   // Grok: a solid elevated card (not a tint), hairline border + soft shadow
                   backgroundColor:
-                    appearance() === "dark" ? (pillHover() ? "#2c2c2c" : "#242424") : pillHover() ? "#f7f7f7" : "#ffffff",
+                    appearance() === "dark" ? (pillHover() ? tc("#2c2c2c") : tc("#242424")) : pillHover() ? "#f7f7f7" : "#ffffff",
                   borderWidth: 0.5,
                   borderColor: appearance() === "dark" ? "#ffffff14" : "#0000001a",
                   boxShadow: appearance() === "dark" ? "0 2px 8px #00000066" : "0 2px 8px #0000001f",
@@ -2392,7 +2392,7 @@ function App() {
                 >
                   {/* always white — it sits on the avatar darkened to
                       brightness(0.3), in both themes (Grok's hover pen) */}
-                  <Icon name="edit" size={22} color="#f5f5f5" />
+                  <Icon name="edit" size={22} color={tc("#f5f5f5")} />
                 </View>
               </View>
               <Input
@@ -2604,7 +2604,7 @@ function App() {
                                   : `${s().command} ${s().args.join(" ")}`}
                           </Text>
                         </View>
-                        <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: s().status === "connected" ? "#32bb78" : s().status === "error" ? "#ff5f57" : s().status === "off" ? "#f5f5f533" : "#febc2e" }} />
+                        <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: s().status === "connected" ? "#32bb78" : s().status === "error" ? "#ff5f57" : s().status === "off" ? tc("#f5f5f533") : "#febc2e" }} />
                       </View>
                     )}
                   </Each>
@@ -2916,7 +2916,7 @@ function App() {
                 left: 12,
                 bottom: 64,
                 width: 240,
-                backgroundColor: (appearance() === "dark" ? "#2a2a2a" : "#ffffff"),
+                backgroundColor: (appearance() === "dark" ? tc("#2a2a2a") : "#ffffff"),
                 borderRadius: 12,
                 borderWidth: 0.5,
                 borderColor: tc("#f5f5f51f"),
@@ -2925,7 +2925,7 @@ function App() {
               }}
             >
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: (appearance() === "dark" ? "#1f1f1f" : "#e8e8e8"), alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: (appearance() === "dark" ? tc("#1f1f1f") : "#e8e8e8"), alignItems: "center", justifyContent: "center" }}>
                   <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "600" }}>UI</Text>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -2954,7 +2954,7 @@ function App() {
               top: 0,
               bottom: 0,
               right: 0,
-              backgroundColor: "#00000066",
+              backgroundColor: (appearance() === "dark" ? "#00000066" : "#00000033"),
             }}
           />
           <View
@@ -3250,7 +3250,7 @@ function App() {
         <If when={!!sectionPrompt()}>
           <View
             onPress={() => sectionPrompt.set(null)}
-            style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "#00000080", alignItems: "center", justifyContent: "center" }}
+            style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: (appearance() === "dark" ? "#00000080" : "#00000040"), alignItems: "center", justifyContent: "center" }}
           >
             <View
               onPress={() => {}}
@@ -3299,15 +3299,15 @@ function App() {
               #1f1f1f on 70% scrim. ————— */}
         <If when={pluginsOpen()}>
           <View style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: 30, alignItems: "center", justifyContent: "center" }}>
-            <View onPress={() => pluginsOpen.set(false)} style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "#000000b3" }} />
+            <View onPress={() => pluginsOpen.set(false)} style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: (appearance() === "dark" ? "#000000b3" : "#00000059") }} />
             <View
               style={{
                 width: Math.min(800, winW() - 60),
                 height: Math.min(702, windowSize().height - 60),
                 borderRadius: 14,
-                backgroundColor: "#1f1f1f",
+                backgroundColor: tc("#1f1f1f"),
                 borderWidth: 1,
-                borderColor: "#f5f5f51a",
+                borderColor: tc("#f5f5f51a"),
                 overflow: "hidden",
               }}
             >
@@ -3318,9 +3318,9 @@ function App() {
                 onHoverOut={() => hoverX.set(false)}
                 activeOpacity={1}
                 accessibilityLabel="Close plugins"
-                style={{ position: "absolute", top: 18, right: 16, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? "#f5f5f50a" : "transparent" }}
+                style={{ position: "absolute", top: 18, right: 16, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
               >
-                <Icon name="close" size={15} color="#f5f5f5a8" />
+                <Icon name="close" size={15} color={tc("#f5f5f5a8")} />
               </View>
 
               {/* ═══ MARKET page ═══
@@ -3339,25 +3339,25 @@ function App() {
                       onHoverIn={() => hoverChip.set(true)}
                       onHoverOut={() => hoverChip.set(false)}
                       activeOpacity={1}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8, backgroundColor: hoverChip() ? "#f5f5f50a" : "transparent" }}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 28, paddingLeft: 4, paddingRight: 8, borderRadius: 8, backgroundColor: hoverChip() ? tc("#f5f5f50a") : "transparent" }}
                     >
                       <View style={{ flexDirection: "row" }}>
                         <Each of={installedTiles}>
                           {(p, i) => (
-                            <View style={{ width: 18, height: 18, borderRadius: 5, backgroundColor: hue(p().name), borderWidth: 0.5, borderColor: "#f5f5f50f", alignItems: "center", justifyContent: "center", marginLeft: i() === 0 ? 0 : -6 }}>
+                            <View style={{ width: 18, height: 18, borderRadius: 5, backgroundColor: hue(p().name), borderWidth: 0.5, borderColor: tc("#f5f5f50f"), alignItems: "center", justifyContent: "center", marginLeft: i() === 0 ? 0 : -6 }}>
                               <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>{p().name[0].toUpperCase()}</Text>
                             </View>
                           )}
                         </Each>
                       </View>
-                      <Text style={{ color: "#f5f5f5a8", fontSize: 12, lineHeight: 16 }}>{connCount} connected</Text>
-                      <Icon name="chevronSmRight" size={12} color="#f5f5f5a8" />
+                      <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12, lineHeight: 16 }}>{connCount} connected</Text>
+                      <Icon name="chevronSmRight" size={12} color={tc("#f5f5f5a8")} />
                     </View>
                   );
                   const searchAndTpl = (
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <View style={{ flex: 1, height: 28, borderRadius: 9999, borderWidth: 0.5, borderColor: "#f5f5f50f", flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}>
-                        <Text style={{ color: "#f5f5f58a", fontSize: 16, marginTop: -1 }}>⌕</Text>
+                      <View style={{ flex: 1, height: 28, borderRadius: 9999, borderWidth: 0.5, borderColor: tc("#f5f5f50f"), flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}>
+                        <Icon name="search" size={16} color={tc("#f5f5f58a")} />
                         <Input
                           value={pluginQuery()}
                           onChangeText={(t) => pluginQuery.set(t)}
@@ -3373,11 +3373,11 @@ function App() {
                         onHoverIn={() => hoverTpl.set(true)}
                         onHoverOut={() => hoverTpl.set(false)}
                         activeOpacity={1}
-                        style={{ height: 32, borderRadius: 9999, borderWidth: 0.5, borderColor: "#f5f5f50f", backgroundColor: hoverTpl() ? "#f5f5f50a" : "transparent", paddingLeft: 6, paddingRight: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
+                        style={{ height: 32, borderRadius: 9999, borderWidth: 0.5, borderColor: tc("#f5f5f50f"), backgroundColor: hoverTpl() ? tc("#f5f5f50a") : "transparent", paddingLeft: 6, paddingRight: 10, flexDirection: "row", alignItems: "center", gap: 6 }}
                       >
-                        <BotBlob shape="blob" color="#f5f5f5" size={18} paused />
+                        <BotBlob shape="blob" color={tc("#f5f5f5")} size={18} paused />
                         <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates</Text>
-                        <Icon name="arrowUpRight" size={12} color="#f5f5f5a8" />
+                        <Icon name="arrowUpRight" size={12} color={tc("#f5f5f5a8")} />
                       </View>
                     </View>
                   );
@@ -3412,7 +3412,7 @@ function App() {
                           activeOpacity={0.7}
                           style={{ height: 28, borderRadius: 9999, paddingHorizontal: 10, alignItems: "center", justifyContent: "center", backgroundColor: pluginCat() === c() ? tc("#f5f5f5") : tc("#f5f5f50a") }}
                         >
-                          <Text style={{ color: pluginCat() === c() ? "#121212" : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
+                          <Text style={{ color: pluginCat() === c() ? tc("#121212") : tc("#f5f5f5"), fontSize: 13 }}>{c()}</Text>
                         </View>
                       )}
                     </Each>
@@ -3440,7 +3440,7 @@ function App() {
                           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 22, paddingBottom: 8, paddingLeft: 12, paddingRight: 8 }}>
                             <Text style={{ color: tc("#f5f5f5"), fontSize: 14, fontWeight: "500", lineHeight: 20 }}>{cat()}</Text>
                             <View onPress={() => pluginCat.set(cat())} activeOpacity={0.7} style={{ height: 20, borderRadius: 9999, paddingHorizontal: 8, justifyContent: "center" }}>
-                              <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>View all</Text>
+                              <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>View all</Text>
                             </View>
                           </View>
                           <Each of={pluginPairs(items)}>
@@ -3457,7 +3457,7 @@ function App() {
                 </Scroll>
                 {/* search dropdown — Grok shows matched rows over the grid */}
                 <If when={pluginQuery() !== "" && pluginList().length > 0}>
-                  <View style={{ position: "absolute", left: 20, top: 56 + 44 * (1 - hdrT()), right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: "#262626", borderWidth: 1, borderColor: "#f5f5f51f", shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
+                  <View style={{ position: "absolute", left: 20, top: 56 + 44 * (1 - hdrT()), right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: tc("#262626"), borderWidth: 1, borderColor: tc("#f5f5f51f"), shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
                     <Text style={{ color: dim(), fontSize: 12, paddingLeft: 14, paddingTop: 10, paddingBottom: 4 }}>Plugins</Text>
                     <Each of={pluginList().slice(0, 10)}>
                       {(p) => (
@@ -3507,7 +3507,7 @@ function App() {
                             <View
                               onPress={() => pushNav({ page: "plugin", name: it.p.name })}
                               activeOpacity={0.6}
-                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: "#f5f5f50a" }}
+                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}
                             >
                               <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: hue(it.p.name), alignItems: "center", justifyContent: "center" }}>
                                 <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{it.p.name[0].toUpperCase()}</Text>
@@ -3526,7 +3526,7 @@ function App() {
                             <View
                               onPress={() => pushNav({ page: "mcp", id: it.s.id })}
                               activeOpacity={0.6}
-                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: "#f5f5f50a" }}
+                              style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}
                             >
                               <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: hue(it.s.id), alignItems: "center", justifyContent: "center" }}>
                                 <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>{(it.s.name || it.s.id)[0].toUpperCase()}</Text>
@@ -3556,7 +3556,7 @@ function App() {
                     <Text onPress={() => pushNav({ page: "skill" })} style={{ paddingHorizontal: 6 }}><Icon name="plus" size={15} color={dim()} /></Text>
                   </View>
                   <If when={privateSkills().length === 0}>
-                    <Text style={{ color: "#f5f5f54d", fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>
+                    <Text style={{ color: tc("#f5f5f54d"), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>
                       {'None yet — ask the agent to save one ("remember to always…") or tap ＋.'}
                     </Text>
                   </If>
@@ -3567,11 +3567,11 @@ function App() {
                         activeOpacity={0.6}
                         style={{ flexDirection: "row", gap: 12, paddingVertical: 10, alignItems: "flex-start" }}
                       >
-                        <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                        <View style={{ width: 36, height: 36, borderRadius: 9, backgroundColor: tc("#f5f5f512"), alignItems: "center", justifyContent: "center" }}>
                           <Text style={{ color: dim(), fontSize: 15 }}>📦</Text>
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
-                          <Text numberOfLines={1} style={{ color: s().enabled ? tc("#f5f5f5") : "#f5f5f566", fontSize: 13, fontWeight: "500" }}>{s().name}</Text>
+                          <Text numberOfLines={1} style={{ color: s().enabled ? tc("#f5f5f5") : tc("#f5f5f566"), fontSize: 13, fontWeight: "500" }}>{s().name}</Text>
                           <Text numberOfLines={1} style={{ color: dim(), fontSize: 12 }}>Created locally · {s().description}</Text>
                         </View>
                         <If when={!s().enabled}>
@@ -3606,28 +3606,28 @@ function App() {
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 16, fontWeight: "600" }}>{pluginTitle(name)}</Text>
-                          <Text style={{ color: "#f5f5f58f", fontSize: 12, paddingTop: 2 }}>View Source ↗</Text>
+                          <Text style={{ color: tc("#f5f5f58f"), fontSize: 12, paddingTop: 2 }}>View Source ↗</Text>
                         </View>
                         <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
                           {d.installed ? (
-                            <View onPress={() => uninstallPlugin(name)} activeOpacity={0.7} style={{ height: 32, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 14, alignItems: "center", justifyContent: "center" }}>
+                            <View onPress={() => uninstallPlugin(name)} activeOpacity={0.7} style={{ height: 32, borderRadius: 9999, backgroundColor: tc("#f5f5f512"), paddingHorizontal: 14, alignItems: "center", justifyContent: "center" }}>
                               <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>{pluginBusy() === name ? "…" : "Uninstall"}</Text>
                             </View>
                           ) : (
-                            <View onPress={() => installPlugin(name)} activeOpacity={0.7} style={{ height: 32, borderRadius: 9999, backgroundColor: "#f5f5f5", paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}>
-                              <Text style={{ color: "#1f1f1f", fontSize: 13, fontWeight: "600" }}>{pluginBusy() === name ? "Adding…" : "Add"}</Text>
+                            <View onPress={() => installPlugin(name)} activeOpacity={0.7} style={{ height: 32, borderRadius: 9999, backgroundColor: tc("#f5f5f5"), paddingHorizontal: 16, alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ color: tc("#1f1f1f"), fontSize: 13, fontWeight: "600" }}>{pluginBusy() === name ? "Adding…" : "Add"}</Text>
                             </View>
                           )}
                         </View>
                       </View>
-                      <Text style={{ color: "#f5f5f5cc", fontSize: 13, lineHeight: 20, paddingBottom: 16 }}>{d.description || plugins().find((p) => p.name === name)?.description || ""}</Text>
+                      <Text style={{ color: tc("#f5f5f5cc"), fontSize: 13, lineHeight: 20, paddingBottom: 16 }}>{d.description || plugins().find((p) => p.name === name)?.description || ""}</Text>
                       {/* Accounts — one row per connector, Grok-style statuses */}
                       <If when={(d.mcp || []).length > 0}>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 8 }}>Accounts</Text>
-                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                        <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 14 }}>
                           <Each of={mcpL}>
                             {(m) => (
-                              <View style={{ borderTopWidth: mcpL.indexOf(m()) > 0 ? 0.5 : 0, borderTopColor: "#f5f5f512", paddingVertical: 12 }}>
+                              <View style={{ borderTopWidth: mcpL.indexOf(m()) > 0 ? 0.5 : 0, borderTopColor: tc("#f5f5f512"), paddingVertical: 12 }}>
                                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                                   <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>default ⌘</Text>
                                   <If when={m().status === "connected"}>
@@ -3635,13 +3635,13 @@ function App() {
                                   </If>
                                   <If when={m().status === "error" && needsAuth(m().err)}>
                                     <Text style={{ color: "#ffb224", fontSize: 12, paddingRight: 12 }}>Needs auth</Text>
-                                    <View onPress={() => authOrRetry(m(), name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                                    <View onPress={() => authOrRetry(m(), name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: tc("#f5f5f512"), paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
                                       <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
                                     </View>
                                   </If>
                                   <If when={m().status === "error" && !needsAuth(m().err)}>
                                     <Text style={{ color: "#ff5f57", fontSize: 12, paddingRight: 12 }}>Error</Text>
-                                    <View onPress={() => authOrRetry(m(), name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                                    <View onPress={() => authOrRetry(m(), name)} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: tc("#f5f5f512"), paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
                                       <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
                                     </View>
                                   </If>
@@ -3655,7 +3655,7 @@ function App() {
                               </View>
                             )}
                           </Each>
-                          <View style={{ borderTopWidth: 0.5, borderTopColor: "#f5f5f512", paddingVertical: 12 }}>
+                          <View style={{ borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512"), paddingVertical: 12 }}>
                             <Text style={{ color: dim(), fontSize: 13 }}>＋ Add Another Account</Text>
                           </View>
                         </View>
@@ -3663,7 +3663,7 @@ function App() {
                       {/* Apps (connectors) */}
                       <If when={(d.mcp || []).length > 0}>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Apps  {d.mcp.length}</Text>
-                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+                        <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}>
                           <Each of={mcpL}>
                             {(m) => (
                               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
@@ -3682,7 +3682,7 @@ function App() {
                       {/* Skills */}
                       <If when={skillList.length > 0}>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Skills  {skillList.length}</Text>
-                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+                        <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}>
                           <Each of={shownSkills}>
                             {(s) => (
                               <View onPress={() => pushNav({ page: "skill", name, id: s().name })} activeOpacity={0.6} style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 11, alignItems: "flex-start" }}>
@@ -3704,7 +3704,7 @@ function App() {
                       {/* Commands / Agents */}
                       <If when={(d.commands || []).length > 0}>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Commands  {d.commands.length}</Text>
-                        <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a" }}>
+                        <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a") }}>
                           <Each of={cmdL}>
                             {(c) => (
                               <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
@@ -3717,24 +3717,24 @@ function App() {
                       </If>
                       {/* Information */}
                       <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Information</Text>
-                      <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                      <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 14 }}>
                         <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Capabilities</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>{d.mcp?.length || 0} app{(d.mcp?.length || 0) === 1 ? "" : "s"}, {skillList.length} skill{skillList.length === 1 ? "" : "s"}</Text>
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512") }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Developer</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>{d.manifest?.author || (d.homepage ? new URL(d.homepage).host.split(".")[0] : "—")}</Text>
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512") }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Category</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>{pluginTitle(d.category || "")}</Text>
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512") }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Website</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>{d.homepage ? new URL(d.homepage).host : "—"}</Text>
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512") }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Availability</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>Public</Text>
                         </View>
@@ -3767,13 +3767,13 @@ function App() {
                         <View
                           onPress={() => { post("/mcp/server/delete", { id: s.id }).then(() => { fetchMcp(); popNav(); }); }}
                           activeOpacity={0.7}
-                          style={{ height: 32, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 14, alignItems: "center", justifyContent: "center" }}
+                          style={{ height: 32, borderRadius: 9999, backgroundColor: tc("#f5f5f512"), paddingHorizontal: 14, alignItems: "center", justifyContent: "center" }}
                         >
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "500" }}>Uninstall</Text>
                         </View>
                       </View>
                       <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 8 }}>Accounts</Text>
-                      <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                      <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 14 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>default</Text>
                           <View style={{ flex: 1 }} />
@@ -3784,7 +3784,7 @@ function App() {
                             <Text style={{ color: needsAuth(s.err) ? "#ffb224" : "#ff5f57", fontSize: 12, paddingRight: 12 }}>
                               {needsAuth(s.err) ? "Needs auth" : "Error"}
                             </Text>
-                            <View onPress={() => authOrRetry({ id: s.id, transport: s.url ? "remote" : "command", err: s.err })} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: "#f5f5f512", paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
+                            <View onPress={() => authOrRetry({ id: s.id, transport: s.url ? "remote" : "command", err: s.err })} activeOpacity={0.7} style={{ height: 26, borderRadius: 9999, backgroundColor: tc("#f5f5f512"), paddingHorizontal: 12, alignItems: "center", justifyContent: "center" }}>
                               <Text style={{ color: tc("#f5f5f5"), fontSize: 12 }}>Retry</Text>
                             </View>
                           </If>
@@ -3798,20 +3798,20 @@ function App() {
                       </View>
                       {mcpToolsSection(s.id)}
                       <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 16, paddingBottom: 8 }}>Details</Text>
-                      <View style={{ borderRadius: 12, backgroundColor: "#f5f5f50a", paddingHorizontal: 14 }}>
+                      <View style={{ borderRadius: 12, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 14 }}>
                         <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Source</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>Added manually</Text>
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512") }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Transport</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>{s.url ? "Remote" : "Command"}</Text>
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 20, paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 20, paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512") }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{s.url ? "URL" : "Command"}</Text>
                           <Text numberOfLines={2} style={{ color: dim(), fontSize: 13, flex: 1, textAlign: "right" }}>{s.url || `${s.command} ${(s.args || []).join(" ")}`.trim()}</Text>
                         </View>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: "#f5f5f512" }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: tc("#f5f5f512") }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Tools</Text>
                           <Text style={{ color: dim(), fontSize: 13 }}>{s.tools}</Text>
                         </View>
@@ -3840,7 +3840,7 @@ function App() {
                     return (
                       <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
-                          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: tc("#f5f5f512"), alignItems: "center", justifyContent: "center" }}>
                             <Text style={{ color: dim(), fontSize: 18 }}>📦</Text>
                           </View>
                           <View>
@@ -3848,17 +3848,17 @@ function App() {
                             <Text style={{ color: dim(), fontSize: 12, paddingTop: 2 }}>Plugin skill · {nav.name}</Text>
                           </View>
                         </View>
-                        <Text style={{ color: "#f5f5f5cc", fontSize: 13, lineHeight: 20, paddingBottom: 14 }}>{sk?.description || ""}</Text>
+                        <Text style={{ color: tc("#f5f5f5cc"), fontSize: 13, lineHeight: 20, paddingBottom: 14 }}>{sk?.description || ""}</Text>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>Name</Text>
-                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
+                        <View style={{ borderRadius: 10, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 12, paddingVertical: 10 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{nav.id}</Text>
                         </View>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Description</Text>
-                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10 }}>
+                        <View style={{ borderRadius: 10, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 12, paddingVertical: 10 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{sk?.description || "—"}</Text>
                         </View>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Instructions</Text>
-                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, paddingVertical: 10, minHeight: 140 }}>
+                        <View style={{ borderRadius: 10, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 12, paddingVertical: 10, minHeight: 140 }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 18 }}>{sk ? sk.body : "Loading…"}</Text>
                         </View>
                       </Scroll>
@@ -3870,7 +3870,7 @@ function App() {
                     <View style={{ flex: 1 }}>
                       <Scroll style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 28 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingBottom: 14 }}>
-                          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: "#f5f5f512", alignItems: "center", justifyContent: "center" }}>
+                          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: tc("#f5f5f512"), alignItems: "center", justifyContent: "center" }}>
                             <Text style={{ color: dim(), fontSize: 18 }}>📦</Text>
                           </View>
                           <View style={{ flex: 1 }}>
@@ -3888,24 +3888,24 @@ function App() {
                           </If>
                         </View>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>Name</Text>
-                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12 }}>
+                        <View style={{ borderRadius: 10, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 12 }}>
                           <Input value={psName()} onChangeText={(t) => psName.set(t)} placeholder="skill-name" placeholderTextColor={tc("#f5f5f54d")} style={{ color: tc("#f5f5f5"), fontSize: 13, paddingVertical: 10 }} />
                         </View>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Description</Text>
-                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12 }}>
+                        <View style={{ borderRadius: 10, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 12 }}>
                           <Input value={psDesc()} onChangeText={(t) => psDesc.set(t)} placeholder="When to use this skill" placeholderTextColor={tc("#f5f5f54d")} style={{ color: tc("#f5f5f5"), fontSize: 13, paddingVertical: 10 }} />
                         </View>
                         <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2, paddingTop: 12, paddingBottom: 6 }}>Instructions</Text>
-                        <View style={{ borderRadius: 10, backgroundColor: "#f5f5f50a", paddingHorizontal: 12, minHeight: 160 }}>
+                        <View style={{ borderRadius: 10, backgroundColor: tc("#f5f5f50a"), paddingHorizontal: 12, minHeight: 160 }}>
                           <Input value={psBody()} onChangeText={(t) => psBody.set(t)} placeholder="What the agent should do, in markdown" placeholderTextColor={tc("#f5f5f54d")} multiline style={{ color: tc("#f5f5f5"), fontSize: 12, lineHeight: 18, paddingVertical: 10, height: 160 }} />
                         </View>
                         <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingTop: 14 }}>
                           <View
                             onPress={savePrivateSkill}
                             activeOpacity={0.7}
-                            style={{ height: 34, borderRadius: 9999, paddingHorizontal: 20, alignItems: "center", justifyContent: "center", backgroundColor: psName().trim() && psBody().trim() ? tc("#f5f5f5") : "#f5f5f51f" }}
+                            style={{ height: 34, borderRadius: 9999, paddingHorizontal: 20, alignItems: "center", justifyContent: "center", backgroundColor: psName().trim() && psBody().trim() ? tc("#f5f5f5") : tc("#f5f5f51f") }}
                           >
-                            <Text style={{ color: psName().trim() && psBody().trim() ? "#1f1f1f" : dim(), fontSize: 13, fontWeight: "600" }}>Save</Text>
+                            <Text style={{ color: psName().trim() && psBody().trim() ? tc("#1f1f1f") : dim(), fontSize: 13, fontWeight: "600" }}>Save</Text>
                           </View>
                         </View>
                       </Scroll>
@@ -3920,7 +3920,7 @@ function App() {
         <If when={!!appRename()}>
           <View
             onPress={() => appRename.set(null)}
-            style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "#00000080", alignItems: "center", justifyContent: "center" }}
+            style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: (appearance() === "dark" ? "#00000080" : "#00000040"), alignItems: "center", justifyContent: "center" }}
           >
             <View
               onPress={() => {}}
@@ -3978,7 +3978,7 @@ function App() {
                 top: 0,
                 bottom: 0,
                 right: 0,
-                backgroundColor: "#00000080",
+                backgroundColor: (appearance() === "dark" ? "#00000080" : "#00000040"),
               }}
             />
             {/* Grok's dialog (CDP): 440 wide, radius 14, 0.5pt border at 12%,
@@ -3987,7 +3987,7 @@ function App() {
               style={{
                 width: 440,
                 borderRadius: 14,
-                backgroundColor: appearance() === "dark" ? "#1f1f1f" : "#ffffff",
+                backgroundColor: appearance() === "dark" ? tc("#1f1f1f") : "#ffffff",
                 borderWidth: 0.5,
                 borderColor: tc("#f5f5f51f"),
                 boxShadow: "0 16px 48px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.08)",
