@@ -3320,7 +3320,7 @@ function App() {
                 accessibilityLabel="Close plugins"
                 style={{ position: "absolute", top: 18, right: 16, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
               >
-                <Icon name="close" size={15} color={tc("#f5f5f5a8")} />
+                <Icon name="close" size={15} color={tc("#f5f5f5d9")} />
               </View>
 
               {/* ═══ MARKET page ═══
@@ -3392,7 +3392,7 @@ function App() {
                           {connChip}
                         </View>
                       </View>
-                      <View style={{ paddingBottom: 10, paddingRight: hdrT() > 0 ? 30 * hdrT() : 0 }}>
+                      <View style={{ paddingBottom: 10, paddingRight: 30 }}>
                         {searchAndTpl}
                       </View>
                     </View>
@@ -3457,7 +3457,7 @@ function App() {
                 </Scroll>
                 {/* search dropdown — Grok shows matched rows over the grid */}
                 <If when={pluginQuery() !== "" && pluginList().length > 0}>
-                  <View style={{ position: "absolute", left: 20, top: 56 + 44 * (1 - hdrT()), right: 20, maxHeight: 400, borderRadius: 12, backgroundColor: tc("#262626"), borderWidth: 1, borderColor: tc("#f5f5f51f"), shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
+                  <View style={{ position: "absolute", left: 20, top: 56 + 44 * (1 - hdrT()), right: 50, maxHeight: 400, borderRadius: 12, backgroundColor: tc("#262626"), borderWidth: 1, borderColor: tc("#f5f5f51f"), shadowColor: "#000", shadowOpacity: 0.4, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } }}>
                     <Text style={{ color: dim(), fontSize: 12, paddingLeft: 14, paddingTop: 10, paddingBottom: 4 }}>Plugins</Text>
                     <Each of={pluginList().slice(0, 10)}>
                       {(p) => (
