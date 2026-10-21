@@ -855,18 +855,19 @@ export function CardShell(props: Props) {
     work.set("");
   };
 
-  // The app always lays out at the size the model declared — fixed-size
-  // scenes (a 3×3 grid + button) clip if the frame shrinks them. When the
-  // declared box exceeds the chat caps, the whole app scales down uniformly
-  // around its top-left so the card and the pop-out show the same scene.
-  // fit/iw/ih stay thunks: style props evaluate under tracking, so a column
-  // resize reflows the card without re-mounting.
+  // Height hugs the app's real content — same contract as the pop-out
+  // (mount unbounded, measure, then size). Declared h is only the guess
+  // before the first layout: fixed-size scenes (Tic Tac Toe's wrap grid
+  // is ~535 at width 340, not the declared 480) would clip otherwise.
+  // When the natural box exceeds the chat caps the whole app scales down
+  // uniformly around its top-left — aspect preserved, nothing cut.
   const dw = props.art?.w || 480;
   const dh = props.art?.h || Math.round(dw * 0.75);
   const avail = signal(0); // measured column width; 0 until onLayout
-  const fit = () => Math.min(1, 560 / dw, 560 / dh, avail() ? (avail() - 24) / dw : 1);
+  const natH = signal(0); // measured app height at dw; 0 until onLayout
+  const fit = () => Math.min(1, 560 / dw, 560 / (natH() || dh), avail() ? (avail() - 24) / dw : 1);
   const iw = () => Math.max(140, Math.round(dw * fit()));
-  const ih = () => Math.round(dh * fit());
+  const ih = () => Math.round((natH() || dh) * fit());
   return (
     <View class="self-stretch" onLayout={(e) => avail.set(e.width)}>
     <View
@@ -963,11 +964,12 @@ export function CardShell(props: Props) {
         </View>
       </If>
 
-      {/* the app mounts at its declared size inside a box of the same aspect —
-          oversize apps scale down whole (origin top-left) instead of clipping */}
+      {/* the app lays out at declared width with unbounded height — the
+          inner view measures its natural height (pop-out parity), the frame
+          hugs it, and oversize scenes scale down whole, never clip */}
       <View style={{ width: iw(), height: ih(), borderRadius: 10, overflow: "hidden" }}>
-        <View style={{ width: dw, height: dh, transform: [{ scale: fit() }], transformOrigin: "top left" }}>
-          {props.children}
+        <View style={{ width: dw, transform: [{ scale: fit() }], transformOrigin: "top left" }}>
+          <View onLayout={(e) => natH.set(e.height)}>{props.children}</View>
         </View>
       </View>
 
