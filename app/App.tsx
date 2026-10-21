@@ -1449,7 +1449,7 @@ function App() {
       onHoverIn={() => hoverPlugin.set(p.name)}
       onHoverOut={() => hoverPlugin() === p.name && hoverPlugin.set("")}
       activeOpacity={1}
-      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 72, borderRadius: 16, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f50b") : "transparent" }}
+      style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 12, height: 72, borderRadius: 14, paddingHorizontal: 12, backgroundColor: hoverPlugin() === p.name ? tc("#f5f5f50b") : "transparent" }}
     >
       {plugTile(p.name, 38)}
       <View style={{ flexShrink: 1, minWidth: 0, maxWidth: 200 }}>
@@ -3502,16 +3502,18 @@ function App() {
                     </View>
                   );
                   const grid = (items: { name: string; description: string; installed: boolean }[]) => (
-                    <Each of={pluginPairs(items)}>
-                      {(pair) => (
-                        <View style={{ flexDirection: "row", gap: 8 }}>
-                          <Each of={pair()}>{(p) => pluginRow(p())}</Each>
-                          <If when={pair().length === 1}>
-                            <View style={{ flex: 1 }} />
-                          </If>
-                        </View>
-                      )}
-                    </Each>
+                    <View style={{ gap: 6 }}>
+                      <Each of={pluginPairs(items)}>
+                        {(pair) => (
+                          <View style={{ flexDirection: "row", gap: 8 }}>
+                            <Each of={pair()}>{(p) => pluginRow(p())}</Each>
+                            <If when={pair().length === 1}>
+                              <View style={{ flex: 1 }} />
+                            </If>
+                          </View>
+                        )}
+                      </Each>
+                    </View>
                   );
                   return (
                     <View style={{ flex: 1 }}>
