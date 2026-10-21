@@ -1,6 +1,7 @@
 import { cleanup, effect, Input, Scroll, signal, Text, View, type YNode } from "nsh";
 import { windowSize } from "nsh/device";
 import { FileTile } from "./filetile";
+import { Icon } from "./icons";
 import { AudioCard, FileCard, MediaGallery, openFile } from "./fileviewer";
 import { appearance, bubbleFill, OnFill, tc, tg } from "./theme";
 import { keymap } from "nsh/keymap";
@@ -145,7 +146,7 @@ function EmojiPill(props: { current: string; onPick: (e: string) => void }) {
         gap: 2,
         paddingHorizontal: 6,
         paddingVertical: 5,
-        borderRadius: 16,
+        borderRadius: 20,
         backgroundColor: appearance() === "dark" ? "#262626" : "#ffffff",
         borderWidth: 1,
         borderColor: tc("#f5f5f51f"),
@@ -158,10 +159,9 @@ function EmojiPill(props: { current: string; onPick: (e: string) => void }) {
           onHoverIn={() => plusH.set(true)}
           onHoverOut={() => plusH.set(false)}
           activeOpacity={0.9}
-          style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: grid() || plusH() ? tc("#f5f5f514") : "transparent", transform: [{ scale: plusH() ? 1.25 : 1 }], transitionProperty: "transform", transitionDuration: "120ms" }}
+          style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: grid() || plusH() ? tc("#f5f5f514") : "transparent", transform: [{ scale: plusH() ? 1.25 : 1 }], transitionProperty: "transform", transitionDuration: "120ms" }}
         >
-          <Text style={{ color: tc("#f5f5f5a8"), fontSize: 15 }}>☺</Text>
-          <Text style={{ position: "absolute", right: 1, bottom: 0, color: tc("#f5f5f5a8"), fontSize: 9, fontWeight: "700" }}>+</Text>
+          <Icon name="emojiPlus" size={20} color={tc("#f5f5f5a8")} />
         </View>
       </View>
       <If when={grid()}>
@@ -312,8 +312,8 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
       <If when={canReact}>
         <Act glyph="☺" title="react" onPress={() => void openPicker("msg", msgBar)} />
       </If>
-      <Act glyph="↩" title="reply" onPress={() => onReply?.(t.i, t.text || t.caption || t.name)} />
-      <Act glyph="⋯" title="more" onPress={more} />
+      <Act glyph="↩" title="reply" onPress={() => { picker.set(""); onReply?.(t.i, t.text || t.caption || t.name); }} />
+      <Act glyph="⋯" title="more" onPress={() => { picker.set(""); more(); }} />
       <If when={picker() === "msg"}>{float(right)}</If>
     </View>
   );
@@ -339,6 +339,7 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
             glyph="↩"
             title="reply"
             onPress={() => {
+              picker.set("");
               // the file(s) travel with the reply, so the model gets their contents
               const media = (t.files || []).filter((x: any) => x.kind === "image" || x.kind === "video");
               onReply?.(t.i, f ? `📎 ${f.name}` : `📎 ${media.map((x: any) => x.name).join(", ")}`, f ? [f.path] : media.map((x: any) => x.path));
@@ -347,12 +348,13 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
           <Act
             glyph="⋯"
             title="more"
-            onPress={() =>
+            onPress={() => {
+              picker.set("");
               Menu.popup([
                 ...(f ? [{ label: "Open", onSelect: () => openFile(f) }, { label: "Copy file name", onSelect: () => post("/copy", { text: f.name }) }] : []),
                 { label: "Copy message", onSelect: () => post("/copy", { text: t.text }) },
-              ])
-            }
+              ]);
+            }}
           />
           <If when={picker() === slot}>{float(true)}</If>
         </View>
@@ -990,13 +992,14 @@ export function CardShell(props: Props) {
           <Act
             glyph="↩"
             title="reply"
-            onPress={() =>
+            onPress={() => {
+              pickerOpen.set(false);
               props.onReply?.(props.i ?? 0, `app · ${titleSig() || props.name}${props.v ? ` v${props.v}` : ""}`, [
                 `module://${modKey}`,
-              ])
-            }
+              ]);
+            }}
           />
-          <Act glyph="⋯" title="more" onPress={more} />
+          <Act glyph="⋯" title="more" onPress={() => { pickerOpen.set(false); more(); }} />
           <If when={pickerOpen()}>
             <View
               style={{

@@ -1325,20 +1325,14 @@ function App() {
     }).catch(() => {});
   const plugins = signal<{ name: string; description: string; category: string; homepage: string | null; domains: string[]; keywords: string[]; installed: boolean }[]>([]);
   const pluginBusy = signal("");
-  // Market header (approved preview design/modal-scroll-preview.html): the ✕
-  // owns a fixed 42px band; "Connect Apps" sits on that line at rest. The
-  // search row scrolls with the content and, once its bottom edge passes
-  // under the band, jumps into the band next to the ✕ — no slide, no bounce.
-  const MK = { band: 42, title: 42, search: 44, left: 33, right: 48, head: 67 };
-  const mktY = signal(0); // market scroll offset
-  const mktPinned = signal(false);
-  const searchFocus = signal(false);
+  // Market header — Grok's Connect-apps dialog keeps the search row + Bot
+  // templates + ✕ in a fixed 49px band (48 + 1px hairline); the list scrolls
+  // under it. Nothing teleports, so scrolling is plain native scroll.
+  const MK = { band: 48, title: 42, left: 33, right: 48, head: 67 };
   const fieldW = signal(0); // search field width — the dropdown matches it
   const dropSel = signal(0);
   const dropHidden = signal(false); // Esc hides the dropdown until the query changes
   const catsMore = signal(false);
-  let mktSearchInput!: YNode;
-  let pinSearchInput!: YNode;
   let dropScroll!: YNode;
   const hoverTpl = signal(false); // Bot templates pill
   const hoverChip = signal(false); // "N connected" chip
@@ -1351,7 +1345,7 @@ function App() {
     if (d?.plugins && JSON.stringify(d.plugins) !== JSON.stringify(plugins())) plugins.set(d.plugins);
   };
   effect(() => {
-    if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); mktY.set(0); mktPinned.set(false); catsMore.set(false); return; }
+    if (!pluginsOpen()) { pluginNav.set([{ page: "market" }]); pluginQuery.set(""); catsMore.set(false); return; }
     fetchPlugins();
     fetchMcp();
     fetchSkills();
@@ -1501,12 +1495,6 @@ function App() {
     }
   };
   let dropY = 0;
-  // the market page (and its scroll) remounts when you come back to it — start unpinned
-  effect(() => {
-    if (pluginPage() === "market") return;
-    mktPinned.set(false);
-    mktY.set(0);
-  });
   effect(() => {
     pluginQuery();
     dropHidden.set(false);
@@ -1518,16 +1506,6 @@ function App() {
     const off = keymap.bind({ up: () => dropMove(-1), down: () => dropMove(1), escape: () => dropHidden.set(true) }, { when: "always", repeat: true });
     cleanup(off);
   });
-  // The search row teleports between the scroll content and the ✕ band; a
-  // focused field keeps the keyboard focus across the jump.
-  const setMktScroll = (y: number) => {
-    mktY.set(y);
-    const pin = y >= MK.title + MK.search - MK.band;
-    if (pin === mktPinned()) return;
-    const hadFocus = searchFocus();
-    mktPinned.set(pin);
-    if (hadFocus) setTimeout(() => (pin ? pinSearchInput : mktSearchInput)?.focus(), 0);
-  };
   // Tools — "N of M enabled" collapsible with per-tool switches (Grok's
   // blue pill toggles). Used on plugin and connector detail pages.
   const toolSwitch = (on: boolean, onToggle: () => void) => (
@@ -3423,8 +3401,8 @@ function App() {
                 overflow: "hidden",
               }}
             >
-              {/* close — on the market page it owns the fixed top band: 32px
-                  (same height as search + Bot templates), 8px after Bot templates */}
+              {/* close — on the market page it sits in the fixed header,
+                  centered on the search row, 8px after Bot templates */}
               <View
                 onPress={() => pluginsOpen.set(false)}
                 onHoverIn={() => hoverX.set(true)}
@@ -3432,18 +3410,17 @@ function App() {
                 activeOpacity={1}
                 accessibilityLabel="Close plugins"
                 style={pluginPage() === "market"
-                  ? { position: "absolute", top: (MK.band - 32) / 2, right: MK.head - 8 - 32, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50b") : "transparent" }
+                  ? { position: "absolute", top: (MK.band - 34) / 2, right: MK.head - 8 - 34, width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50b") : "transparent" }
                   : { position: "absolute", top: 18, right: 4, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 4, backgroundColor: hoverX() ? tc("#f5f5f50a") : "transparent" }}
               >
-                <Icon name="close" size={15} color="#f5f5f5d9" />
+                <Icon name="close" size={16} color="#f5f5f5d9" />
               </View>
 
-              {/* ═══ MARKET page ═══ (approved: design/modal-scroll-preview.html, After)
-                  At rest: "Connect Apps" + "N connected ›" on the ✕'s line, search
-                  row, pills, sections — one scroll, no bounce. Once the search
-                  row's bottom edge passes under the ✕ band it jumps into the band
-                  next to the ✕; title, pills and cards scroll away under it.
-                  Content margins 33 left / 48 right; header controls end at 67. */}
+              {/* ═══ MARKET page ═══ — Grok's Connect-apps dialog: the search row
+                  + Bot templates + ✕ live in a fixed 49px header band ending in a
+                  1px hairline; "Connect Apps" + "N connected ›", pills and the
+                  sections are one list scrolling beneath it. Content margins 33
+                  left / 48 right; header controls end 67px before the right edge. */}
               <If when={pluginPage() === "market"}>
                 {(() => {
                   // getters, read inside JSX — a direct read here would rebuild the whole page on every change
@@ -3468,19 +3445,16 @@ function App() {
                       <Icon name="chevronSmRight" size={13} color="#f5f5f5a8" />
                     </View>
                   );
-                  const searchRow = (pinned: boolean) => (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 32 }}>
+                  const searchRow = (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, height: 36 }}>
                       <View
                         onLayout={(e) => fieldW.set(e.width)}
-                        style={{ flex: 1, height: 32, borderRadius: 16, borderWidth: 0.5, borderColor: tc("#f5f5f517"), backgroundColor: tc("#f5f5f50d"), flexDirection: "row", alignItems: "center", paddingLeft: 12, paddingRight: 8, gap: 6 }}
+                        style={{ flex: 1, height: 36, borderRadius: 18, borderWidth: 0.5, borderColor: tc("#f5f5f517"), backgroundColor: tc("#f5f5f50d"), flexDirection: "row", alignItems: "center", paddingLeft: 13, paddingRight: 8, gap: 7 }}
                       >
-                        <Icon name="search" size={16} color="#f5f5f58a" />
+                        <Icon name="search" size={17} color="#f5f5f58a" />
                         <Input
-                          ref={(n) => { if (pinned) pinSearchInput = n; else mktSearchInput = n; }}
                           value={pluginQuery()}
                           onChangeText={(t) => pluginQuery.set(t)}
-                          onFocus={() => searchFocus.set(true)}
-                          onBlur={() => searchFocus.set(false)}
                           onSubmitEditing={dropChoose}
                           placeholder="Search across apps and skills"
                           placeholderTextColor={tc("#f5f5f56e")}
@@ -3494,11 +3468,11 @@ function App() {
                         onHoverIn={() => hoverTpl.set(true)}
                         onHoverOut={() => hoverTpl.set(false)}
                         activeOpacity={1}
-                        style={{ height: 32, borderRadius: 16, borderWidth: 0.5, borderColor: tc("#f5f5f517"), backgroundColor: hoverTpl() ? tc("#f5f5f50a") : "transparent", paddingLeft: 8, paddingRight: 12, flexDirection: "row", alignItems: "center", gap: 6 }}
+                        style={{ height: 36, borderRadius: 18, borderWidth: 0.5, borderColor: tc("#f5f5f517"), backgroundColor: hoverTpl() ? tc("#f5f5f50a") : "transparent", paddingLeft: 9, paddingRight: 13, flexDirection: "row", alignItems: "center", gap: 7 }}
                       >
-                        <BotBlob shape="blob" color={tc("#f5f5f5")} size={18} paused />
-                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates</Text>
-                        <Icon name="arrowUpRight" size={12} color="#f5f5f5a8" />
+                        <BotBlob shape="blob" color={tc("#f5f5f5")} size={20} paused />
+                        <Text style={{ color: tc("#f5f5f5"), fontSize: 13.5 }}>Bot templates</Text>
+                        <Icon name="arrowUpRight" size={13} color="#f5f5f5a8" />
                       </View>
                     </View>
                   );
@@ -3541,23 +3515,31 @@ function App() {
                   );
                   return (
                     <View style={{ flex: 1 }}>
+                      {/* fixed header — search + Bot templates + ✕ live here
+                          permanently; the hairline never moves or fades */}
+                      <View
+                        style={{
+                          height: MK.band,
+                          paddingTop: (MK.band - 36) / 2,
+                          paddingLeft: MK.left,
+                          paddingRight: MK.head,
+                          backgroundColor: tc("#1f1f1f"),
+                          zIndex: 3,
+                        }}
+                      >
+                        {searchRow}
+                        <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 1, backgroundColor: tc("#f5f5f517") }} />
+                      </View>
                       <Scroll
                         style={{ flex: 1 }}
                         bounces={false}
-                        onScroll={(e) => setMktScroll(e.y)}
-                        onScrollEndDrag={(e) => setMktScroll(e.y)}
-                        onMomentumScrollEnd={(e) => setMktScroll(e.y)}
-                        scrollEventThrottle={16}
                         contentContainerStyle={{ paddingLeft: MK.left, paddingRight: MK.right, paddingBottom: 24 }}
                       >
-                        {/* title sits ON the ✕'s line */}
+                        {/* first scroll row — scrolls away under the fixed header */}
                         <View style={{ flexDirection: "row", alignItems: "center", height: MK.title, paddingRight: MK.head - MK.right }}>
                           <Text style={{ color: tc("#f5f5f5"), fontSize: 17, fontWeight: "600", letterSpacing: -0.2 }}>Connect Apps</Text>
                           <View style={{ flex: 1 }} />
                           {connChip}
-                        </View>
-                        <View style={{ height: MK.search, justifyContent: "center", paddingRight: MK.head - MK.right }}>
-                          {searchRow(false)}
                         </View>
                         {/* category pills scroll away with the content */}
                         <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", paddingTop: 12, paddingBottom: 12 }}>
@@ -3587,14 +3569,6 @@ function App() {
                           }}
                         </Each>
                       </Scroll>
-                      {/* pinned: the search row lives in the ✕ band — it appears there
-                          the instant its in-flow slot has scrolled under the band */}
-                      <If when={mktPinned()}>
-                        <View style={{ position: "absolute", left: 0, top: 0, right: 0, height: MK.band, zIndex: 3, backgroundColor: tc("#1f1f1f"), paddingTop: (MK.band - 32) / 2, paddingLeft: MK.left, paddingRight: MK.head }}>
-                          {searchRow(true)}
-                          <View style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 0.5, backgroundColor: tc("#f5f5f517") }} />
-                        </View>
-                      </If>
                       {/* search combo box — same left edge and width as the field */}
                       <If when={dropOpen()}>
                         <View
@@ -3602,7 +3576,7 @@ function App() {
                             position: "absolute",
                             left: MK.left,
                             width: fieldW(),
-                            top: mktPinned() ? (MK.band + 32) / 2 + 4 : MK.title + (MK.search + 32) / 2 + 4 - mktY(),
+                            top: (MK.band + 36) / 2 + 4,
                             height: Math.min(DROP_MAX, DROP_HEAD + pluginList().length * DROP_ROW + 8),
                             zIndex: 5,
                             borderRadius: 12,
