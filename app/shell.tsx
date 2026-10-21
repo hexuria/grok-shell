@@ -361,8 +361,10 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
       </View>
     );
   };
-  // iMessage tapback: the reaction floats on the bubble's top corner —
-  // left on our own bubbles (the agent's reaction), right on the agent's
+  // iMessage tapback (measured off Grok's render): a 30pt dark circle with a
+  // 1px lighter rim, horizontally centered on the bubble's outer top corner,
+  // its bottom edge dipping ~6pt into the bubble — left on our own bubbles
+  // (the agent's reaction), right on the agent's.
   const badge = (side: "left" | "right") =>
     t.reaction ? (
       <View
@@ -370,19 +372,21 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
         activeOpacity={0.7}
         style={{
           position: "absolute",
-          top: -10,
-          left: side === "left" ? -10 : undefined,
-          right: side === "right" ? -10 : undefined,
+          top: -24,
+          left: side === "left" ? -15 : undefined,
+          right: side === "right" ? -15 : undefined,
           zIndex: 5,
-          borderRadius: 10,
-          paddingHorizontal: 5,
-          paddingVertical: 2,
-          backgroundColor: appearance() === "dark" ? "#2b2b2b" : "#ffffff",
+          width: 30,
+          height: 30,
+          borderRadius: 15,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: appearance() === "dark" ? "#242424" : "#ffffff",
           borderWidth: 1,
-          borderColor: tc("#f5f5f51f"),
+          borderColor: appearance() === "dark" ? "#353535" : "#d4d4d8",
         }}
       >
-        <Text style={{ fontSize: 11 }}>{t.reaction}</Text>
+        <Text style={{ fontSize: 14 }}>{t.reaction}</Text>
       </View>
     ) : null;
   // Rows are full-width so the text inside a bubble is measured against a
