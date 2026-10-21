@@ -139,14 +139,18 @@ for (const s of Object.values(ICONS))
 // `color`: a dark-theme hex routed through tc() (or a function returning the
 // resolved color) — evaluated INSIDE draw so the canvas effect subscribes to
 // the theme; colors captured at render time would freeze the icon on flip.
-export const Icon = ({ name, size = 18, color = "#f5f5f5" }: { name: keyof typeof ICONS | string; size?: number; color?: string | (() => string) }) => {
-  const s = ICONS[name as string];
-  if (!s) return <Canvas style={{ width: size, height: size }} draw={() => {}} />;
+export const Icon = (props: { name: keyof typeof ICONS | string; size?: number; color?: string | (() => string) }) => {
+  const size = props.size ?? 18;
   return (
     <Canvas
       style={{ width: size, height: size }}
       draw={(ctx, { width, height }) => {
-        const col = typeof color === "function" ? color() : tc(color);
+        // read INSIDE draw like `color`: the canvas effect tracks the
+        // name expression, so a themed icon (sun/moon/system) redraws on
+        // the toggle instead of freezing on whatever ran first
+        const s = ICONS[props.name as string];
+        if (!s) return;
+        const col = typeof props.color === "function" ? props.color() : tc(props.color ?? "#f5f5f5");
         ctx.scale(width / s.vb[2], height / s.vb[3]);
         ctx.translate(-s.vb[0], -s.vb[1]);
         ctx.lineCap = "round";

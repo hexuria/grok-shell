@@ -864,7 +864,7 @@ function App() {
       items,
     });
   };
-  const closeCtx = () => ctxMenu.set(null);
+  const closeCtx = () => { clearTimeout(ctxSubT); ctxSubT = null; ctxMenu.set(null); };
   const ctxRowTop = (items: CtxItem[], idx: number) => {
     let y = CTX_PAD;
     for (let i = 0; i < idx; i++) y += "sep" in items[i] ? CTX_SEP : CTX_ROW;
@@ -881,16 +881,30 @@ function App() {
     if (typeof icon === "string") return icoT(icon, typeof c === "function" ? c() : c);
     return icon || <View style={{ width: 16 }} />;
   };
-  const ctxRow = (it: Exclude<CtxItem, { sep: true }>, key: string, subIdx = -1, parentX = 0, parentY = 0) => {
+  // a flyout must not close the instant the pointer leaves its parent row:
+  // submenu rows never touch ctxSub, and moving across sibling rows on the
+  // way in gets a short grace before the open submenu may close
+  let ctxSubT: any = null;
+  const ctxSubSet = (idx: number) => {
+    clearTimeout(ctxSubT);
+    ctxSubT = null;
+    if (ctxSub() >= 0 && idx !== ctxSub()) ctxSubT = setTimeout(() => ctxSub.set(idx), 350);
+    else ctxSub.set(idx);
+  };
+  const ctxRow = (it: Exclude<CtxItem, { sep: true }>, key: string, idx = -1, isSub = false) => {
     const c = it.red ? (appearance() === "dark" ? "#ff6961" : "#d70015") : tc("#f5f5f5");
     const dc = it.red ? () => (appearance() === "dark" ? "#ff6961" : "#d70015") : dim;
     return (
       <View
-        onPress={() => { if (it.submenu) { ctxSub.set(subIdx); return; } it.onSelect?.(); closeCtx(); }}
-        onHoverIn={() => { ctxHov.set(key); ctxSub.set(it.submenu ? subIdx : -1); }}
+        onPress={() => { if (it.submenu) { ctxSubSet(idx); return; } it.onSelect?.(); closeCtx(); }}
+        onHoverIn={() => {
+          ctxHov.set(key);
+          if (isSub) { clearTimeout(ctxSubT); ctxSubT = null; }
+          else ctxSubSet(it.submenu ? idx : -1);
+        }}
         onHoverOut={() => ctxHov() === key && ctxHov.set("")}
         activeOpacity={1}
-        style={{ height: CTX_ROW, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, borderRadius: 7, backgroundColor: ctxHov() === key || ctxSub() === subIdx && it.submenu ? tc("#f5f5f50a") : "transparent" }}
+        style={{ height: CTX_ROW, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, borderRadius: 7, backgroundColor: ctxHov() === key || ctxSub() === idx && it.submenu ? tc("#f5f5f50a") : "transparent" }}
       >
         {it.checked !== undefined && !it.icon
           ? icoT(it.checked ? "✓" : "", c)
@@ -914,7 +928,7 @@ function App() {
         "sep" in it ? (
           <View style={{ height: 0.5, backgroundColor: tc("#f5f5f514"), marginVertical: 4, marginHorizontal: 4 }} />
         ) : (
-          ctxRow(it, `r${sub ? "s" : ""}${i}`, i, x, y)
+          ctxRow(it, `r${sub ? "s" : ""}${i}`, i, sub)
         ),
       )}
     </View>
