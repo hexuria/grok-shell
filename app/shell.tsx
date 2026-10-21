@@ -507,13 +507,14 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
     );
   // A card pins the version it rendered: "R6@v3" resolves that exact module;
   // cards from before versions (no t.v) resolve the bare name = current.
+  // Runtime chunks win over the bundled MODULES: the packaged app's registry
+  // is frozen at build time while the server keeps numbering new modules —
+  // a name collision (data-dir R17 vs bundled R17) must render the fresh
+  // chunk, not the stale bundled module.
   const key = t.v ? `${t.name}@v${t.v}` : t.widget ? t.name + "w" : t.name;
-  let C = MODULES[key];
-  if (!C) {
-    const d = moduleOf(key);
-    if (d === "loading") return <ArtPlaceholder t={t} />;
-    if (typeof d === "function") C = d;
-  }
+  const d = moduleOf(key);
+  if (d === "loading") return <ArtPlaceholder t={t} />;
+  let C = (typeof d === "function" ? d : null) ?? MODULES[key];
   if (!C)
     return (
       <View class="self-start px-1 py-1 flex-row items-center gap-2">
