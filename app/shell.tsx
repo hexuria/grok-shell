@@ -362,31 +362,43 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
     );
   };
   // iMessage tapback (measured off Grok's render): a 30pt dark circle with a
-  // 1px lighter rim, horizontally centered on the bubble's outer top corner,
-  // its bottom edge dipping ~6pt into the bubble — left on our own bubbles
-  // (the agent's reaction), right on the agent's.
+  // 1px lighter rim, horizontally centered on the bubble's outer top corner.
+  // Grok punches a ~3pt ring of page color through the bubble around the
+  // badge — a knockout hole — so we paint a concentric page-colored disc
+  // under it (invisible over the page, cuts the bubble where they overlap).
   const badge = (side: "left" | "right") =>
     t.reaction ? (
       <View
-        onPress={() => post("/react", { key: "idx:" + t.i, r: "" })}
-        activeOpacity={0.7}
         style={{
           position: "absolute",
-          top: -24,
-          left: side === "left" ? -15 : undefined,
-          right: side === "right" ? -15 : undefined,
+          top: -27,
+          left: side === "left" ? -18 : undefined,
+          right: side === "right" ? -18 : undefined,
           zIndex: 5,
-          width: 30,
-          height: 30,
-          borderRadius: 15,
+          width: 36,
+          height: 36,
+          borderRadius: 18,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: appearance() === "dark" ? "#242424" : "#ffffff",
-          borderWidth: 1,
-          borderColor: appearance() === "dark" ? "#353535" : "#d4d4d8",
+          backgroundColor: tc("#161616"),
         }}
       >
-        <Text style={{ fontSize: 14 }}>{t.reaction}</Text>
+        <View
+          onPress={() => post("/react", { key: "idx:" + t.i, r: "" })}
+          activeOpacity={0.7}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: appearance() === "dark" ? "#242424" : "#ffffff",
+            borderWidth: 1,
+            borderColor: appearance() === "dark" ? "#353535" : "#d4d4d8",
+          }}
+        >
+          <Text style={{ fontSize: 14 }}>{t.reaction}</Text>
+        </View>
       </View>
     ) : null;
   // Rows are full-width so the text inside a bubble is measured against a
@@ -843,27 +855,39 @@ export function CardShell(props: Props) {
         }}
       >
       {/* same tapback as message bubbles: 30pt rimmed circle on the card's
-          top-right corner; tapping it clears the reaction */}
+          top-right corner inside a page-colored knockout disc; tapping it
+          clears the reaction */}
       <If when={!!reaction()}>
         <View
-          onPress={() => react("")}
-          activeOpacity={0.7}
           style={{
             position: "absolute",
-            top: -24,
-            right: -15,
+            top: -27,
+            right: -18,
             zIndex: 5,
-            width: 30,
-            height: 30,
-            borderRadius: 15,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: appearance() === "dark" ? "#242424" : "#ffffff",
-            borderWidth: 1,
-            borderColor: appearance() === "dark" ? "#353535" : "#d4d4d8",
+            backgroundColor: tc("#161616"),
           }}
         >
-          <Text style={{ fontSize: 14 }}>{badge()}</Text>
+          <View
+            onPress={() => react("")}
+            activeOpacity={0.7}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 15,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: appearance() === "dark" ? "#242424" : "#ffffff",
+              borderWidth: 1,
+              borderColor: appearance() === "dark" ? "#353535" : "#d4d4d8",
+            }}
+          >
+            <Text style={{ fontSize: 14 }}>{badge()}</Text>
+          </View>
         </View>
       </If>
       {/* header: the model's product title + version chip — no file names
