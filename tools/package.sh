@@ -33,6 +33,20 @@ cp -R "$ROOT/server/templates" "$R/server/templates" 2>/dev/null || true
 cp -R "$ROOT/server/office" "$R/server/office" 2>/dev/null || true
 mkdir -p "$R/node_modules/mermaid/dist"
 cp "$ROOT/node_modules/mermaid/dist/mermaid.min.js" "$R/node_modules/mermaid/dist/" 2>/dev/null || true
+# The BetterOffice engines are runtime-resolved (import.meta.resolve for the
+# caps probe, /office/vendor/ for the viewer's ESM imports, wasm + font
+# assets loaded off disk) — they must ship as real packages, not be inlined.
+cp -R "$ROOT/node_modules/@betteroffice" "$R/node_modules/@betteroffice" 2>/dev/null || true
+# The office MCP child spawns its own node; bundling mcp-main drops its
+# @modelcontextprotocol/sdk + zod deps. The engines stay external — they
+# resolve against the vendored @betteroffice above. The skia .node asset is
+# required relative to the bundle, so it ships beside it.
+MCP_OUT="$ROOT/dist/.mcp-$$"
+rm -rf "$MCP_OUT"
+bun build "$ROOT/server/office/mcp-main.ts" --target=node --format=esm \
+  --external "@betteroffice/*" --outdir "$MCP_OUT" && \
+  cp "$MCP_OUT"/mcp-main.js "$MCP_OUT"/*.node "$R/server/office/" 2>/dev/null
+rm -rf "$MCP_OUT"
 
 # nsh + host binaries: pop-outs do `nsh build` → `nsh-macos-host --bundle`.
 cp "$NSH_BIN" "$R/server/nsh"
