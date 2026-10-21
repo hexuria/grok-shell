@@ -27,6 +27,12 @@ bun build "$ROOT/server/app-server.mjs" --target=node --format=esm \
   --outfile "$R/server/app-server.mjs"
 cp -R "$ROOT/widgets" "$R/server/widgets" 2>/dev/null || true
 cp -R "$ROOT/server/plugins" "$R/server/plugins" 2>/dev/null || true
+# Runtime assets the bundle reads beside itself: TSX templates, the office
+# viewer/editor, and mermaid for the diagram web view.
+cp -R "$ROOT/server/templates" "$R/server/templates" 2>/dev/null || true
+cp -R "$ROOT/server/office" "$R/server/office" 2>/dev/null || true
+mkdir -p "$R/node_modules/mermaid/dist"
+cp "$ROOT/node_modules/mermaid/dist/mermaid.min.js" "$R/node_modules/mermaid/dist/" 2>/dev/null || true
 
 # nsh + host binaries: pop-outs do `nsh build` → `nsh-macos-host --bundle`.
 cp "$NSH_BIN" "$R/server/nsh"
