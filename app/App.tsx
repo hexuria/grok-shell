@@ -19,7 +19,7 @@ import { PanResponder } from "nsh/gesture";
 import { KeyboardAvoidingView, SafeAreaView } from "nsh/ui/mobile";
 import { Animated, createAnimatedValue, Easing } from "nsh/animated";
 import { BotAvatar, BotBlob, BOT_COLORS, BOT_SHAPES, blobEdit, blobGaze, CroppedImage, inkOf, normColor, SleepingBlob, type AvatarCrop, type BlobGaze } from "./blob";
-import { Conversation } from "./shell";
+import { Conversation, chatScrolling } from "./shell";
 import { loadModels, ModelPill, ModelPopover, type Choice } from "./modelpicker";
 import { Palette, paletteOpen, type PaletteItem } from "./palette";
 import { FileTile, type Attachment } from "./filetile";
@@ -286,7 +286,7 @@ function App() {
   // jumped to its end once laid out, then shown — it opens on the latest
   // message with no visible scrolling (no batches landing above the view).
   const revealed = signal(true);
-  let pinned = true, turnsThread = "", lastScrollY = 0;
+  let pinned = true, turnsThread = "", lastScrollY = 0, scrollIdleT: any;
   // shown once the transcript's height holds still for a moment (diagrams
   // and highlighted code settle), at most 900ms after opening
   let settleTimer: any = null, openedAt = 0;
@@ -2048,10 +2048,14 @@ function App() {
                 // content growing (a diagram or image loading above) also
                 // fires scroll events: only a moved offset means the user
                 // scrolled, so only then may it unpin from the bottom
-                console.log(`DBGS ${Date.now() % 100000} scroll y=${Math.round(e.y)} ch=${Math.round(e.contentHeight)} vh=${Math.round(e.height)} rev=${revealed()}`);
                 const moved = e.y !== lastScrollY;
                 lastScrollY = e.y;
                 if (revealed() && moved) pinned = e.contentHeight - (e.y + e.height) < 120;
+                // rows under the pointer don't light their action bars
+                // mid-scroll — hover lights them again once it settles
+                chatScrolling.set(true);
+                clearTimeout(scrollIdleT);
+                scrollIdleT = setTimeout(() => chatScrolling.set(false), 140);
               }}
               style={{ flex: 1, opacity: revealed() ? 1 : 0 }}
             >

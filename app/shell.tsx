@@ -1,4 +1,5 @@
-import { cleanup, effect, Input, signal, Text, View } from "nsh";
+import { cleanup, effect, Input, Scroll, signal, Text, View, type YNode } from "nsh";
+import { windowSize } from "nsh/device";
 import { FileTile } from "./filetile";
 import { AudioCard, FileCard, MediaGallery, openFile } from "./fileviewer";
 import { appearance, bubbleFill, OnFill, tc, tg } from "./theme";
@@ -11,6 +12,10 @@ const agentFill = () => (appearance() === "light" ? "#0000000f" : tc("#1f1f1f"))
 import { Menu } from "nsh/desktop";
 import { Markdown } from "./md";
 import { MODULES } from "../generated/index";
+
+// while the chat scrolls, hover bars stay dark — every row the pointer
+// crosses would otherwise light up mid-scroll (noise + wasted layout)
+export const chatScrolling = signal(false);
 
 // ChatGPT-style action row + chrome around every generated widget.
 //   👍 👎  persist a reaction   ·   ↻ regenerate in place (rewrites this module)
@@ -92,22 +97,47 @@ function Act({ glyph, onPress, title }: { glyph: string; onPress: () => void; ti
   );
 }
 
-// Horizontal emoji pill — drops below the action bar (approved design
-// preview: chat-actions-artifacts-preview.html, option 1B). "+ " opens a
-// second row of less-common picks; picking the current emoji clears it.
+// Horizontal emoji pill — floats by the action bar (approved design
+// preview: chat-actions-artifacts-preview.html, option 1B). The emoji-plus
+// button expands to a full scrollable grid; picking the current emoji
+// clears it.
 const EMOJI = ["👍", "❤️", "😂", "😮", "👎"];
-const EMOJI_MORE = ["🙏", "🔥", "🎉", "😢", "🤔", "😍"];
+const EMOJI_GRID = [
+  "😀","😄","😁","🤣","😂","🙂","😉","😊","😇","🥰","😍","🤩","😘","😋","😛","🤪","😜","😝","🤑","🤗",
+  "🤭","🤫","🤔","🫡","😐","😑","😶","😏","😒","🙄","😬","🤥","😌","😔","😪","🤤","😴","😷","🤒","🤕",
+  "🤢","🤮","🥵","🥶","🥴","😵","🤯","🤠","🥳","😎","🤓","🧐","😕","😟","🙁","😮","😯","😲","😳","🥺",
+  "😦","😧","😨","😰","😥","😢","😭","😱","😖","😣","😞","😓","😩","😫","🥱","😤","😡","😠","🤬","😈",
+  "❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","💕","💖","💗","💯","✨","⭐","🌟","💫","🔥","🎉",
+  "👍","👎","👏","🙌","🙏","🤝","💪","🫶","👌","✌️","🤞","🫰","🤙","👋","✋","🖐️","🖖","👆","👇","☝️",
+  "👽","🤖","💀","🎃","🚀","🎮","🎯","🏆","🥇","🍕","🍔","🍩","☕","🍺","⚡","🌈","☀️","🌙","❄️","🐛",
+];
 function EmojiPill(props: { current: string; onPick: (e: string) => void }) {
-  const more = signal(false);
-  const dot = (e: string) => (
-    <View
-      onPress={() => props.onPick(e === props.current ? "" : e)}
-      activeOpacity={0.6}
-      style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: e === props.current ? tc("#f5f5f52b") : "transparent" }}
-    >
-      <Text style={{ fontSize: 17 }}>{e}</Text>
-    </View>
-  );
+  const grid = signal(false);
+  const dot = (e: string) => {
+    const h = signal(false);
+    return (
+      <View
+        onPress={() => props.onPick(e === props.current ? "" : e)}
+        onHoverIn={() => h.set(true)}
+        onHoverOut={() => h.set(false)}
+        activeOpacity={0.9}
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 15,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: e === props.current ? tc("#f5f5f52b") : h() ? tc("#f5f5f514") : "transparent",
+          transform: [{ scale: h() ? 1.25 : 1 }],
+          transitionProperty: "transform",
+          transitionDuration: "120ms",
+        }}
+      >
+        <Text style={{ fontSize: 17 }}>{e}</Text>
+      </View>
+    );
+  };
+  const plusH = signal(false);
   return (
     <View
       style={{
@@ -124,15 +154,20 @@ function EmojiPill(props: { current: string; onPick: (e: string) => void }) {
       <View style={{ flexDirection: "row", gap: 2 }}>
         {EMOJI.map(dot)}
         <View
-          onPress={() => more.update((v) => !v)}
-          activeOpacity={0.6}
-          style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" }}
+          onPress={() => grid.update((v) => !v)}
+          onHoverIn={() => plusH.set(true)}
+          onHoverOut={() => plusH.set(false)}
+          activeOpacity={0.9}
+          style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: grid() || plusH() ? tc("#f5f5f514") : "transparent", transform: [{ scale: plusH() ? 1.25 : 1 }], transitionProperty: "transform", transitionDuration: "120ms" }}
         >
-          <Text style={{ color: tc("#f5f5f5a8"), fontSize: 15 }}>{more() ? "−" : "+"}</Text>
+          <Text style={{ color: tc("#f5f5f5a8"), fontSize: 15 }}>☺</Text>
+          <Text style={{ position: "absolute", right: 1, bottom: 0, color: tc("#f5f5f5a8"), fontSize: 9, fontWeight: "700" }}>+</Text>
         </View>
       </View>
-      <If when={more()}>
-        <View style={{ flexDirection: "row", gap: 2 }}>{EMOJI_MORE.map(dot)}</View>
+      <If when={grid()}>
+        <Scroll style={{ maxHeight: 160, width: 226 }} contentContainerStyle={{ flexDirection: "row", flexWrap: "wrap", gap: 2 }}>
+          {EMOJI_GRID.map(dot)}
+        </Scroll>
       </If>
     </View>
   );
@@ -199,14 +234,36 @@ function ArtPlaceholder({ t, status }: { t: any; status?: string }) {
 // as plain JSON from GET /turns — switching threads swaps data, no rebuild.
 // Hovering a bubble reveals the action pill (react / reply / more); ⋯ opens
 // the native context menu, which the OS flips up or down to stay on screen.
-function TurnRow({ t, onReply, onJump }: {
+function TurnRow({ t, onReply, onJump, onPicker }: {
   t: any;
   onReply?: (i: number, text: string, files?: string[]) => void;
   onJump?: (i: number) => void;
+  onPicker?: (open: boolean, close: () => void) => void;
 }) {
   const hov = signal(false);
   // which bar opened the emoji pill: "msg" or "art:<file path>"
   const picker = signal("");
+  // reports open/close up to Conversation: the row's wrapper elevates (the
+  // pill is this row's absolute child, so the wrapper's zIndex paints it
+  // above later rows) and a backdrop there eats the next click to dismiss —
+  // same open-until-click-away behavior as the native ⋯ menu
+  effect(() => {
+    onPicker?.(!!picker(), () => picker.set(""));
+  });
+  // the pill floats (never in-flow, so nothing shifts when it opens) and
+  // flips above its bar when there is no room below — same edge rule the
+  // native Menu.popup applies
+  const flip = signal(false);
+  let msgBar!: YNode;
+  const openPicker = async (slot: string, el: YNode) => {
+    if (picker() === slot) {
+      picker.set("");
+      return;
+    }
+    const m = await el?.measure();
+    flip.set(!!m && m.pageY + m.height + 205 > windowSize().height - 80);
+    picker.set(slot);
+  };
   const hover = {
     onHoverIn: () => hov.set(true),
     onHoverOut: () => hov.set(false),
@@ -222,32 +279,62 @@ function TurnRow({ t, onReply, onJump }: {
         onSelect: () => post("/turn/delete", { key: "idx:" + t.i }),
       },
     ]);
-  const bar = (
+  // the pill hangs 6pt off its bar; the wrapper's padding bridges that gap
+  // so the pointer can cross without firing the row's hover-out
+  const float = (right: boolean) => (
     <View
       style={{
-        opacity: hov() || picker() === "msg" ? 1 : 0,
+        position: "absolute",
+        zIndex: 30,
+        right: right ? 0 : undefined,
+        left: right ? undefined : 0,
+        top: flip() ? undefined : 24,
+        bottom: flip() ? 24 : undefined,
+        paddingTop: flip() ? 0 : 6,
+        paddingBottom: flip() ? 6 : 0,
+      }}
+    >
+      <EmojiPill current={t.reaction || ""} onPick={(e) => { react(e); picker.set(""); }} />
+    </View>
+  );
+  // canReact=false on our own bubbles — reacting to yourself is nonsense;
+  // the agent reacts to them through its react tool instead
+  const bar = (right: boolean, canReact: boolean) => (
+    <View
+      ref={msgBar}
+      style={{
+        opacity: (hov() && !chatScrolling()) || picker() === "msg" ? 1 : 0,
         flexDirection: "row",
         alignItems: "center",
         gap: 2,
       }}
     >
-      <Act glyph="☺" title="react" onPress={() => picker.set(picker() === "msg" ? "" : "msg")} />
+      <If when={canReact}>
+        <Act glyph="☺" title="react" onPress={() => void openPicker("msg", msgBar)} />
+      </If>
       <Act glyph="↩" title="reply" onPress={() => onReply?.(t.i, t.text || t.caption || t.name)} />
       <Act glyph="⋯" title="more" onPress={more} />
+      <If when={picker() === "msg"}>{float(right)}</If>
     </View>
   );
   // ChatGPT placement: the action bar sits below the artifact (image, file,
   // gallery), outside its container — not beside it (preview option 3).
   const artifact = (node: any, f: any) => {
     const h = signal(false);
+    let artBar!: YNode;
     // each artifact in the reply gets its own pill slot — one shared "art"
     // would open the picker under every artifact at once
     const slot = "art:" + (f?.path || "gallery");
     return (
-      <View onHoverIn={() => h.set(true)} onHoverOut={() => h.set(false)} style={{ alignSelf: "flex-start", gap: 4, maxWidth: "100%" }}>
+      <View
+        onHoverIn={() => h.set(true)}
+        onHoverOut={() => h.set(false)}
+        style={{ alignSelf: "flex-start", gap: 4, maxWidth: "100%" }}
+      >
         {node}
-        <View style={{ opacity: h() || picker() === slot ? 1 : 0, flexDirection: "row", alignItems: "center", gap: 2 }}>
-          <Act glyph="☺" title="react" onPress={() => picker.set(picker() === slot ? "" : slot)} />
+        {badge("right")}
+        <View ref={artBar} style={{ opacity: (h() && !chatScrolling()) || picker() === slot ? 1 : 0, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 2 }}>
+          <Act glyph="☺" title="react" onPress={() => void openPicker(slot, artBar)} />
           <Act
             glyph="↩"
             title="reply"
@@ -267,30 +354,35 @@ function TurnRow({ t, onReply, onJump }: {
               ])
             }
           />
+          <If when={picker() === slot}>{float(true)}</If>
         </View>
-        <If when={picker() === slot}>
-          <View style={{ flexDirection: "row" }}>
-            <EmojiPill current={t.reaction || ""} onPick={(e) => { react(e); picker.set(""); }} />
-          </View>
-        </If>
       </View>
     );
   };
-  const badge = t.reaction ? (
-    <Text
-      style={{
-        fontSize: 13,
-        backgroundColor: tc("#1f1f1f"),
-        borderWidth: 1,
-        borderColor: tc("#f5f5f514"),
-        borderRadius: 999,
-        paddingHorizontal: 5,
-        overflow: "hidden",
-      }}
-    >
-      {t.reaction}
-    </Text>
-  ) : null;
+  // iMessage tapback: the reaction floats on the bubble's top corner —
+  // left on our own bubbles (the agent's reaction), right on the agent's
+  const badge = (side: "left" | "right") =>
+    t.reaction ? (
+      <View
+        onPress={() => post("/react", { key: "idx:" + t.i, r: "" })}
+        activeOpacity={0.7}
+        style={{
+          position: "absolute",
+          top: -10,
+          left: side === "left" ? -10 : undefined,
+          right: side === "right" ? -10 : undefined,
+          zIndex: 5,
+          borderRadius: 10,
+          paddingHorizontal: 5,
+          paddingVertical: 2,
+          backgroundColor: appearance() === "dark" ? "#2b2b2b" : "#ffffff",
+          borderWidth: 1,
+          borderColor: tc("#f5f5f51f"),
+        }}
+      >
+        <Text style={{ fontSize: 11 }}>{t.reaction}</Text>
+      </View>
+    ) : null;
   // Rows are full-width so the text inside a bubble is measured against a
   // definite width and wraps; a shrink-to-fit row would let the text run to
   // its unwrapped width and get clipped at the pane edge. Bubbles hug their
@@ -321,6 +413,7 @@ function TurnRow({ t, onReply, onJump }: {
             flexShrink: 1,
           }}
         >
+          {badge("left")}
           <OnFill.Provider value={true}>
             {/* replying: the quoted message heads the bubble; it jumps there */}
             <If when={!!t.reply}>
@@ -343,14 +436,8 @@ function TurnRow({ t, onReply, onJump }: {
       </View>
       {/* ChatGPT: the action bar sits under the bubble, aligned to its edge */}
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
-        {badge}
-        {bar}
+        {bar(true, false)}
       </View>
-      <If when={picker() === "msg"}>
-        <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-          <EmojiPill current={t.reaction || ""} onPick={(e) => { react(e); picker.set(""); }} />
-        </View>
-      </If>
       </View>
     );
   // a building artifact renders its declared placeholder — before the
@@ -375,19 +462,14 @@ function TurnRow({ t, onReply, onJump }: {
             flexShrink: 1,
           }}
         >
+          {badge("right")}
           <Markdown text={t.text} />
         </View>
       </View>
       {/* ChatGPT: action bar under the bubble, aligned to its left edge */}
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-        {badge}
-        {bar}
+        {bar(false, true)}
       </View>
-      <If when={picker() === "msg"}>
-        <View style={{ flexDirection: "row" }}>
-          <EmojiPill current={t.reaction || ""} onPick={(e) => { react(e); picker.set(""); }} />
-        </View>
-      </If>
       {/* files the reply produced: Grok's file cards, in the reply flow → fullscreen viewer */}
       <If when={(t.files || []).length > 0}>
         <View style={{ gap: 8, width: "100%", maxWidth: 560 }}>
@@ -433,6 +515,7 @@ function TurnRow({ t, onReply, onJump }: {
       reaction={t.reaction}
       i={t.i}
       onReply={onReply}
+      onPicker={onPicker}
     >
       <C />
     </CardShell>
@@ -448,22 +531,49 @@ export function Conversation(props: {
   onJump?: (y: number) => void;
 }) {
   const rowY = new Map<number, number>();
+  // whichever row opened its picker last owns this close — the backdrop's
+  // first click runs it, exactly like dismissing a native menu
+  const closePicker = signal<(() => void) | null>(null);
   return (
     <View class="gap-5 py-4">
       <Each of={props.turns}>
-        {(t) => (
-          <View onLayout={(e) => rowY.set(t().i, e.y)}>
-            <TurnRow
-              t={t()}
-              onReply={props.onReply}
-              onJump={(i) => {
-                const y = rowY.get(i);
-                if (y != null) props.onJump?.(y);
-              }}
-            />
-          </View>
-        )}
+        {(t) => {
+          // an open emoji pill must paint above later rows — the wrapper is
+          // the sibling unit, so it carries the zIndex
+          const open = signal(false);
+          return (
+            <View onLayout={(e) => rowY.set(t().i, e.y)} style={{ zIndex: open() ? 30 : 0 }}>
+              <TurnRow
+                t={t()}
+                onReply={props.onReply}
+                onPicker={(o, close) => {
+                  open.set(o);
+                  closePicker.set(o ? close : null);
+                }}
+                onJump={(i) => {
+                  const y = rowY.get(i);
+                  if (y != null) props.onJump?.(y);
+                }}
+              />
+            </View>
+          );
+        }}
       </Each>
+      {/* click-away layer: invisible while no picker is open; the open row
+          floats above it (zIndex 30), everything else clicks here */}
+      <If when={!!closePicker()}>
+        <View
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, zIndex: 20, backgroundColor: "#00000001" }}
+          onPress={() => {
+            const c = closePicker();
+            if (c) c();
+          }}
+          onContextMenu={() => {
+            const c = closePicker();
+            if (c) c();
+          }}
+        />
+      </If>
     </View>
   );
 }
@@ -480,6 +590,8 @@ type Props = {
   reaction?: string;
   i?: number;
   onReply?: (i: number, text: string, files?: string[]) => void;
+  /** reports picker open/close up to the row wrapper (zIndex) + backdrop */
+  onPicker?: (open: boolean, close: () => void) => void;
   children?: any;
 };
 
@@ -494,6 +606,13 @@ export function CardShell(props: Props) {
   const extra = signal("");
   const hov = signal(false);
   const pickerOpen = signal(false);
+  effect(() => {
+    props.onPicker?.(pickerOpen(), () => pickerOpen.set(false));
+  });
+  // floating pill (see TurnRow): overlays, flips up near the surface bottom
+  const flip = signal(false);
+  let actBar!: YNode;
+  const toks = signal<[string, string, string][][] | null>(null);
   const renaming = signal(false);
   const titleSig = signal(props.title);
   // versions/head come back with the source fetch — the ⋯ menu's
@@ -542,6 +661,23 @@ export function CardShell(props: Props) {
     if (!codeOpen() && !source() && !srcErr()) await fetchSource();
     codeOpen.update((v) => !v);
   };
+
+  // Shiki tokens for the open code panel (same /highlight endpoint the file
+  // viewer uses) — fetched once, kept for the card's life
+  effect(() => {
+    const code = codeOpen() ? source() : "";
+    if (!code || toks()) return;
+    fetch(`${GEN}/highlight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, lang: "tsx" }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.lines) toks.set(d.lines);
+      })
+      .catch(() => {});
+  });
 
   const copySource = async () => {
     if (!source() && !srcErr()) await fetchSource();
@@ -688,6 +824,7 @@ export function CardShell(props: Props) {
   return (
     <View
       class="self-stretch"
+      style={{ zIndex: pickerOpen() ? 30 : 0 }}
       onHoverIn={() => hov.set(true)}
       onHoverOut={() => hov.set(false)}
     >
@@ -782,7 +919,7 @@ export function CardShell(props: Props) {
                 source unavailable — artifact was deleted
               </Text>
             </If>
-            <If when={!srcErr()}>
+            <If when={!srcErr() && !toks()}>
               <Text
                 style={{
                   fontFamily: "Menlo",
@@ -793,6 +930,24 @@ export function CardShell(props: Props) {
               >
                 {source() || "…"}
               </Text>
+            </If>
+            <If when={!srcErr() && !!toks()}>
+              <Scroll style={{ maxHeight: 380 }}>
+                <Scroll horizontal contentContainerStyle={{ flexDirection: "column" }}>
+                  {(toks() || []).map((line, i) => (
+                    <View style={{ flexDirection: "row", minHeight: 18 }}>
+                      <Text style={{ width: 30, textAlign: "right", paddingRight: 10, color: tc("#f5f5f53d"), fontFamily: "Menlo", fontSize: 10.5, lineHeight: 18 }}>
+                        {String(i + 1)}
+                      </Text>
+                      <Text style={{ fontFamily: "Menlo", fontSize: 11.5, lineHeight: 18, color: tc("#f5f5f5") }}>
+                        {line.map(([s, d, l]) => (
+                          <Text style={{ color: (appearance() === "dark" ? d : l) || tc("#f5f5f5a8") }}>{s}</Text>
+                        ))}
+                      </Text>
+                    </View>
+                  ))}
+                </Scroll>
+              </Scroll>
             </If>
           </View>
         </View>
@@ -817,8 +972,21 @@ export function CardShell(props: Props) {
             <Text style={{ color: "#32bb78", fontSize: 11 }}>{extra()}</Text>
           </If>
         </View>
-        <View style={{ opacity: hov() || pickerOpen() ? 1 : 0, flexDirection: "row", alignItems: "center", gap: 2 }}>
-          <Act glyph="☺" title="react" onPress={() => pickerOpen.set(!pickerOpen())} />
+        <View ref={actBar} style={{ opacity: (hov() && !chatScrolling()) || pickerOpen() ? 1 : 0, flexDirection: "row", alignItems: "center", gap: 2 }}>
+          <Act
+            glyph="☺"
+            title="react"
+            onPress={() => {
+              if (pickerOpen()) {
+                pickerOpen.set(false);
+                return;
+              }
+              void actBar?.measure().then((m) => {
+                flip.set(!!m && m.pageY + m.height + 205 > windowSize().height - 80);
+                pickerOpen.set(true);
+              });
+            }}
+          />
           <Act
             glyph="↩"
             title="reply"
@@ -829,13 +997,23 @@ export function CardShell(props: Props) {
             }
           />
           <Act glyph="⋯" title="more" onPress={more} />
+          <If when={pickerOpen()}>
+            <View
+              style={{
+                position: "absolute",
+                zIndex: 30,
+                right: 0,
+                top: flip() ? undefined : 24,
+                bottom: flip() ? 24 : undefined,
+                paddingTop: flip() ? 0 : 6,
+                paddingBottom: flip() ? 6 : 0,
+              }}
+            >
+              <EmojiPill current={reaction()} onPick={(e) => { react(e); pickerOpen.set(false); }} />
+            </View>
+          </If>
         </View>
       </View>
-      <If when={pickerOpen()}>
-        <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
-          <EmojiPill current={reaction()} onPick={(e) => { react(e); pickerOpen.set(false); }} />
-        </View>
-      </If>
     </View>
   );
 }
