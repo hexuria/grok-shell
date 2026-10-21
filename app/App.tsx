@@ -10,6 +10,7 @@ import {
   type YNode,
 } from "nsh";
 import { appearance, bubbleColor, bubbleFill, nextTheme, tc, tg, themePref, type ThemePref } from "./theme";
+import { Icon, ICONS } from "./icons";
 import { isAvailable, Menu, titleBar, Window } from "nsh/desktop";
 import { windowSize } from "nsh/device";
 import { keymap } from "nsh/keymap";
@@ -714,22 +715,7 @@ function App() {
   // under a gradient, and this much space at the top holds the controls.
   const TOP = 60;
   const pillHover = signal(false);
-  const panelGlyph = (right: boolean) => (
-    <View
-      style={{
-        width: 19,
-        height: 15,
-        borderRadius: 4.5,
-        borderWidth: 1.5,
-        borderColor: tc("#f5f5f585"),
-        flexDirection: "row",
-        justifyContent: right ? "flex-end" : "flex-start",
-        overflow: "hidden",
-      }}
-    >
-      <View style={{ width: 6.5, backgroundColor: tc("#f5f5f585") }} />
-    </View>
-  );
+  const panelGlyph = (right: boolean) => <Icon name="sidebar" size={18} color={tc("#f5f5f585")} />;
   const iconBtn = { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" } as const;
   const sideToggle = () => (
     <View onPress={toggleSide} onContextMenu={toggleSideMode} activeOpacity={0.7} accessibilityLabel="toggle sidebar" style={iconBtn}>
@@ -783,10 +769,10 @@ function App() {
   });
   // Grok's palette actions we can run today; Mini apps listed after them
   const paletteItems = (): PaletteItem[] => [
-    { id: "new-bot", title: "New Bot", icon: "＋", run: () => botModal.set(true) },
-    { id: "theme-system", title: "Theme: System", subtitle: "Settings · Appearance", icon: "◐", checked: themePref() === "system", run: () => setTheme("system") },
-    { id: "theme-light", title: "Theme: Light", subtitle: "Settings · Appearance", icon: "☀︎", checked: themePref() === "light", run: () => setTheme("light") },
-    { id: "theme-dark", title: "Theme: Dark", subtitle: "Settings · Appearance", icon: "☾", checked: themePref() === "dark", run: () => setTheme("dark") },
+    { id: "new-bot", title: "New Bot", icon: "newChat", run: () => botModal.set(true) },
+    { id: "theme-system", title: "Theme: System", subtitle: "Settings · Appearance", icon: "systemTheme", checked: themePref() === "system", run: () => setTheme("system") },
+    { id: "theme-light", title: "Theme: Light", subtitle: "Settings · Appearance", icon: "sun", checked: themePref() === "light", run: () => setTheme("light") },
+    { id: "theme-dark", title: "Theme: Dark", subtitle: "Settings · Appearance", icon: "moon", checked: themePref() === "dark", run: () => setTheme("dark") },
     ...miniApps().map((w: { name: string; title: string; prompt?: string }) => ({
       id: "app-" + w.name,
       // titles saved from a failed first compile read as errors: use the prompt
@@ -794,7 +780,7 @@ function App() {
         .replace(/[*_`#]/g, "")
         .trim(),
       subtitle: "Mini app",
-      icon: "▦",
+      icon: "gpts",
       run: () => post("/popout", { name: w.name }),
     })),
   ];
@@ -835,36 +821,108 @@ function App() {
     await refreshThreads();
     refreshTurns();
   };
-  const botMenu = (b: BotMeta) =>
-    Menu.popup([
-      { label: b.pinned ? "Unpin" : "Pin", onSelect: () => updateBot(b.id, { pinned: !b.pinned }) },
-      {
-        label: "Move to section",
-        submenu: [
-          ...sections().map((n) => ({ label: n, onSelect: () => moveToSection(b.id, n) })),
-          { label: "Unassigned", onSelect: () => moveToSection(b.id, "") },
-          { type: "separator" as const },
-          {
-            label: "Move to new section",
-            onSelect: () => {
-              sectionName.set("");
-              sectionPrompt.set(b.id);
-            },
-          },
-        ],
-      },
-      { type: "separator" },
-      {
-        label: b.hidden ? "Show in sidebar" : "Hide from sidebar",
-        onSelect: () => updateBot(b.id, { hidden: !b.hidden }),
-      },
-      { type: "separator" },
-      { label: "Delete Bot", onSelect: () => deleteBot(b) },
-    ]);
-  const newMenu = () =>
-    Menu.popup([
-      { label: "New bot", onSelect: () => botModal.set(true) },
-      { label: "New chat", onSelect: newThread },
+  const botItems = (b: BotMeta): CtxItem[] => [
+    { label: b.pinned ? "Unpin" : "Pin", icon: "pin", onSelect: () => updateBot(b.id, { pinned: !b.pinned }) },
+    {
+      label: "Move to",
+      icon: "folder",
+      submenu: [
+        ...sections().map((n) => ({ label: n, icon: "folder", checked: b.section === n, onSelect: () => moveToSection(b.id, n) })),
+        { label: "Unassigned", icon: "folder", checked: !b.section, onSelect: () => moveToSection(b.id, "") },
+        { sep: true as const },
+        { label: "Create section", icon: "folder", onSelect: () => { sectionName.set(""); sectionPrompt.set(b.id); } },
+      ],
+    },
+    { sep: true },
+    {
+      label: b.hidden ? "Show in sidebar" : "Hide from sidebar",
+      icon: "eyeOff",
+      onSelect: () => updateBot(b.id, { hidden: !b.hidden }),
+    },
+    { sep: true },
+    { label: "Delete", icon: "trash", red: true, onSelect: () => deleteBot(b) },
+  ];
+  const botMenu = (b: BotMeta, e: { pageX?: number; pageY?: number }) => openCtx(e, botItems(b));
+
+  // Grok's context menus are a styled card, not the native popup: icons per
+  // row, hairline separators, red destructive rows, flyout submenus.
+  type CtxItem =
+    | { sep: true }
+    | { label: string; icon?: any; red?: boolean; checked?: boolean; submenu?: CtxItem[]; onSelect?: () => void };
+  const ctxMenu = signal<{ x: number; y: number; items: CtxItem[] } | null>(null);
+  const ctxSub = signal(-1); // main row index whose submenu is open
+  const ctxHov = signal("");
+  const CTX_ROW = 30, CTX_SEP = 9, CTX_PAD = 5, CTX_W = 220;
+  const openCtx = (e: { pageX?: number; pageY?: number }, items: CtxItem[]) => {
+    // right-click dismisses the hover card so focus stays on the menu
+    popSeq++; railPop.set(null);
+    ctxSub.set(-1); ctxHov.set("");
+    const h = items.reduce((n, i) => n + ("sep" in i ? CTX_SEP : CTX_ROW), CTX_PAD * 2);
+    ctxMenu.set({
+      x: Math.max(4, Math.min(e?.pageX ?? 0, winW() - CTX_W - 4)),
+      y: Math.max(4, Math.min(e?.pageY ?? 0, windowSize().height - h - 4)),
+      items,
+    });
+  };
+  const closeCtx = () => ctxMenu.set(null);
+  const ctxRowTop = (items: CtxItem[], idx: number) => {
+    let y = CTX_PAD;
+    for (let i = 0; i < idx; i++) y += "sep" in items[i] ? CTX_SEP : CTX_ROW;
+    return y;
+  };
+  const icoT = (ch: string, c: string, fs = 13) => (
+    <View style={{ width: 16, alignItems: "center" }}>
+      <Text style={{ color: c, fontSize: fs }}>{ch}</Text>
+    </View>
+  );
+  const ctxIco = (icon: any, c: string): any => {
+    if (typeof icon === "string" && ICONS[icon])
+      return <View style={{ width: 16, alignItems: "center" }}><Icon name={icon} size={15} color={c} /></View>;
+    if (typeof icon === "string") return icoT(icon, c);
+    return icon || <View style={{ width: 16 }} />;
+  };
+  const ctxRow = (it: Exclude<CtxItem, { sep: true }>, key: string, subIdx = -1, parentX = 0, parentY = 0) => {
+    const c = it.red ? (appearance() === "dark" ? "#ff6961" : "#d70015") : tc("#f5f5f5");
+    const dc = it.red ? (appearance() === "dark" ? "#ff6961" : "#d70015") : dim();
+    return (
+      <View
+        onPress={() => { if (it.submenu) { ctxSub.set(subIdx); return; } it.onSelect?.(); closeCtx(); }}
+        onHoverIn={() => { ctxHov.set(key); ctxSub.set(it.submenu ? subIdx : -1); }}
+        onHoverOut={() => ctxHov() === key && ctxHov.set("")}
+        activeOpacity={1}
+        style={{ height: CTX_ROW, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, borderRadius: 7, backgroundColor: ctxHov() === key || ctxSub() === subIdx && it.submenu ? tc("#f5f5f50a") : "transparent" }}
+      >
+        {it.checked !== undefined && !it.icon
+          ? icoT(it.checked ? "✓" : "", c)
+          : ctxIco(it.icon, dc)}
+        <Text style={{ flex: 1, fontSize: 13, color: c }}>{it.label}</Text>
+        {it.submenu ? <Icon name="chevronSmRight" size={14} color={dim()} /> : null}
+      </View>
+    );
+  };
+  const ctxCard = (items: CtxItem[], x: number, y: number, sub = false) => (
+    <View
+      style={{
+        position: "absolute", left: x, top: y, minWidth: sub ? 190 : CTX_W, zIndex: 52,
+        backgroundColor: (appearance() === "dark" ? "#2a2a2a" : "#ffffff"), borderRadius: 10,
+        borderWidth: 0.5, borderColor: tc("#f5f5f51f"),
+        padding: CTX_PAD,
+        boxShadow: "0 8px 24px -4px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
+      }}
+    >
+      {items.map((it, i) =>
+        "sep" in it ? (
+          <View style={{ height: 0.5, backgroundColor: tc("#f5f5f514"), marginVertical: 4, marginHorizontal: 4 }} />
+        ) : (
+          ctxRow(it, `r${sub ? "s" : ""}${i}`, i, x, y)
+        ),
+      )}
+    </View>
+  );
+  const newMenu = (e?: { pageX?: number; pageY?: number }) =>
+    openCtx(e ?? { pageX: 20, pageY: windowSize().height - 150 }, [
+      { label: "New bot", icon: "newChat", onSelect: () => botModal.set(true) },
+      { label: "New chat", icon: "edit", onSelect: newThread },
     ]);
   const circleBtn = () => ({
     width: 36,
@@ -874,21 +932,9 @@ function App() {
     alignItems: "center",
     justifyContent: "center",
   }) as const;
-  const gridGlyph = (sz: number) => (
-    <View style={{ width: sz, height: sz, flexDirection: "row", flexWrap: "wrap", gap: sz * 0.2 }}>
-      <View style={{ width: sz * 0.4, height: sz * 0.4, borderRadius: 1.5, backgroundColor: dim() }} />
-      <View style={{ width: sz * 0.4, height: sz * 0.4, borderRadius: 1.5, backgroundColor: dim() }} />
-      <View style={{ width: sz * 0.4, height: sz * 0.4, borderRadius: 1.5, backgroundColor: dim() }} />
-      <View style={{ width: sz * 0.4, height: sz * 0.4, borderRadius: 1.5, backgroundColor: dim() }} />
-    </View>
-  );
+  const gridGlyph = (sz: number) => <Icon name="gpts" size={sz} color={dim()} />;
   // Puzzle piece: square with a knob on top (the marketplace glyph).
-  const pluginGlyph = (sz: number) => (
-    <View style={{ width: sz, height: sz }}>
-      <View style={{ position: "absolute", left: sz * 0.28, top: 0, width: sz * 0.44, height: sz * 0.44, borderRadius: sz * 0.22, backgroundColor: dim() }} />
-      <View style={{ position: "absolute", left: 0, bottom: 0, width: sz, height: sz * 0.74, borderRadius: sz * 0.18, backgroundColor: dim() }} />
-    </View>
-  );
+  const pluginGlyph = (sz: number) => <Icon name="plugins" size={sz} color={dim()} />;
   const secHeader = (key: string, title: string, count?: () => number) => (
     <View
       onPress={() => toggleSec(key)}
@@ -950,7 +996,7 @@ function App() {
   const botRow = (b: () => BotMeta) => (
     <View
       onPress={() => selectThread(b().threadId)}
-      onContextMenu={() => botMenu(b())}
+      onContextMenu={(e) => botMenu(b(), e)}
       onHoverMove={(e) => railGaze(b().id + ":row").follow(e, 26, 27, 18)}
       onHoverOut={() => railGaze(b().id + ":row").rest()}
       activeOpacity={0.7}
@@ -1007,7 +1053,7 @@ function App() {
     <View
       ref={node}
       onPress={() => selectThread(b().threadId)}
-      onContextMenu={() => botMenu(b())}
+      onContextMenu={(e) => botMenu(b(), e)}
       onHoverMove={(e) => railGaze(b().id + ":pin").follow(e, 47.5, 36, 30)}
       onHoverIn={async () => {
         const seq = ++popSeq;
@@ -1084,7 +1130,7 @@ function App() {
           selectThread(b().threadId);
           if (flyout) sidePeek.set(false);
         }}
-        onContextMenu={() => botMenu(b())}
+        onContextMenu={(e) => botMenu(b(), e)}
         onHoverIn={async () => {
           railHover.set("bot:" + b().id);
           const seq = ++popSeq;
@@ -1197,6 +1243,8 @@ function App() {
   };
   // Plugin marketplace modal (Grok Bot's "Connect apps" → ours: plugins).
   const pluginsOpen = signal(false);
+  const accountOpen = signal(false); // avatar → account popover (Grok's UG menu)
+  const hovAcc = signal("");
   // Marketplace modal is a navigation stack, like Grok Bot's Connect-apps:
   // market grid → "N connected" manager → plugin / skill / mcp detail pages.
   const pluginNav = signal<{ page: string; name?: string; id?: string }[]>([{ page: "market" }]);
@@ -1363,7 +1411,7 @@ function App() {
       </View>
       {p.installed ? (
         <Text style={{ fontSize: 12, paddingHorizontal: 8 }}>
-          <Text style={{ color: "#32bb78" }}>✓</Text>
+          <Icon name="check" size={13} color="#32bb78" />
           <Text style={{ color: "#f5f5f5a8" }}> Added</Text>
         </Text>
       ) : (
@@ -1408,7 +1456,7 @@ function App() {
             <Each of={tools}>
               {(t) => (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingVertical: 11 }}>
-                  <Text style={{ color: dim(), fontSize: 13 }}>⚒</Text>
+                  <Icon name="tool" size={13} color={dim()} />
                   <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{t().name}</Text>
                   {toolSwitch(t().enabled, () => toggleMcpTool(serverId, t().name, !t().enabled))}
                 </View>
@@ -1427,14 +1475,14 @@ function App() {
     const t = setInterval(fetchMcp, 2000);
     cleanup(() => clearInterval(t));
   });
-  const mcpMenu = (s: { id: string; name: string; enabled: boolean }) =>
-    Menu.popup([
+  const mcpMenu = (s: { id: string; name: string; enabled: boolean }, e: { pageX?: number; pageY?: number }) =>
+    openCtx(e, [
       s.enabled
-        ? { label: "Disable", onSelect: () => post("/mcp/server/state", { id: s.id, enabled: false }).then(fetchMcp) }
-        : { label: "Enable", onSelect: () => post("/mcp/server/state", { id: s.id, enabled: true }).then(fetchMcp) },
-      { label: "Reconnect", onSelect: () => post("/mcp/servers", { id: s.id }).then(fetchMcp) },
-      { type: "separator" },
-      { label: "Remove…", onSelect: () => post("/mcp/server/delete", { id: s.id }).then(fetchMcp) },
+        ? { label: "Disable", icon: "powerOff", onSelect: () => post("/mcp/server/state", { id: s.id, enabled: false }).then(fetchMcp) }
+        : { label: "Enable", icon: "power", onSelect: () => post("/mcp/server/state", { id: s.id, enabled: true }).then(fetchMcp) },
+      { label: "Reconnect", icon: "refresh", onSelect: () => post("/mcp/servers", { id: s.id }).then(fetchMcp) },
+      { sep: true },
+      { label: "Remove…", icon: "trash", red: true, onSelect: () => post("/mcp/server/delete", { id: s.id }).then(fetchMcp) },
     ]);
   const addMcpServer = async () => {
     if (mcpBusy()) return;
@@ -1464,18 +1512,18 @@ function App() {
   // and the file name is display-only (the module stays R<n>.tsx on disk).
   const appRename = signal<{ name: string; field: "title" | "file" | "label"; v?: number } | null>(null);
   const appRenameText = signal("");
-  const appMenu = (a: { name: string; title: string; file: string; published?: boolean }) =>
-    Menu.popup([
-      { label: "Rename Title…", onSelect: () => { appRenameText.set(a.title); appRename.set({ name: a.name, field: "title" }); } },
-      { label: "Rename File Name…", onSelect: () => { appRenameText.set(a.file); appRename.set({ name: a.name, field: "file" }); } },
-      { type: "separator" },
+  const appMenu = (a: { name: string; title: string; file: string; published?: boolean }, e: { pageX?: number; pageY?: number }) =>
+    openCtx(e, [
+      { label: "Rename Title…", icon: "edit", onSelect: () => { appRenameText.set(a.title); appRename.set({ name: a.name, field: "title" }); } },
+      { label: "Rename File Name…", icon: "edit", onSelect: () => { appRenameText.set(a.file); appRename.set({ name: a.name, field: "file" }); } },
+      { sep: true },
       a.published
-        ? { label: "Remove from Mini Apps", onSelect: () => post("/unpublish", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) }
-        : { label: "Promote to Mini Apps", onSelect: () => post("/publish", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
-      { type: "separator" },
-      { label: "Delete…", onSelect: () => post("/app/delete", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
+        ? { label: "Remove from Mini Apps", icon: "gpts", onSelect: () => post("/unpublish", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) }
+        : { label: "Promote to Mini Apps", icon: "gpts", onSelect: () => post("/publish", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
+      { sep: true },
+      { label: "Delete…", icon: "trash", red: true, onSelect: () => post("/app/delete", { name: a.name }).then(() => { fetchThreadApps(); refreshThreads(); }) },
       ...(a.published
-        ? [{ label: "Delete Everywhere…", onSelect: () => post("/app/delete", { name: a.name, everywhere: true }).then(() => { fetchThreadApps(); refreshThreads(); }) }]
+        ? [{ label: "Delete Everywhere…", icon: "trash", red: true, onSelect: () => post("/app/delete", { name: a.name, everywhere: true }).then(() => { fetchThreadApps(); refreshThreads(); }) }]
         : []),
     ]);
   const saveAppRename = async () => {
@@ -1730,15 +1778,12 @@ function App() {
       </View>
       <View style={{ alignItems: "center", gap: 2, paddingTop: 6 }}>
         <View onPress={newMenu} {...railHov("new")} activeOpacity={0.7} accessibilityLabel="New Bot" style={railPlate("new", 36)}>
-          <Text style={{ color: dim(), fontSize: 18 }}>＋</Text>
-        </View>
-        <View onPress={() => tab.set(tab() === "work" ? "chat" : "work")} {...railHov("apps")} activeOpacity={0.7} accessibilityLabel="Mini Apps" style={railPlate("apps", 36, tab() === "work")}>
-          {gridGlyph(14)}
+          <Icon name="newChat" size={17} color={dim()} />
         </View>
         <View onPress={() => pluginsOpen.set(true)} {...railHov("plugins")} activeOpacity={0.7} accessibilityLabel="Plugins" style={railPlate("plugins", 36)}>
           {pluginGlyph(13)}
         </View>
-        <View {...railHov("account")} style={railPlate("account")}>
+        <View onPress={() => accountOpen.update((v) => !v)} {...railHov("account")} activeOpacity={0.7} accessibilityLabel="Account" style={railPlate("account")}>
           <View style={{ ...circleBtn(), backgroundColor: tc("#1f1f1f") }}>
             <Text style={{ color: dim(), fontSize: 14, fontWeight: "500" }}>UI</Text>
           </View>
@@ -1774,7 +1819,7 @@ function App() {
               {panelGlyph(false)}
             </View>
             <View onPress={newMenu} activeOpacity={0.7} accessibilityLabel="New Bot" style={circleBtn()}>
-              <Text style={{ color: tc("#f5f5f5"), fontSize: 19, lineHeight: 22 }}>＋</Text>
+              <Icon name="newChat" size={18} color={tc("#f5f5f5")} />
             </View>
           </View>
           <View style={{ flex: 1 }}>
@@ -1799,7 +1844,7 @@ function App() {
             <If when={bots().length === 0}>
               <View onPress={() => botModal.set(true)} activeOpacity={0.7} style={rowBase(false)}>
                 <View style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: tc("#f5f5f53d"), alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ color: dim(), fontSize: 16 }}>＋</Text>
+                  <Icon name="newChat" size={16} color={dim()} />
                 </View>
                 {rowText("New Bot", "Create a named agent")}
               </View>
@@ -1822,36 +1867,24 @@ function App() {
             </If>
           </Scroll>
           </View>
-          {/* footer: account circle + pill (Grok's "Connect apps"; ours opens Mini Apps) */}
+          {/* footer: account circle (opens the account popover) + Plugins pill —
+              Grok's "Connect apps" sits where Mini Apps used to; Mini Apps moved
+              into the popover so the sidebar matches Grok Bot's footer */}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingBottom: 16, paddingTop: 0 }}>
-            <View style={circleBtn()} accessibilityLabel={model()}>
-              <Text style={{ color: dim(), fontSize: 14, fontWeight: "500" }}>UI</Text>
-            </View>
             <View
-              onPress={() => tab.set(tab() === "work" ? "chat" : "work")}
+              onPress={() => accountOpen.update((v) => !v)}
               activeOpacity={0.7}
-              style={{
-                flex: 1,
-                height: 36,
-                borderRadius: 18,
-                backgroundColor: tab() === "work" ? tc("#2a2a2a") : tc("#1f1f1f"),
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingLeft: 16,
-                paddingRight: 12,
-              }}
+              accessibilityLabel="Account"
+              style={{ ...circleBtn(), backgroundColor: accountOpen() ? tc("#2a2a2a") : tc("#1f1f1f") }}
             >
-              <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 14, lineHeight: 20, fontWeight: "500" }}>
-                Mini Apps
-              </Text>
-              {gridGlyph(14)}
+              <Text style={{ color: dim(), fontSize: 14, fontWeight: "500" }}>UI</Text>
             </View>
             <View
               onPress={() => pluginsOpen.set(true)}
               activeOpacity={0.7}
               accessibilityLabel="Plugins"
               style={{
+                flex: 1,
                 height: 36,
                 borderRadius: 18,
                 backgroundColor: tc("#1f1f1f"),
@@ -2014,7 +2047,7 @@ function App() {
                       {`“${(replyTo()?.text || "").replace(/\s+/g, " ").slice(0, 120)}”`}
                     </Text>
                     <View onPress={() => replyTo.set(null)} activeOpacity={0.6} accessibilityLabel="Cancel reply" style={{ padding: 4 }}>
-                      <Text style={{ color: tc("#f5f5f5a3"), fontSize: 13 }}>✕</Text>
+                      <Icon name="close" size={13} color={tc("#f5f5f5a3")} />
                     </View>
                   </View>
                 </If>
@@ -2046,7 +2079,7 @@ function App() {
                                 justifyContent: "center",
                               }}
                             >
-                              <Text style={{ color: tc("#121212"), fontSize: 10, fontWeight: "700" }}>✕</Text>
+                              <Icon name="close" size={10} color={tc("#121212")} />
                             </View>
                           </If>
                         </View>
@@ -2127,7 +2160,7 @@ function App() {
                     accessibilityLabel="Composer actions"
                     style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: tc("#f5f5f50f"), alignItems: "center", justifyContent: "center" }}
                   >
-                    <Text style={{ color: tc("#f5f5f58f"), fontSize: 17, lineHeight: 20 }}>＋</Text>
+                    <Icon name="plus" size={16} color={tc("#f5f5f58f")} />
                   </View>
                   </View>
                   <View
@@ -2141,7 +2174,7 @@ function App() {
                     accessibilityLabel="Dictate"
                     style={{ width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" }}
                   >
-                    <Text style={{ color: tc("#f5f5f58f"), fontSize: 14 }}>🎙︎</Text>
+                    <Icon name="mic" size={15} color={tc("#f5f5f58f")} />
                     <If when={attachHover() === "__dictate"}>{composerTip("Click or hold ⌘D to dictate")}</If>
                   </View>
                   <If when={!!draft().trim() || attachments().length > 0}>
@@ -2151,7 +2184,7 @@ function App() {
                       accessibilityLabel="Send message"
                       style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: sendFill(), alignItems: "center", justifyContent: "center" }}
                     >
-                      <Text style={{ color: sendInk(), fontSize: 14, fontWeight: "700" }}>↑</Text>
+                      <Icon name="arrowUp" size={15} color={sendInk()} />
                     </View>
                   </If>
                   <If when={!draft().trim() && attachments().length === 0}>
@@ -2161,12 +2194,7 @@ function App() {
                       accessibilityLabel="Start voice chat"
                       style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: sendFill(), alignItems: "center", justifyContent: "center" }}
                     >
-                      {/* waveform glyph */}
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 1.5 }}>
-                        {[5, 9, 13, 9, 5].map((h) => (
-                          <View style={{ width: 1.8, height: h, borderRadius: 1, backgroundColor: sendInk() }} />
-                        ))}
-                      </View>
+                      <Icon name="voice" size={16} color={sendInk()} />
                       <If when={attachHover() === "__voice"}>{composerTip("Start voice chat")}</If>
                     </View>
                   </If>
@@ -2243,7 +2271,7 @@ function App() {
                   {activeBot()?.name ?? "Grok Shell"}
                 </Text>
                 <If when={pillHover() && !rightEff()}>
-                  <Text style={{ color: tc("#f5f5f5a8"), fontSize: 16 }}>›</Text>
+                  <Icon name="chevronSmRight" size={14} color={tc("#f5f5f5a8")} />
                 </If>
               </View>
             </View>
@@ -2300,9 +2328,7 @@ function App() {
               accessibilityLabel={`Theme: ${themePref()}`}
               style={{ ...circleBtn(), borderWidth: 1, borderColor: tc("#f5f5f50f"), backgroundColor: paneBtnHover() === "theme" ? tc("#262626") : circleBtn().backgroundColor }}
             >
-              <Text style={{ color: tc("#f5f5f5e6"), fontSize: 15 }}>
-                {themePref() === "light" ? "☀︎" : themePref() === "dark" ? "☾" : "◐"}
-              </Text>
+              <Icon name={themePref() === "light" ? "sun" : themePref() === "dark" ? "moon" : "systemTheme"} size={15} color={tc("#f5f5f5e6")} />
             </View>
             <View
               onPress={() => rightOpen.set(false)}
@@ -2312,7 +2338,7 @@ function App() {
               accessibilityLabel="Close"
               style={{ ...circleBtn(), borderWidth: 1, borderColor: tc("#f5f5f50f"), backgroundColor: paneBtnHover() === "close" ? tc("#262626") : circleBtn().backgroundColor }}
             >
-              <Text style={{ color: tc("#f5f5f5e6"), fontSize: 15 }}>✕</Text>
+              <Icon name="close" size={15} color={tc("#f5f5f5e6")} />
             </View>
           </View>
 
@@ -2366,7 +2392,7 @@ function App() {
                 >
                   {/* always white — it sits on the avatar darkened to
                       brightness(0.3), in both themes (Grok's hover pen) */}
-                  <Text style={{ color: "#f5f5f5", fontSize: 24 }}>✎</Text>
+                  <Icon name="edit" size={22} color="#f5f5f5" />
                 </View>
               </View>
               <Input
@@ -2464,7 +2490,7 @@ function App() {
                             <View>
                             <View
                               onPress={() => post("/popout", { name: a().name })}
-                              onContextMenu={() => appMenu(a())}
+                              onContextMenu={(e) => appMenu(a(), e)}
                               activeOpacity={0.7}
                               style={{ flexDirection: "row", alignItems: "center", gap: 7, paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8 }}
                             >
@@ -2522,7 +2548,7 @@ function App() {
                                         activeOpacity={0.6}
                                         style={{ borderRadius: 5, paddingHorizontal: 3 }}
                                       >
-                                        <Text style={{ color: tc("#f5f5f54d"), fontSize: 10 }}>✎</Text>
+                                        <Icon name="edit" size={10} color={tc("#f5f5f54d")} />
                                       </View>
                                       <If when={vr().v === a().v}>
                                         <Text style={{ color: "#32bb78", fontSize: 11 }}>current</Text>
@@ -2555,7 +2581,7 @@ function App() {
                   <Each of={mcpServers()}>
                     {(s) => (
                       <View
-                        onContextMenu={() => mcpMenu(s())}
+                        onContextMenu={(e) => mcpMenu(s(), e)}
                         style={{ flexDirection: "row", alignItems: "center", gap: 9, paddingVertical: 8, paddingHorizontal: 10 }}
                       >
                         <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: hue(s().id), alignItems: "center", justifyContent: "center" }}>
@@ -2863,6 +2889,61 @@ function App() {
           </View>
         </If>
 
+        {/* ————— custom context menu (Grok-style card, replaces native popup) ————— */}
+        <If when={!!ctxMenu()}>
+          {(() => {
+            const m = ctxMenu()!;
+            const subIdx = ctxSub();
+            const subIt = subIdx >= 0 ? m.items[subIdx] : null;
+            const sub = subIt && !("sep" in subIt) && subIt.submenu ? subIt.submenu : null;
+            const subY = sub ? Math.min(m.y + ctxRowTop(m.items, subIdx) - 4, windowSize().height - (sub.length * CTX_ROW + 14) - 4) : 0;
+            const subX = sub ? (m.x + CTX_W + 190 > winW() ? Math.max(4, m.x - 186) : m.x + CTX_W - 4) : 0;
+            return (
+              <View style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: 51 }} onPress={closeCtx} onContextMenu={closeCtx}>
+                {ctxCard(m.items, m.x, m.y)}
+                {sub ? ctxCard(sub, subX, subY, true) : null}
+              </View>
+            );
+          })()}
+        </If>
+
+        {/* ————— account popover (avatar → Mini Apps / Settings / …) ————— */}
+        <If when={accountOpen()}>
+          <View style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0, zIndex: 50 }} onPress={() => accountOpen.set(false)} onContextMenu={() => accountOpen.set(false)}>
+            <View
+              style={{
+                position: "absolute",
+                left: 12,
+                bottom: 64,
+                width: 240,
+                backgroundColor: (appearance() === "dark" ? "#2a2a2a" : "#ffffff"),
+                borderRadius: 12,
+                borderWidth: 0.5,
+                borderColor: tc("#f5f5f51f"),
+                padding: CTX_PAD,
+                boxShadow: "0 8px 24px -4px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.2)",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 10, paddingVertical: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: (appearance() === "dark" ? "#1f1f1f" : "#e8e8e8"), alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "600" }}>UI</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "600" }}>uriah</Text>
+                  <Text style={{ color: dim(), fontSize: 12 }}>Local account</Text>
+                </View>
+              </View>
+              <View style={{ height: 0.5, backgroundColor: tc("#f5f5f514"), marginVertical: 4, marginHorizontal: 4 }} />
+              {ctxRow({ label: "Mini Apps", icon: "gpts", onSelect: () => { tab.set("work"); accountOpen.set(false); } }, "acc:apps")}
+              {ctxRow({ label: "Plugins", icon: "plugins", onSelect: () => { pluginsOpen.set(true); accountOpen.set(false); } }, "acc:plugins")}
+              {ctxRow({ label: "Settings", icon: "settings", onSelect: () => accountOpen.set(false) }, "acc:settings")}
+              <View style={{ height: 0.5, backgroundColor: tc("#f5f5f514"), marginVertical: 4, marginHorizontal: 4 }} />
+              {ctxRow({ label: "Add account", icon: "addAccount" }, "acc:add")}
+              {ctxRow({ label: "Log out", icon: "logout" }, "acc:out")}
+            </View>
+          </View>
+        </If>
+
         {/* ————— rail flyout: floats over the chat when the window is too narrow for any sidebar ————— */}
         <If when={sideEff() === "rail-flyout"}>
           <View
@@ -3114,7 +3195,7 @@ function App() {
             }}
           >
             {[
-              { id: "attach", label: "Attach files", icon: "📎︎", run: pickAttachments, enabled: true },
+              { id: "attach", label: "Attach files", icon: "attach", run: pickAttachments, enabled: true },
               { id: "teach", label: "Teach a task", icon: "", run: () => {}, enabled: false },
             ].map((it) => (
               <View
@@ -3144,7 +3225,7 @@ function App() {
                       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: "#e72e3b" }} />
                     </View>
                   ) : (
-                    <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>{it.icon}</Text>
+                    ICONS[it.icon] ? <Icon name={it.icon} size={14} color={tc("#f5f5f5a8")} /> : <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>{it.icon}</Text>
                   )}
                 </View>
                 <Text style={{ color: tc("#f5f5f5"), fontSize: 13, lineHeight: 18 }}>{it.label}</Text>
@@ -3239,7 +3320,7 @@ function App() {
                 accessibilityLabel="Close plugins"
                 style={{ position: "absolute", top: 18, right: 16, width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", zIndex: 2, backgroundColor: hoverX() ? "#f5f5f50a" : "transparent" }}
               >
-                <Text style={{ color: "#f5f5f5a8", fontSize: 16 }}>✕</Text>
+                <Icon name="close" size={15} color="#f5f5f5a8" />
               </View>
 
               {/* ═══ MARKET page ═══
@@ -3270,7 +3351,7 @@ function App() {
                         </Each>
                       </View>
                       <Text style={{ color: "#f5f5f5a8", fontSize: 12, lineHeight: 16 }}>{connCount} connected</Text>
-                      <Text style={{ color: "#f5f5f5a8", fontSize: 12 }}>›</Text>
+                      <Icon name="chevronSmRight" size={12} color="#f5f5f5a8" />
                     </View>
                   );
                   const searchAndTpl = (
@@ -3296,7 +3377,7 @@ function App() {
                       >
                         <BotBlob shape="blob" color="#f5f5f5" size={18} paused />
                         <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>Bot templates</Text>
-                        <Text style={{ color: "#f5f5f5a8", fontSize: 13, marginLeft: 4 }}>↗</Text>
+                        <Icon name="arrowUpRight" size={12} color="#f5f5f5a8" />
                       </View>
                     </View>
                   );
@@ -3389,7 +3470,7 @@ function App() {
                             <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{p().name.slice(0, 3).toLowerCase()}</Text>
                           </View>
                           <Text numberOfLines={1} style={{ flex: 1, color: tc("#f5f5f5"), fontSize: 13 }}>{pluginTitle(p().name)}</Text>
-                          <Text style={{ color: dim(), fontSize: 13 }}>›</Text>
+                          <Icon name="chevronSmRight" size={13} color={dim()} />
                         </View>
                       )}
                     </Each>
@@ -3402,7 +3483,7 @@ function App() {
               <If when={pluginPage() === "connected"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                    <Text style={{ color: dim(), fontSize: 15 }}>‹</Text>
+                    <Icon name="chevronBack" size={17} color={dim()} />
                     <Text style={{ color: dim(), fontSize: 14 }}>Connect Apps</Text>
                   </View>
                 </View>
@@ -3472,7 +3553,7 @@ function App() {
                       tools or this editor), never plugin-shipped ones */}
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 18, paddingBottom: 8, paddingRight: 4 }}>
                     <Text style={{ color: dim(), fontSize: 12, paddingLeft: 2 }}>Private skills</Text>
-                    <Text onPress={() => pushNav({ page: "skill" })} style={{ color: dim(), fontSize: 15, paddingHorizontal: 6 }}>＋</Text>
+                    <Text onPress={() => pushNav({ page: "skill" })} style={{ paddingHorizontal: 6 }}><Icon name="plus" size={15} color={dim()} /></Text>
                   </View>
                   <If when={privateSkills().length === 0}>
                     <Text style={{ color: "#f5f5f54d", fontSize: 12, paddingLeft: 2, paddingBottom: 6 }}>
@@ -3506,7 +3587,7 @@ function App() {
               <If when={pluginPage() === "plugin"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Text style={{ color: dim(), fontSize: 22, marginTop: -2 }}>‹</Text>
+                    <Icon name="chevronBack" size={19} color={dim()} />
                   </View>
                 </View>
                 {(() => {
@@ -3627,7 +3708,7 @@ function App() {
                           <Each of={cmdL}>
                             {(c) => (
                               <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 }}>
-                                <Text style={{ color: dim(), fontSize: 13 }}>⌘</Text>
+                                <Icon name="command" size={13} color={dim()} />
                                 <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13 }}>{c().name}</Text>
                               </View>
                             )}
@@ -3667,7 +3748,7 @@ function App() {
               <If when={pluginPage() === "mcp"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Text style={{ color: dim(), fontSize: 22, marginTop: -2 }}>‹</Text>
+                    <Icon name="chevronBack" size={19} color={dim()} />
                   </View>
                   <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
                     {mcpServers().find((s) => s.id === pluginNav()[pluginNav().length - 1]?.id)?.name || ""}
@@ -3745,7 +3826,7 @@ function App() {
               <If when={pluginPage() === "skill"}>
                 <View style={{ flexDirection: "row", alignItems: "center", height: 48, paddingHorizontal: 14 }}>
                   <View onPress={popNav} activeOpacity={0.7} style={{ width: 28 }}>
-                    <Text style={{ color: dim(), fontSize: 22, marginTop: -2 }}>‹</Text>
+                    <Icon name="chevronBack" size={19} color={dim()} />
                   </View>
                   <Text numberOfLines={1} style={{ flex: 1, textAlign: "center", color: tc("#f5f5f5"), fontSize: 14, fontWeight: "600", paddingRight: 50 }}>
                     {pluginNav()[pluginNav().length - 1]?.id || "New Skill"}
@@ -3924,7 +4005,7 @@ function App() {
                   accessibilityLabel="Close dialog"
                   style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: botHover() === "close" ? tc("#f5f5f50f") : "transparent" }}
                 >
-                  <Text style={{ color: tc("#f5f5f5ad"), fontSize: 14 }}>✕</Text>
+                  <Icon name="close" size={14} color={tc("#f5f5f5ad")} />
                 </View>
               </View>
 

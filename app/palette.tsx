@@ -4,6 +4,7 @@
 import { cleanup, effect, Input, Scroll, signal, Text, View } from "nsh";
 import { keymap } from "nsh/keymap";
 import { windowSize } from "nsh/device";
+import { Icon, ICONS } from "./icons";
 import { tc } from "./theme";
 
 export type PaletteItem = {
@@ -101,7 +102,9 @@ export function Palette(props: { items: () => PaletteItem[] }) {
                 }}
               >
                 <View style={{ width: 20, height: 20, borderRadius: 5, backgroundColor: tc("#f5f5f50a"), alignItems: "center", justifyContent: "center" }}>
-                  <Text style={{ color: tc("#f5f5f5a8"), fontSize: 11 }}>{it().icon}</Text>
+                  {ICONS[it().icon]
+                    ? <Icon name={it().icon} size={13} color={tc("#f5f5f5a8")} />
+                    : <Text style={{ color: tc("#f5f5f5a8"), fontSize: 11 }}>{it().icon}</Text>}
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text numberOfLines={1} style={{ color: tc("#f5f5f5"), fontSize: 13, lineHeight: 18 }}>{it().title}</Text>
@@ -110,7 +113,7 @@ export function Palette(props: { items: () => PaletteItem[] }) {
                   </If>
                 </View>
                 <If when={!!it().checked}>
-                  <Text style={{ color: tc("#f5f5f5a8"), fontSize: 12 }}>✓</Text>
+                  <Icon name="check" size={13} color={tc("#f5f5f5a8")} />
                 </If>
                 <If when={!!query().trim() && i() < 9}>
                   <Text style={{ color: tc("#f5f5f58a"), fontSize: 11 }}>{`⌘${i() + 1}`}</Text>
