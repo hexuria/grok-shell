@@ -842,6 +842,30 @@ export function CardShell(props: Props) {
           borderColor: tc("#f5f5f50f"),
         }}
       >
+      {/* same tapback as message bubbles: 30pt rimmed circle on the card's
+          top-right corner; tapping it clears the reaction */}
+      <If when={!!reaction()}>
+        <View
+          onPress={() => react("")}
+          activeOpacity={0.7}
+          style={{
+            position: "absolute",
+            top: -24,
+            right: -15,
+            zIndex: 5,
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: appearance() === "dark" ? "#242424" : "#ffffff",
+            borderWidth: 1,
+            borderColor: appearance() === "dark" ? "#353535" : "#d4d4d8",
+          }}
+        >
+          <Text style={{ fontSize: 14 }}>{badge()}</Text>
+        </View>
+      </If>
       {/* header: the model's product title + version chip — no file names
           (preview option 4B). ⋯ → Rename… swaps the title for an input. */}
       <View class="flex-row items-center gap-2" style={{ minHeight: 22 }}>
@@ -966,9 +990,6 @@ export function CardShell(props: Props) {
           the right, revealed on hover. */}
       <View class="mt-1.5 flex-row items-center justify-between" style={{ minHeight: 24 }}>
         <View class="flex-row items-center gap-2">
-          <If when={!!reaction()}>
-            <Text style={{ fontSize: 13 }}>{badge()}</Text>
-          </If>
           <If when={!!work()}>
             <Text style={{ color: tc("#f5f5f585"), fontSize: 11 }}>
               {work()}
