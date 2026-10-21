@@ -2262,9 +2262,11 @@ function App() {
           </View>
         </View>
 
-        {/* hidden sidebar: the toggle sits right of the traffic lights, on their line */}
+        {/* hidden sidebar: the toggle sits right of the traffic lights, on their line.
+            titleBar().height can report a bogus toolbar measurement — clamp to the
+            44pt bar we request so the icon never drifts off the lights' line */}
         <If when={sideEff() === "hidden"}>
-          <View style={{ position: "absolute", top: (titleBar().height || 44) / 2 - 14, left: (titleBar().left || 77) + 2, zIndex: 5 }}>
+          <View style={{ position: "absolute", top: Math.min(titleBar().height || 44, 44) / 2 - 14, left: (titleBar().left || 77) + 2, zIndex: 5 }}>
             <View onPress={toggleSide} onContextMenu={toggleSideMode} activeOpacity={0.7} accessibilityLabel="toggle sidebar" style={{ width: 28, height: 28, borderRadius: 7, alignItems: "center", justifyContent: "center" }}>
               {panelGlyph(false)}
             </View>
