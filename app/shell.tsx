@@ -80,6 +80,14 @@ export function DelBtn({ k }: { k: string }) {
 
 // One conversation row: user bubble / markdown reply / app card. Turns arrive
 // as plain JSON from GET /turns — switching threads swaps data, no rebuild.
+// Hover signals must not write while the chat scrolls: a parked pointer
+// crosses rows (and their action bars) at up to a crossing per frame, and
+// every write is a commit — measured ~4ms MAIN/frame and ~100% CPU on
+// wheel/trackpad scrolls (drags don't hover, so they ran clean). The bars
+// stay dark mid-scroll anyway, so dropping the writes loses nothing.
+const hovIn = (s: { set: (v: boolean) => void }) => () => { if (!chatScrolling()) s.set(true); };
+const hovOut = (s: { set: (v: boolean) => void }) => () => { if (!chatScrolling()) s.set(false); };
+
 // Small round action in the hover bar.
 // Grok's message actions: bare 24pt icon buttons (no pill around them); the
 // hovered one gets a rounded plate
@@ -88,8 +96,8 @@ function Act({ glyph, onPress, title }: { glyph: string; onPress: () => void; ti
   return (
     <View
       onPress={onPress}
-      onHoverIn={() => h.set(true)}
-      onHoverOut={() => h.set(false)}
+      onHoverIn={hovIn(h)}
+      onHoverOut={hovOut(h)}
       activeOpacity={0.6}
       accessibilityLabel={title}
       style={{ width: 24, height: 24, borderRadius: 6, alignItems: "center", justifyContent: "center", backgroundColor: h() ? tc("#f5f5f514") : "transparent" }}
@@ -120,8 +128,8 @@ export function EmojiPill(props: { current: string; onPick: (e: string) => void 
     return (
       <View
         onPress={() => props.onPick(e === props.current ? "" : e)}
-        onHoverIn={() => h.set(true)}
-        onHoverOut={() => h.set(false)}
+        onHoverIn={hovIn(h)}
+        onHoverOut={hovOut(h)}
         activeOpacity={0.9}
         style={{
           width: 30,
@@ -157,8 +165,8 @@ export function EmojiPill(props: { current: string; onPick: (e: string) => void 
         {EMOJI.map(dot)}
         <View
           onPress={() => grid.update((v) => !v)}
-          onHoverIn={() => plusH.set(true)}
-          onHoverOut={() => plusH.set(false)}
+          onHoverIn={hovIn(plusH)}
+          onHoverOut={hovOut(plusH)}
           activeOpacity={0.9}
           style={{ width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: grid() || plusH() ? tc("#f5f5f514") : "transparent", transform: [{ scale: plusH() ? 1.25 : 1 }], transitionProperty: "transform", transitionDuration: "120ms" }}
         >
@@ -285,8 +293,8 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
     }
   };
   const hover = {
-    onHoverIn: () => hov.set(true),
-    onHoverOut: () => hov.set(false),
+    onHoverIn: hovIn(hov),
+    onHoverOut: hovOut(hov),
   };
   const react = (emoji: string) =>
     post("/react", { key: "idx:" + t().i, r: emoji });
@@ -328,8 +336,8 @@ function TurnRow({ t, onReply, onJump, onPicker }: {
     const slot = "art:" + (f?.path || "gallery");
     return (
       <View
-        onHoverIn={() => h.set(true)}
-        onHoverOut={() => h.set(false)}
+        onHoverIn={hovIn(h)}
+        onHoverOut={hovOut(h)}
         style={{ alignSelf: "flex-start", gap: 4, maxWidth: "100%" }}
       >
         {node}
@@ -908,8 +916,8 @@ export function CardShell(props: Props) {
     <View
       class="self-start"
       style={{ width: iw() + 24, maxWidth: "100%" }}
-      onHoverIn={() => hov.set(true)}
-      onHoverOut={() => hov.set(false)}
+      onHoverIn={hovIn(hov)}
+      onHoverOut={hovOut(hov)}
     >
       <View
         class="self-stretch rounded-2xl p-3"
