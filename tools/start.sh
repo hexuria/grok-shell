@@ -14,13 +14,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NSH="${NSH:-nsh}"
 
 # Generation server (idempotent: an existing one is reused).
-if ! curl -sf -o /dev/null "http://127.0.0.1:8787/widget-feed"; then
+if ! curl -sf -o /dev/null "http://127.0.0.1:8787/health"; then
   # ANTHROPIC_API_KEY/ANTHROPIC_BASE_URL pass through if the caller exported
   # them (direct-mode escape hatch); the default Claude path is opencodex.
   export NSH
   nohup node "$ROOT/server/app-server.mjs" >/tmp/app-server.log 2>&1 &
   for _ in $(seq 1 20); do
-    curl -sf -o /dev/null "http://127.0.0.1:8787/widget-feed" && break
+    curl -sf -o /dev/null "http://127.0.0.1:8787/health" && break
     sleep 0.5
   done
 fi

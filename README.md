@@ -32,14 +32,12 @@ own native renderer.
   threads, turns, widget state, and the `apps` metadata table (display
   title/filename per artifact, owned per bot; published Mini Apps survive bot
   deletion).
-- **Mini Apps** — generated widgets are first-class: publishable, pinnable,
+- **Mini Apps** — generated widgets are first-class: publishable,
   share state through the server's `/state` store across surfaces (chat card,
   pop-out window, sidebar shelf).
 - **BetterOffice** — real `.docx`/`.xlsx`/`.pptx` generated in-process by the
   `@betteroffice/*` wasm engines, browsed/edited through a bundled MCP server,
   rendered in a WKWebView page that paints the engines' own display lists.
-- **WidgetKit** — `native-widget/` hosts generated cards in a real macOS
-  widget extension, the first step toward promotion outside the app.
 
 ## Running the app
 
@@ -146,7 +144,7 @@ widget fetch URL, and every already-generated `R*.tsx`. So:
   other worktree's server). Don't be surprised when an artifact or file
   opens the wrong worktree's data — that's the port, not a bug.
 
-- `tools/start.sh` reuses **any** server answering `/widget-feed` on :8787 —
+- `tools/start.sh` reuses **any** server answering `/health` on :8787 —
   it can't tell which worktree it belongs to. When two worktrees are in
   play, start servers explicitly with `PORT=…` instead of relying on it.
 
@@ -205,7 +203,6 @@ app/          the nsh app — App.tsx entry + nsh.json + tsconfig.json
 generated/    runtime output — model-written mini apps + registry + app.db (gitignored)
 widgets/      Mini Apps shelf (index.tsx is source; R*.tsx artifacts are gitignored)
 tools/        app-server + office + bake/stow scripts (Node — not typechecked by nsh)
-native-widget/ WidgetKit extension
 legacy/       superseded code kept for reference — candidates for deletion
 .stow/        grok-shell-stow checkout (gitignored) — plans/notes live there via
               tools/stow.sh { init | add <path> | status }

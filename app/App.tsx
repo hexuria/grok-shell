@@ -95,7 +95,6 @@ type DetailMeta = {
   kinds: string[];
   tags: string[];
   published: boolean;
-  pinned: boolean;
 };
 
 const AVATAR_HUES = ["#1884fc", "#32bb78", "#f2994a", "#eb5757", "#9b51e0", "#2d9cdb", "#f2c94c"];
@@ -414,9 +413,8 @@ function App() {
                   kinds: item.kinds || [],
                   tags: item.tags || [],
                   published: true,
-                  pinned: !!item.pinned,
                 }
-              : { name: app, title: app, kinds: [], tags: [], published: false, pinned: false },
+              : { name: app, title: app, kinds: [], tags: [], published: false },
           );
         }
       }
@@ -428,7 +426,6 @@ function App() {
         detailState.set(
           obj && typeof obj === "object"
             ? Object.entries(obj)
-                .filter(([k]) => k !== "widget")
                 .slice(0, 10)
                 .map(([k, v]) => [
                   k,
@@ -2863,7 +2860,7 @@ function App() {
                 {detail()!.title}
               </Text>
               <Text style={{ color: tc("#f5f5f566"), fontSize: 11 }}>
-                {`app · ${detail()!.name}.tsx${detail()!.pinned ? " · ★ pinned" : ""}`}
+                {`app · ${detail()!.name}.tsx`}
               </Text>
 
               {/* tab pills */}
@@ -2968,20 +2965,6 @@ function App() {
                 >
                   <Text style={{ color: tc("#f5f5f5"), fontSize: 13, fontWeight: "600" }}>
                     Open window
-                  </Text>
-                </View>
-                <View
-                  onPress={() => post("/pin", { name: detail()!.name, pinned: !detail()!.pinned }).then(refreshThreads)}
-                  activeOpacity={0.7}
-                  style={{
-                    borderRadius: 10,
-                    backgroundColor: tc("#f5f5f514"),
-                    paddingVertical: 9,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text style={{ color: tc("#f5f5f5"), fontSize: 13 }}>
-                    {detail()!.pinned ? "Unpin from desktop widget" : "Pin to desktop widget"}
                   </Text>
                 </View>
                 <If when={!detail()!.published}>

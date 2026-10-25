@@ -665,7 +665,6 @@ export function CardShell(props: Props) {
   const source = signal("");
   const copied = signal(false);
   const published = signal(false);
-  const pinned = signal(false);
   const work = signal("");
   const extra = signal("");
   const hov = signal(false);
@@ -691,12 +690,6 @@ export function CardShell(props: Props) {
   // The card shows its own pinned version everywhere — code panel, reply
   // attach, pop-out; bare name only when the card predates versions.
   const modKey = `${props.name}${props.v ? `@v${props.v}` : ""}`;
-  fetch(`${GEN}/pins`)
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d) => {
-      if (d?.pins?.includes(props.name)) pinned.set(true);
-    })
-    .catch(() => {});
   fetch(`${GEN}/module?name=${modKey}`)
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
@@ -765,16 +758,6 @@ export function CardShell(props: Props) {
     });
   };
 
-  const pin = () => {
-    const next = !pinned();
-    pinned.set(next);
-    post("/pin", { name: props.name, pinned: next }).then((d) => {
-      if (!d?.ok) pinned.set(!next);
-      extra.set(next ? "★ nominated — leads the desktop widget" : "unpinned");
-      setTimeout(() => extra.set(""), 2000);
-    });
-  };
-
   const publish = () => {
     if (published()) return;
     post("/publish", { name: props.name }).then((d) => {
@@ -799,7 +782,7 @@ export function CardShell(props: Props) {
     });
 
   // ⋯ menu — approved order (preview option 3B): code actions · version
-  // history + rename · publish/window/widget · try again · delete. No
+  // history + rename · publish/window · try again · delete. No
   // Reveal in Finder, no visible delete button — both live only here.
   const more = () => {
     const items: any[] = [
@@ -832,10 +815,6 @@ export function CardShell(props: Props) {
         onSelect: () => (published() ? unpublish() : publish()),
       },
       { label: "Open in Window", onSelect: popout },
-      {
-        label: pinned() ? "Unpin Desktop Widget" : "Add to Desktop Widget",
-        onSelect: pin,
-      },
       { type: "separator" },
       { label: "Try Again", onSelect: () => { void retry(); } },
       { type: "separator" },

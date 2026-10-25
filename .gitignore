@@ -21,7 +21,6 @@ windows/
 chunks/
 
 # compiled artifacts
-native-widget/build/
 tools/*.dylib
 
 # signing keys for `just publish-signed` — keep offline, never commit

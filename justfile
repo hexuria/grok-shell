@@ -23,7 +23,7 @@ run: server
 server:
     #!/usr/bin/env bash
     set -euo pipefail
-    if curl -sf -o /dev/null http://127.0.0.1:8787/widget-feed; then
+    if curl -sf -o /dev/null http://127.0.0.1:8787/health; then
       echo "app-server already up on :8787"
       exit 0
     fi
@@ -33,7 +33,7 @@ server:
     export ANTHROPIC_API_KEY NSH={{nsh}}
     nohup node server/app-server.mjs > /tmp/app-server.log 2>&1 &
     for _ in $(seq 1 20); do
-      curl -sf -o /dev/null http://127.0.0.1:8787/widget-feed && break
+      curl -sf -o /dev/null http://127.0.0.1:8787/health && break
       sleep 0.5
     done
     echo "app-server up on :8787 (log: /tmp/app-server.log)"

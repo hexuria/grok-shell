@@ -23,8 +23,11 @@ cp "$(node -p 'process.execPath')" "$R/server/node"
 # Server as a single file: @anthropic-ai/sdk and our own modules inlined;
 # node:* builtins stay external. Dynamic ./office and widget imports are
 # left as-is and resolve against the shipped dirs below.
+# The BetterOffice engines stay external (vendored below): inlined, their
+# wasm resolves beside the bundle, where it isn't, and every office_create
+# fails with "ooxml-opc wasm is not initialized".
 bun build "$ROOT/server/app-server.mjs" --target=node --format=esm \
-  --outfile "$R/server/app-server.mjs"
+  --external "@betteroffice/*" --outfile "$R/server/app-server.mjs"
 cp -R "$ROOT/widgets" "$R/server/widgets" 2>/dev/null || true
 cp -R "$ROOT/server/plugins" "$R/server/plugins" 2>/dev/null || true
 # Runtime assets the bundle reads beside itself: TSX templates, the office
