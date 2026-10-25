@@ -28,3 +28,6 @@ keys/
 *.secret
 
 .stage/
+
+# original plugin logos, kept locally (server/plugins/icons holds the 128px copies served)
+server/plugins/icons_orig/
