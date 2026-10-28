@@ -748,9 +748,9 @@ function App() {
   };
   // plain chats list is the visible ones; hidden/archived sit in their own
   // collapsed sections below (same pattern as Hidden Bots)
-  const chats = () => threads().filter((t) => !t.bot && !t.hidden && !t.archived);
-  const hiddenChats = () => threads().filter((t) => !t.bot && t.hidden);
-  const archivedChats = () => threads().filter((t) => !t.bot && t.archived);
+  const chats = () => threads().filter((t) => !t.bot && !t.routine && !t.hidden && !t.archived);
+  const hiddenChats = () => threads().filter((t) => !t.bot && !t.routine && t.hidden);
+  const archivedChats = () => threads().filter((t) => !t.bot && !t.routine && t.archived);
   effect(() => {
     if (!viewing()) return;
     const off = keymap.bind("escape", () => viewing.set(null));
